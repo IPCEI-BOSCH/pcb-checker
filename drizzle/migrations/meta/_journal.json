@@ -8,6 +8,13 @@
       "when": 1790791440433,
       "tag": "0000_pcb_checker_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790795571330,
+      "tag": "0001_gradebook_and_cam",
+      "breakpoints": true
     }
   ]
 }
