@@ -15,6 +15,13 @@
       "when": 1790795571330,
       "tag": "0001_gradebook_and_cam",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790798582982,
+      "tag": "0002_rules_settings_and_project_files",
+      "breakpoints": true
     }
   ]
 }
