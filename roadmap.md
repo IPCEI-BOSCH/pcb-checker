@@ -12,8 +12,14 @@
 - [x] Sincronizare Google Sheets bidirecțională (push date automate / pull note manuale)
 - [x] Generator CAM: panelizare grid 40.508 mm, 7×6, ramă, fiduciali, cupoane de test, DRL unificat, export ZIP + hartă
 
+## Etapa 3 — Reguli, dosare, panou+stencil (livrat)
+- [x] Reguli & Setări editabile (global / serie): praguri DRC, punctaj, severitate, parametri CAM
+- [x] Asistent AI Gemini pentru propuneri de reguli, cu previzualizare
+- [x] Sincronizare setări cu Google Sheets (tab Setari_Platforma), ambele direcții
+- [x] Dosare student: Fabricație + Proiect, descrieri, previzualizare, punctaj îndrumător
+- [x] CAM: panou + stencil A3, pagini multiple la depășire, inspector Gerber, tabel/tipărire poziții, date_in_LAYERS/STENCILS
+
 ## Etapa următoare
-- [ ] Conectarea contului Google Sheets (card de conectare — blocat până când utilizatorul autorizează)
 - [ ] Restricționare login la tenantul Microsoft UPB (credențiale proprii Entra ID)
 - [ ] Import listă studenți CSV/XLSX
 - [ ] Anti-plagiat (amprentă layout), OCR serigrafie

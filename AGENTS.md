@@ -18,3 +18,5 @@
 - Panelization/CAM output is generated in the browser from parsed primitives (`src/lib/cam/panelize.ts`) — reuses the same parser as DRC, no server-side CAD toolchain.
 - Gradebook columns are split into platform-owned auto columns and teacher-owned manual columns (`src/lib/gradebook.ts`); sync never writes manual columns, and imports go through a diff preview.
 - Google Sheets access runs only through server functions (`src/lib/sheets.functions.ts`) over the Lovable connector gateway — connector credentials never reach the browser.
+- DRC thresholds, scoring and CAM geometry come from `drc_settings` (defaults <- global row <- series row, `src/lib/drc/settings.ts`); `runDrc` takes settings — no hardcoded rule values.
+- CAM pages never overwrite: overflowing boards go to a new panel/stencil page; each page exports its own ZIP with `date_in_*.txt`.

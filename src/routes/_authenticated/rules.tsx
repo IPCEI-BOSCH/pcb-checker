@@ -178,7 +178,7 @@ function RulesPage() {
                   <div key={k} className="grid grid-cols-[1fr_8rem] items-center gap-3">
                     <Label className="text-sm">{RULE_FIELDS[k].label}{RULE_FIELDS[k].unit && <span className="text-muted-foreground"> ({RULE_FIELDS[k].unit})</span>}
                       {RULE_FIELDS[k].help && <span className="block text-xs text-muted-foreground">{RULE_FIELDS[k].help}</span>}
-                      <span className="block text-xs text-muted-foreground">{(draft.rules[k] / 0.0254).toFixed(1)} mil</span>
+                      {RULE_FIELDS[k].unit === "mm" && <span className="block text-xs text-muted-foreground">{(draft.rules[k] / 0.0254).toFixed(1)} mil</span>}
                     </Label>
                     <Input type="number" step={RULE_FIELDS[k].step} value={draft.rules[k]} onChange={(e) => setRule(k, num(e.target.value))} className="font-mono" />
                   </div>
