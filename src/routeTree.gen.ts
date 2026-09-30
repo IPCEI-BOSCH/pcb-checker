@@ -13,8 +13,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedCamRouteImport } from './routes/_authenticated/cam'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEnrollRouteImport } from './routes/_authenticated/enroll'
+import { Route as AuthenticatedGradebookRouteImport } from './routes/_authenticated/gradebook'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
 import { Route as AuthenticatedSelfCheckRouteImport } from './routes/_authenticated/self-check'
 
@@ -37,6 +39,11 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCamRoute = AuthenticatedCamRouteImport.update({
+  id: '/cam',
+  path: '/cam',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -45,6 +52,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
 const AuthenticatedEnrollRoute = AuthenticatedEnrollRouteImport.update({
   id: '/enroll',
   path: '/enroll',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedGradebookRoute = AuthenticatedGradebookRouteImport.update({
+  id: '/gradebook',
+  path: '/gradebook',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
@@ -62,8 +74,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/cam': typeof AuthenticatedCamRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/enroll': typeof AuthenticatedEnrollRoute
+  '/gradebook': typeof AuthenticatedGradebookRoute
   '/review': typeof AuthenticatedReviewRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
 }
@@ -71,8 +85,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/cam': typeof AuthenticatedCamRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/enroll': typeof AuthenticatedEnrollRoute
+  '/gradebook': typeof AuthenticatedGradebookRoute
   '/review': typeof AuthenticatedReviewRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
 }
@@ -82,8 +98,10 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/cam': typeof AuthenticatedCamRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/enroll': typeof AuthenticatedEnrollRoute
+  '/_authenticated/gradebook': typeof AuthenticatedGradebookRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/self-check': typeof AuthenticatedSelfCheckRoute
 }
@@ -93,8 +111,10 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/admin'
+    | '/cam'
     | '/dashboard'
     | '/enroll'
+    | '/gradebook'
     | '/review'
     | '/self-check'
   fileRoutesByTo: FileRoutesByTo
@@ -102,8 +122,10 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/admin'
+    | '/cam'
     | '/dashboard'
     | '/enroll'
+    | '/gradebook'
     | '/review'
     | '/self-check'
   id:
@@ -112,8 +134,10 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/admin'
+    | '/_authenticated/cam'
     | '/_authenticated/dashboard'
     | '/_authenticated/enroll'
+    | '/_authenticated/gradebook'
     | '/_authenticated/review'
     | '/_authenticated/self-check'
   fileRoutesById: FileRoutesById
@@ -154,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/cam': {
+      id: '/_authenticated/cam'
+      path: '/cam'
+      fullPath: '/cam'
+      preLoaderRoute: typeof AuthenticatedCamRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -166,6 +197,13 @@ declare module '@tanstack/react-router' {
       path: '/enroll'
       fullPath: '/enroll'
       preLoaderRoute: typeof AuthenticatedEnrollRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/gradebook': {
+      id: '/_authenticated/gradebook'
+      path: '/gradebook'
+      fullPath: '/gradebook'
+      preLoaderRoute: typeof AuthenticatedGradebookRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/review': {
@@ -187,16 +225,20 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedCamRoute: typeof AuthenticatedCamRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEnrollRoute: typeof AuthenticatedEnrollRoute
+  AuthenticatedGradebookRoute: typeof AuthenticatedGradebookRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedSelfCheckRoute: typeof AuthenticatedSelfCheckRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedCamRoute: AuthenticatedCamRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEnrollRoute: AuthenticatedEnrollRoute,
+  AuthenticatedGradebookRoute: AuthenticatedGradebookRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedSelfCheckRoute: AuthenticatedSelfCheckRoute,
 }

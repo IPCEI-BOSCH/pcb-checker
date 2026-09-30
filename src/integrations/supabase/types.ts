@@ -65,6 +65,53 @@ export type Database = {
         }
         Relationships: []
       }
+      cam_panels: {
+        Row: {
+          cols: number
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          pitch_mm: number
+          rows: number
+          series_id: string
+          slots: Json
+          zip_path: string | null
+        }
+        Insert: {
+          cols?: number
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          pitch_mm?: number
+          rows?: number
+          series_id: string
+          slots?: Json
+          zip_path?: string | null
+        }
+        Update: {
+          cols?: number
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          pitch_mm?: number
+          rows?: number
+          series_id?: string
+          slots?: Json
+          zip_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cam_panels_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_instructors: {
         Row: {
           group_id: string
@@ -208,15 +255,60 @@ export type Database = {
           },
         ]
       }
+      sheet_links: {
+        Row: {
+          created_at: string
+          id: string
+          last_direction: string | null
+          last_synced_at: string | null
+          series_id: string
+          sheet_name: string
+          spreadsheet_id: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_direction?: string | null
+          last_synced_at?: string | null
+          series_id: string
+          sheet_name?: string
+          spreadsheet_id: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_direction?: string | null
+          last_synced_at?: string | null
+          series_id?: string
+          sheet_name?: string
+          spreadsheet_id?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sheet_links_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: true
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       students: {
         Row: {
           created_at: string
           email: string | null
           file_prefix: string | null
           full_name: string
+          grade_doc: number | null
+          grade_final: number | null
+          grade_schema: number | null
           group_id: string
           id: string
           status: string
+          teacher_notes: string | null
           theme_name: string | null
           theme_number: number | null
           user_id: string | null
@@ -227,9 +319,13 @@ export type Database = {
           email?: string | null
           file_prefix?: string | null
           full_name: string
+          grade_doc?: number | null
+          grade_final?: number | null
+          grade_schema?: number | null
           group_id: string
           id?: string
           status?: string
+          teacher_notes?: string | null
           theme_name?: string | null
           theme_number?: number | null
           user_id?: string | null
@@ -240,9 +336,13 @@ export type Database = {
           email?: string | null
           file_prefix?: string | null
           full_name?: string
+          grade_doc?: number | null
+          grade_final?: number | null
+          grade_schema?: number | null
           group_id?: string
           id?: string
           status?: string
+          teacher_notes?: string | null
           theme_name?: string | null
           theme_number?: number | null
           user_id?: string | null
