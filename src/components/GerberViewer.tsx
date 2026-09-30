@@ -189,7 +189,7 @@ export function GerberViewer({ layers, issues, focus, cad = "kicad", onSelectIss
   const hitIssue = (px: number, py: number) => {
     for (let i = issues.length - 1; i >= 0; i--) {
       const iss = issues[i];
-      if (iss.x == null || iss.y == null) continue;
+      if (!iss || iss.x == null || iss.y == null) continue;
       const [x, y] = toScreen(iss.x, iss.y);
       if (Math.hypot(px - x, py - (y - 14)) < 10) return i;
     }

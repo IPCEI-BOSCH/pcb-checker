@@ -8,3 +8,10 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+# Architecture rules
+
+- Gerber/Excellon parsing and DRC run in the browser (`src/lib/gerber`, `src/lib/drc`); only the report JSON and the ZIP are stored — keeps the server stateless and lets batch DRC reuse the same engine.
+- All data access goes through the browser client with RLS; permissions live in SQL helpers (`has_role`, `can_view_group`, `can_manage_group`, `manages_series`) — one source of truth for the role hierarchy.
+- Role changes only via the `set_role` RPC and profile/first-admin bootstrap via `ensure_profile` (also enforces the UPB domain allowlist) — prevents client-side privilege escalation.
+- Signed-in pages live under `src/routes/_authenticated/` (client-only gate) — auth session is client-held.
