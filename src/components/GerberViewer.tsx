@@ -73,8 +73,10 @@ export function GerberViewer({ layers, issues, focus, cad = "kicad", onSelectIss
     if (focus == null) return;
     const iss = issues[focus];
     if (!iss || iss.x == null || iss.y == null) return;
+    const ix = iss.x;
+    const iy = iss.y;
     const scale = Math.max(view.scale, Math.min(size.w, size.h) / 12);
-    setView({ scale, ox: size.w / 2 - iss.x * scale, oy: size.h / 2 + iss.y! * scale });
+    setView({ scale, ox: size.w / 2 - ix * scale, oy: size.h / 2 + iy * scale });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
@@ -307,7 +309,7 @@ export function GerberViewer({ layers, issues, focus, cad = "kicad", onSelectIss
                 min={5}
                 max={100}
                 step={5}
-                onValueChange={([v]) => setState((s) => ({ ...s, [idx]: { ...st, opacity: v / 100 } }))}
+                onValueChange={([v]) => setState((s) => ({ ...s, [idx]: { ...st, opacity: (v ?? 50) / 100 } }))}
               />
             </div>
           );

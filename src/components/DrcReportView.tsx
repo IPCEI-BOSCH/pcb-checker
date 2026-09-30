@@ -106,7 +106,7 @@ export function DrcReportView({ report, layers }: { report: DrcReport; layers: L
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "ok" | "warn" | "bad" }) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "ok" | "warn" | "bad" | undefined }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="text-xs text-muted-foreground">{label}</div>

@@ -162,19 +162,21 @@ function clearanceScan(layer: Layer, limit: number) {
   }
   // union-find by overlap so connected copper (same net) is not flagged
   const parent = caps.map((_, i) => i);
-  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)));
   const idx = new Map(caps.map((c, i) => [c, i]));
   const pairs: [number, number, number][] = [];
   const seen = new Set<string>();
   for (const arr of grid.values()) {
     for (let a = 0; a < arr.length; a++)
       for (let b = a + 1; b < arr.length; b++) {
-        const ia = idx.get(arr[a])!;
-        const ib = idx.get(arr[b])!;
+        const A = arr[a]!;
+        const B = arr[b]!;
+        const ia = idx.get(A)!;
+        const ib = idx.get(B)!;
         const key = ia < ib ? `${ia}-${ib}` : `${ib}-${ia}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const gap = segSegDist(arr[a], arr[b]) - arr[a].r - arr[b].r;
+        const gap = segSegDist(A, B) - A.r - B.r;
         if (gap <= 0.001) parent[find(ia)] = find(ib);
         else if (gap < limit * 2) pairs.push([ia, ib, gap]);
       }
@@ -186,8 +188,8 @@ function clearanceScan(layer: Layer, limit: number) {
     if (find(a) === find(b)) continue;
     if (min === null || gap < min) min = gap;
     if (gap < limit) {
-      const ca = caps[a];
-      const cb = caps[b];
+      const ca = caps[a]!;
+      const cb = caps[b]!;
       hits.push({ x: ((ca.ax + ca.bx) / 2 + (cb.ax + cb.bx) / 2) / 2, y: ((ca.ay + ca.by) / 2 + (cb.ay + cb.by) / 2) / 2, gap });
     }
   }
@@ -203,7 +205,7 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
   const details = new Map<string, string>();
   const smt = variant === "SMT";
 
-  const fail = (code: string, message: string, pos?: { x: number; y: number; layer?: LayerKind }) => {
+  const fail = (code: string, message: string, pos?: { x?: number; y?: number; layer?: LayerKind }) => {
     if (!failed.has(code)) failed.set(code, message);
     const sev = PENALTY[code]?.[1] ?? "warning";
     issues.push({ code, title: TITLES[code] ?? code, severity: sev, message, ...pos });
@@ -228,7 +230,7 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
 
   // Drill count
   if (drills.length !== 1) fail("DRL_COUNT", drills.length === 0 ? "Nu a fost găsit niciun fișier Excellon." : `Au fost găsite ${drills.length} fișiere de găurire; se cere exact unul.`);
-  else note("DRL_COUNT", `${drills[0].fileName} — ${holes.length} găuri.`);
+  else note("DRL_COUNT", `${drills[0]!.fileName} — ${holes.length} găuri.`);
 
   // Board box
   let board: BBox | null = outline ? layerBBox(outline, true) : null;
@@ -249,7 +251,7 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
   // Outline width
   if (outline) {
     const wide = outline.primitives.filter((p) => p.t === "line" && p.w > RULES.outlineMaxWidth) as Extract<Primitive, { t: "line" }>[];
-    if (wide.length) fail("OUTLINE_WIDTH", `Linie de contur de ${wide[0].w.toFixed(3)} mm (max 0.2 mm).`, { x: wide[0].x1, y: wide[0].y1, layer: "outline" });
+    if (wide.length) fail("OUTLINE_WIDTH", `Linie de contur de ${wide[0]!.w.toFixed(3)} mm (max 0.2 mm).`, { x: wide[0]!.x1, y: wide[0]!.y1, layer: "outline" });
     else note("OUTLINE_WIDTH", "Lățimea conturului este conformă.");
   }
 
@@ -412,7 +414,7 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
     if (!isFailed && !details.has(code)) continue;
     const applied = isFailed ? pts : 0;
     penalty += applied;
-    rules.push({ code, title: TITLES[code], penalty: applied, maxPenalty: pts, passed: !isFailed, severity: isFailed ? sev : "info", detail: failed.get(code) ?? details.get(code) ?? "" });
+    rules.push({ code, title: TITLES[code] ?? code, penalty: applied, maxPenalty: pts, passed: !isFailed, severity: isFailed ? sev : "info", detail: failed.get(code) ?? details.get(code) ?? "" });
   }
   const score = Math.max(0, 100 - penalty);
   const blockingCount = rules.filter((r) => !r.passed && r.severity === "blocking").length;

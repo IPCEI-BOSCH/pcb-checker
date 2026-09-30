@@ -82,7 +82,7 @@ export function parseGerber(fileName: string, content: string, kind: LayerKind):
         apertures.set(code, { shape: macros.has(tmpl) ? "M" : "C", w: sz, h: nums[1] ?? sz });
       }
     } else if (cmd.startsWith("AM")) {
-      macros.add(cmd.slice(2).split("*")[0]);
+      macros.add(cmd.slice(2).split("*")[0] ?? "");
     } else if (cmd.startsWith("LP")) {
       clear = cmd[2] === "C";
     }
