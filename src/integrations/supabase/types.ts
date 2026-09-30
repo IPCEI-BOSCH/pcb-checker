@@ -14,16 +14,379 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      academic_years: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
+      audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          details: Json | null
+          id: string
+          target_entity: string | null
+          target_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+          target_entity?: string | null
+          target_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+          target_entity?: string | null
+          target_id?: string | null
+        }
+        Relationships: []
+      }
+      group_instructors: {
+        Row: {
+          group_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_instructors_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          created_at: string
+          id: string
+          is_archived: boolean
+          name: string
+          open_enrollment: boolean
+          series_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_archived?: boolean
+          name: string
+          open_enrollment?: boolean
+          series_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_archived?: boolean
+          name?: string
+          open_enrollment?: boolean
+          series_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "groups_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      series: {
+        Row: {
+          academic_year_id: string
+          created_at: string
+          default_variant: Database["public"]["Enums"]["project_variant"]
+          id: string
+          is_archived: boolean
+          name: string
+        }
+        Insert: {
+          academic_year_id: string
+          created_at?: string
+          default_variant?: Database["public"]["Enums"]["project_variant"]
+          id?: string
+          is_archived?: boolean
+          name: string
+        }
+        Update: {
+          academic_year_id?: string
+          created_at?: string
+          default_variant?: Database["public"]["Enums"]["project_variant"]
+          id?: string
+          is_archived?: boolean
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "series_academic_year_id_fkey"
+            columns: ["academic_year_id"]
+            isOneToOne: false
+            referencedRelation: "academic_years"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_managers: {
+        Row: {
+          id: string
+          series_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          series_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          series_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "series_managers_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      students: {
+        Row: {
+          created_at: string
+          email: string | null
+          file_prefix: string | null
+          full_name: string
+          group_id: string
+          id: string
+          status: string
+          theme_name: string | null
+          theme_number: number | null
+          user_id: string | null
+          variant: Database["public"]["Enums"]["project_variant"]
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          file_prefix?: string | null
+          full_name: string
+          group_id: string
+          id?: string
+          status?: string
+          theme_name?: string | null
+          theme_number?: number | null
+          user_id?: string | null
+          variant?: Database["public"]["Enums"]["project_variant"]
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          file_prefix?: string | null
+          full_name?: string
+          group_id?: string
+          id?: string
+          status?: string
+          theme_name?: string | null
+          theme_number?: number | null
+          user_id?: string | null
+          variant?: Database["public"]["Enums"]["project_variant"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      submissions: {
+        Row: {
+          blocking_count: number
+          created_at: string
+          drc_score: number | null
+          file_name: string | null
+          id: string
+          kind: string
+          report: Json | null
+          review_reason: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          revision: number
+          student_id: string
+          user_id: string
+          variant: Database["public"]["Enums"]["project_variant"]
+          zip_path: string | null
+        }
+        Insert: {
+          blocking_count?: number
+          created_at?: string
+          drc_score?: number | null
+          file_name?: string | null
+          id?: string
+          kind?: string
+          report?: Json | null
+          review_reason?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          revision?: number
+          student_id: string
+          user_id: string
+          variant?: Database["public"]["Enums"]["project_variant"]
+          zip_path?: string | null
+        }
+        Update: {
+          blocking_count?: number
+          created_at?: string
+          drc_score?: number | null
+          file_name?: string | null
+          id?: string
+          kind?: string
+          report?: Json | null
+          review_reason?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          revision?: number
+          student_id?: string
+          user_id?: string
+          variant?: Database["public"]["Enums"]["project_variant"]
+          zip_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submissions_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      can_manage_group: {
+        Args: { _group: string; _uid: string }
+        Returns: boolean
+      }
+      can_view_group: {
+        Args: { _group: string; _uid: string }
+        Returns: boolean
+      }
+      ensure_profile: {
+        Args: never
+        Returns: Database["public"]["Enums"]["app_role"][]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_staff: { Args: { _uid: string }; Returns: boolean }
+      manages_series: {
+        Args: { _series: string; _uid: string }
+        Returns: boolean
+      }
+      set_role: {
+        Args: {
+          _grant: boolean
+          _role: Database["public"]["Enums"]["app_role"]
+          _target: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role:
+        | "admin"
+        | "series_manager"
+        | "instructor"
+        | "student"
+        | "cam_tech"
+      project_variant: "SMT" | "THT"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +513,15 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: [
+        "admin",
+        "series_manager",
+        "instructor",
+        "student",
+        "cam_tech",
+      ],
+      project_variant: ["SMT", "THT"],
+    },
   },
 } as const
