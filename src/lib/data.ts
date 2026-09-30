@@ -13,7 +13,7 @@ export async function fetchStructure() {
 }
 
 export async function fetchMyStudent(userId: string) {
-  const { data, error } = await supabase.from("students").select("*, groups(name, series(name))").eq("user_id", userId).maybeSingle();
+  const { data, error } = await supabase.from("students").select("*, groups(name, series_id, series(name))").eq("user_id", userId).maybeSingle();
   if (error) throw error;
   return data;
 }
