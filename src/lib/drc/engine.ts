@@ -54,20 +54,20 @@ export const RULES = {
   fiducialMax: 2.0,
 };
 
-const TITLES: Record<string, string> = {
+export const TITLES: Record<string, string> = {
   MISSING_LAYER: "Straturi obligatorii",
   DRL_COUNT: "Fișier DRL unic",
-  BOARD_SIZE: "Dimensiune placă 40×40 mm",
+  BOARD_SIZE: "Dimensiune placă",
   ORIGIN: "Origine coordonate (0,0)",
-  OUTLINE_WIDTH: "Lățime contur ≤ 0.2 mm",
-  EDGE_CLEARANCE: "Gardă margine ≥ 1 mm",
+  OUTLINE_WIDTH: "Lățime contur",
+  EDGE_CLEARANCE: "Gardă margine cupru",
   VIA_IN_PAD: "Interdicție VIA în PAD",
   SSTOP_OVER_PAD: "Deschideri mască pe pad-uri",
   MASK_DUPLICATE: "Capcana duplicării (SMTOP = TOP)",
   FIDUCIALS: "Fiduciali optici TOP",
   MIN_TRACE: "Lățime minimă trasee",
   CLEARANCE: "Izolație minimă cupru",
-  ANNULAR_RING: "Inel anular ≥ 0.15 mm",
+  ANNULAR_RING: "Inel anular minim",
   HOLE_SIZE: "Diametre găuri",
   MISSING_PASTE: "Strat pastă (stencil)",
   STENCIL_RATIO: "Stencil IPC-7525B (AR / Area Ratio)",
@@ -75,7 +75,7 @@ const TITLES: Record<string, string> = {
 };
 
 // code -> [penalty, severity when failing, SMT only]
-const PENALTY: Record<string, [number, Severity, boolean]> = {
+export const LEGACY_PENALTY: Record<string, [number, Severity, boolean]> = {
   MISSING_LAYER: [20, "blocking", false],
   DRL_COUNT: [20, "blocking", false],
   BOARD_SIZE: [15, "blocking", false],
