@@ -225,10 +225,10 @@ export async function buildPanel(slots: PanelSlot[], cfg: PanelConfig): Promise<
       [cfg.rail / 2, height - cfg.rail / 2],
     ];
     for (const [fx, fy] of fid) {
-      push("top_copper", { t: "flash", x: fx, y: fy, shape: "C", w: cfg.fiducial, h: cfg.fiducial }, 0, 0);
-      push("bottom_copper", { t: "flash", x: fx, y: fy, shape: "C", w: cfg.fiducial, h: cfg.fiducial }, 0, 0);
-      push("top_mask", { t: "flash", x: fx, y: fy, shape: "C", w: cfg.fiducial * 2, h: cfg.fiducial * 2 }, 0, 0);
-      push("bottom_mask", { t: "flash", x: fx, y: fy, shape: "C", w: cfg.fiducial * 2, h: cfg.fiducial * 2 }, 0, 0);
+      push("top_copper", { t: "flash", x: fx, y: fy, shape: "C", w: PANEL_DEFAULT.fiducial, h: PANEL_DEFAULT.fiducial }, 0, 0);
+      push("bottom_copper", { t: "flash", x: fx, y: fy, shape: "C", w: PANEL_DEFAULT.fiducial, h: PANEL_DEFAULT.fiducial }, 0, 0);
+      push("top_mask", { t: "flash", x: fx, y: fy, shape: "C", w: PANEL_DEFAULT.fiducial * 2, h: PANEL_DEFAULT.fiducial * 2 }, 0, 0);
+      push("bottom_mask", { t: "flash", x: fx, y: fy, shape: "C", w: PANEL_DEFAULT.fiducial * 2, h: PANEL_DEFAULT.fiducial * 2 }, 0, 0);
     }
   }
 
