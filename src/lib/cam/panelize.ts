@@ -283,7 +283,125 @@ export async function buildPanel(slots: PanelSlot[], cfg: PanelConfig): Promise<
     ...(warnings.length ? ["Avertismente:", ...warnings] : []),
   ].join("\n");
   add("PANEL-harta.txt", map);
+  add("date_in_LAYERS.txt", dateInFile("LAYERS", positionTable(slots, cfg.cols, (c, r) => slotOrigin(cfg, c, r)), cfg.name));
 
   const blob = await zip.generateAsync({ type: "blob" });
   return { blob, files, width, height, boards: filled.length, holes: holes.length, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Viewer layers, position maps, GerbTool data files and A3 stencil generation
+// ---------------------------------------------------------------------------
+
+/** Assemble translated panel layers (same content as the exported panel) for the 2D inspector. */
+export function panelLayers(slots: PanelSlot[], cfg: PanelConfig): Layer[] {
+  const { width, height } = panelSize(cfg);
+  const byKind = new Map<LayerKind, Primitive[]>();
+  const holes: { x: number; y: number; d: number }[] = [];
+  const add = (k: LayerKind, p: Primitive) => { const a = byKind.get(k) ?? []; a.push(p); byKind.set(k, a); };
+  for (const s of slots) {
+    if (!s.board) continue;
+    const o = slotOrigin(cfg, s.col, s.row);
+    for (const l of s.board.layers) {
+      if (l.kind === "drill") l.holes.forEach((h) => holes.push({ x: h.x + o.x, y: h.y + o.y, d: h.d }));
+      else if (PANEL_KINDS.includes(l.kind)) l.primitives.forEach((p) => add(l.kind, translate(p, o.x, o.y)));
+    }
+  }
+  rect(0, 0, width, height, 0.2).forEach((p) => add("outline", p));
+  if (cfg.fiducials) for (const [fx, fy] of panelFiducials(cfg, width, height)) add("top_copper", { t: "flash", x: fx, y: fy, shape: "C", w: PANEL_DEFAULT.fiducial, h: PANEL_DEFAULT.fiducial });
+  const out: Layer[] = [...byKind.entries()].map(([kind, primitives]) => ({ fileName: FILE_NAME[kind] ?? kind, kind, primitives, holes: [], warnings: [] }));
+  if (holes.length) out.push({ fileName: "PANEL-Unified.drl", kind: "drill", primitives: [], holes, warnings: [] });
+  return out;
+}
+
+function panelFiducials(cfg: PanelConfig, width: number, height: number): [number, number][] {
+  return [[cfg.rail / 2, cfg.rail / 2], [width - cfg.rail / 2, cfg.rail / 2], [cfg.rail / 2, height - cfg.rail / 2]];
+}
+
+function translate(p: Primitive, dx: number, dy: number): Primitive {
+  if (p.t === "line") return { ...p, x1: p.x1 + dx, y1: p.y1 + dy, x2: p.x2 + dx, y2: p.y2 + dy };
+  if (p.t === "flash") return { ...p, x: p.x + dx, y: p.y + dy };
+  return { ...p, pts: p.pts.map(([x, y]) => [x + dx, y + dy] as [number, number]) };
+}
+
+export interface PositionRow { index: number; col: number; row: number; x: number; y: number; label: string }
+
+export function positionTable(slots: PanelSlot[], cols: number, origin: (c: number, r: number) => { x: number; y: number }): PositionRow[] {
+  return slots
+    .filter((s) => s.board)
+    .map((s) => { const o = origin(s.col, s.row); return { index: s.row * cols + s.col + 1, col: s.col + 1, row: s.row + 1, x: +o.x.toFixed(3), y: +o.y.toFixed(3), label: s.board!.label }; })
+    .sort((a, b) => a.index - b.index);
+}
+
+/** GerbTool macro input: one line per position with offset and source project. */
+export function dateInFile(kind: "LAYERS" | "STENCILS", rows: PositionRow[], title: string) {
+  return [
+    `; date_in_${kind}.txt — ${title}`,
+    "; POZ;COL;RAND;X_mm;Y_mm;PROIECT",
+    ...rows.map((r) => `${r.index};${r.col};${r.row};${r.x.toFixed(3)};${r.y.toFixed(3)};${r.label}`),
+    "",
+  ].join("\n");
+}
+
+export interface StencilConfig {
+  name: string;
+  cols: number;
+  rows: number;
+  pitch: number;
+  board: number;
+  frameW: number;
+  frameH: number;
+  margin: number;
+}
+
+export function stencilOrigin(cfg: StencilConfig) {
+  const gw = cfg.pitch * (cfg.cols - 1) + cfg.board;
+  const gh = cfg.pitch * (cfg.rows - 1) + cfg.board;
+  const x0 = (cfg.frameW - gw) / 2;
+  const y0 = (cfg.frameH - gh) / 2;
+  return { fits: x0 >= cfg.margin && y0 >= cfg.margin, gw, gh, at: (c: number, r: number) => ({ x: x0 + c * cfg.pitch, y: y0 + r * cfg.pitch }) };
+}
+
+export function stencilLayers(slots: PanelSlot[], cfg: StencilConfig): Layer[] {
+  const o = stencilOrigin(cfg);
+  const paste: Primitive[] = [];
+  const outline: Primitive[] = [...rect(0, 0, cfg.frameW, cfg.frameH, 0.2)];
+  for (const s of slots) {
+    if (!s.board) continue;
+    const p0 = o.at(s.col, s.row);
+    outline.push(...rect(p0.x, p0.y, cfg.board, cfg.board, 0.1));
+    for (const l of s.board.layers) if (l.kind === "top_paste") l.primitives.forEach((p) => paste.push(translate(p, p0.x, p0.y)));
+  }
+  // Stencil fiducials (half-etched marks) at three frame corners.
+  for (const [fx, fy] of [[cfg.margin / 2, cfg.margin / 2], [cfg.frameW - cfg.margin / 2, cfg.margin / 2], [cfg.margin / 2, cfg.frameH - cfg.margin / 2]] as [number, number][])
+    paste.push({ t: "flash", x: fx, y: fy, shape: "C", w: 1, h: 1 });
+  return [
+    { fileName: "STENCIL-F_Paste.gtp", kind: "top_paste", primitives: paste, holes: [], warnings: [] },
+    { fileName: "STENCIL-Frame.gko", kind: "outline", primitives: outline, holes: [], warnings: [] },
+  ];
+}
+
+export async function buildStencil(slots: PanelSlot[], cfg: StencilConfig): Promise<PanelResult> {
+  const filled = slots.filter((s) => s.board);
+  if (!filled.length) throw new Error("Stencilul nu conține nicio plăcuță.");
+  const o = stencilOrigin(cfg);
+  const warnings: string[] = [];
+  if (!o.fits) warnings.push(`Matricea ${o.gw.toFixed(1)} × ${o.gh.toFixed(1)} mm nu respectă marginea de ${cfg.margin} mm pe folia ${cfg.frameW} × ${cfg.frameH} mm.`);
+  for (const s of filled) if (!s.board!.layers.some((l) => l.kind === "top_paste")) warnings.push(`${s.board!.label}: lipsește stratul de pastă TOP.`);
+  const layers = stencilLayers(slots, cfg);
+  const zip = new JSZip();
+  const files: { name: string; bytes: number }[] = [];
+  const add = (name: string, text: string) => { zip.file(name, text); files.push({ name, bytes: text.length }); };
+  for (const l of layers) add(l.fileName, emitGerber(l.primitives.map((p) => ({ p, dx: 0, dy: 0 })), `${cfg.name} ${l.kind}`));
+  const rows = positionTable(slots, cfg.cols, o.at);
+  add("date_in_STENCILS.txt", dateInFile("STENCILS", rows, cfg.name));
+  add("STENCIL-harta.txt", [
+    `Stencil: ${cfg.name}`,
+    `Folie: ${cfg.frameW} x ${cfg.frameH} mm, matrice ${cfg.cols} x ${cfg.rows} la pas ${cfg.pitch} mm`,
+    `Pozitii ocupate: ${filled.length} / ${cfg.cols * cfg.rows}`,
+    "",
+    ...(warnings.length ? ["Avertismente:", ...warnings] : []),
+  ].join("\n"));
+  const blob = await zip.generateAsync({ type: "blob" });
+  return { blob, files, width: cfg.frameW, height: cfg.frameH, boards: filled.length, holes: 0, warnings };
 }
