@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEnrollRouteImport } from './routes/_authenticated/enroll'
+import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
 import { Route as AuthenticatedSelfCheckRouteImport } from './routes/_authenticated/self-check'
 
 const IndexRoute = IndexRouteImport.update({
@@ -40,6 +41,11 @@ const AuthenticatedEnrollRoute = AuthenticatedEnrollRouteImport.update({
   path: '/enroll',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSelfCheckRoute = AuthenticatedSelfCheckRouteImport.update({
   id: '/self-check',
   path: '/self-check',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/enroll': typeof AuthenticatedEnrollRoute
+  '/review': typeof AuthenticatedReviewRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRoutesByTo {
@@ -58,6 +65,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/enroll': typeof AuthenticatedEnrollRoute
+  '/review': typeof AuthenticatedReviewRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRoutesById {
@@ -67,13 +75,15 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/enroll': typeof AuthenticatedEnrollRoute
+  '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/dashboard' | '/enroll' | '/self-check'
+  fullPaths:
+    '/' | '/auth' | '/dashboard' | '/enroll' | '/review' | '/self-check'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/enroll' | '/self-check'
+  to: '/' | '/auth' | '/dashboard' | '/enroll' | '/review' | '/self-check'
   id:
     | '__root__'
     | '/'
@@ -81,6 +91,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/dashboard'
     | '/_authenticated/enroll'
+    | '/_authenticated/review'
     | '/_authenticated/self-check'
   fileRoutesById: FileRoutesById
 }
@@ -127,6 +138,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEnrollRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/review': {
+      id: '/_authenticated/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof AuthenticatedReviewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/self-check': {
       id: '/_authenticated/self-check'
       path: '/self-check'
@@ -140,12 +158,14 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEnrollRoute: typeof AuthenticatedEnrollRoute
+  AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedSelfCheckRoute: typeof AuthenticatedSelfCheckRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEnrollRoute: AuthenticatedEnrollRoute,
+  AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedSelfCheckRoute: AuthenticatedSelfCheckRoute,
 }
 
