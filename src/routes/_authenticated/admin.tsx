@@ -100,7 +100,7 @@ function Structure() {
 
   const act = async (p: PromiseLike<{ error: { message: string } | null }>, audit?: [string, string | null, Record<string, unknown>]) => {
     const { error } = await p;
-    if (error) return toast.error(error.message);
+    if (error) return void toast.error(error.message);
     if (audit) await logAudit(user.id, "SERIES_MANAGEMENT", audit[0], audit[1], audit[2]);
     refresh();
   };
@@ -127,7 +127,7 @@ function Structure() {
               className="flex flex-wrap gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!newSeries.name.trim() || !newSeries.year) return toast.error("Completează numele și anul.");
+                if (!newSeries.name.trim() || !newSeries.year) return void toast.error("Completează numele și anul.");
                 act(supabase.from("series").insert({ name: newSeries.name.trim(), academic_year_id: newSeries.year, default_variant: newSeries.variant }), ["series", null, { name: newSeries.name }]).then(() => setNewSeries({ ...newSeries, name: "" }));
               }}
             >
@@ -276,8 +276,8 @@ function Students() {
   });
   const [add, setAdd] = useState({ name: "", email: "" });
   const upd = async (id: string, patch: Record<string, unknown>) => {
-    const { error } = await supabase.from("students").update(patch).eq("id", id);
-    if (error) return toast.error(error.message);
+    const { error } = await supabase.from("students").update(patch as never).eq("id", id);
+    if (error) return void toast.error(error.message);
     await logAudit(user.id, "STUDENT_UPDATE", "student", id, patch);
     qc.invalidateQueries({ queryKey: ["admin-students", groupId] });
   };
@@ -349,7 +349,7 @@ function Students() {
                 e.preventDefault();
                 if (!add.name.trim()) return;
                 const { error } = await supabase.from("students").insert({ group_id: groupId, full_name: add.name.trim(), email: add.email.trim() || null, status: "approved" });
-                if (error) return toast.error(error.message);
+                if (error) return void toast.error(error.message);
                 setAdd({ name: "", email: "" });
                 qc.invalidateQueries({ queryKey: ["admin-students", groupId] });
               }}
@@ -373,7 +373,7 @@ function Roles() {
   const grantable: AppRole[] = has("admin") ? ["admin", "series_manager", "instructor", "cam_tech", "student"] : ["instructor"];
   const toggle = async (uid: string, role: AppRole, grant: boolean) => {
     const { error } = await supabase.rpc("set_role", { _target: uid, _role: role, _grant: grant });
-    if (error) return toast.error(error.message);
+    if (error) return void toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["profiles"] });
     if (uid === user.id) qc.invalidateQueries({ queryKey: ["me"] });
   };

@@ -62,15 +62,15 @@ export function parseGerber(fileName: string, content: string, kind: LayerKind):
   const handleExtended = (cmd: string) => {
     if (cmd.startsWith("FS")) {
       const m = cmd.match(/FS([LTD])?([AI])?X(\d)(\d)Y(\d)(\d)/);
-      if (m) fmt = { trailing: m[1] === "T", xInt: +m[3], xDec: +m[4], yInt: +m[5], yDec: +m[6] };
+      if (m) fmt = { trailing: m[1]! === "T", xInt: +m[3]!, xDec: +m[4]!, yInt: +m[5]!, yDec: +m[6]! };
     } else if (cmd.startsWith("MO")) {
       scale = cmd.includes("IN") ? 25.4 : 1;
     } else if (cmd.startsWith("AD")) {
       const m = cmd.match(/^ADD(\d+)([A-Za-z_$.][\w.$]*)(?:,(.*))?$/);
       if (!m) return;
-      const code = +m[1];
-      const tmpl = m[2];
-      const params = (m[3] ?? "").split("X").map((v) => parseFloat(v) * scale);
+      const code = +m[1]!;
+      const tmpl = m[2]!;
+      const params = (m[3]! ?? "").split("X").map((v) => parseFloat(v) * scale);
       if (tmpl === "C") apertures.set(code, { shape: "C", w: params[0] || 0, h: params[0] || 0 });
       else if (tmpl === "R") apertures.set(code, { shape: "R", w: params[0] || 0, h: params[1] ?? params[0] ?? 0 });
       else if (tmpl === "O") apertures.set(code, { shape: "O", w: params[0] || 0, h: params[1] ?? params[0] ?? 0 });
@@ -97,7 +97,7 @@ export function parseGerber(fileName: string, content: string, kind: LayerKind):
     s = s.replace(/^G5[45]/, "");
     const g = s.match(/^G0?(\d+)/);
     if (g) {
-      const code = +g[1];
+      const code = +g[1]!;
       if (code === 1) interp = "G01";
       else if (code === 2) interp = "G02";
       else if (code === 3) interp = "G03";
@@ -108,12 +108,12 @@ export function parseGerber(fileName: string, content: string, kind: LayerKind):
         closeContour();
         region = false;
       }
-      s = s.slice(g[0].length);
+      s = s.slice(g[0]!.length);
       if (!s) return;
     }
     const dOnly = s.match(/^D(\d+)$/);
-    if (dOnly && +dOnly[1] >= 10) {
-      cur = apertures.get(+dOnly[1]) ?? null;
+    if (dOnly && +dOnly[1]! >= 10) {
+      cur = apertures.get(+dOnly[1]!) ?? null;
       return;
     }
     const xm = s.match(/X([+-]?[\d.]+)/);
@@ -121,9 +121,9 @@ export function parseGerber(fileName: string, content: string, kind: LayerKind):
     const im = s.match(/I([+-]?[\d.]+)/);
     const jm = s.match(/J([+-]?[\d.]+)/);
     const dm = s.match(/D0?([123])$/);
-    const nx = xm ? parseCoord(xm[1], fmt.xDec, fmt.xInt, fmt.trailing) * scale : x;
-    const ny = ym ? parseCoord(ym[1], fmt.yDec, fmt.yInt, fmt.trailing) * scale : y;
-    const op = dm ? +dm[1] : xm || ym ? 1 : 0;
+    const nx = xm ? parseCoord(xm[1]!, fmt.xDec, fmt.xInt, fmt.trailing) * scale : x;
+    const ny = ym ? parseCoord(ym[1]!, fmt.yDec, fmt.yInt, fmt.trailing) * scale : y;
+    const op = dm ? +dm[1]! : xm || ym ? 1 : 0;
     if (op === 2) {
       if (region) {
         closeContour();
@@ -132,8 +132,8 @@ export function parseGerber(fileName: string, content: string, kind: LayerKind):
     } else if (op === 1) {
       const pts: [number, number][] = [];
       if (interp !== "G01" && (im || jm)) {
-        const ci = im ? parseCoord(im[1], fmt.xDec, fmt.xInt, fmt.trailing) * scale : 0;
-        const cj = jm ? parseCoord(jm[1], fmt.yDec, fmt.yInt, fmt.trailing) * scale : 0;
+        const ci = im ? parseCoord(im[1]!, fmt.xDec, fmt.xInt, fmt.trailing) * scale : 0;
+        const cj = jm ? parseCoord(jm[1]!, fmt.yDec, fmt.yInt, fmt.trailing) * scale : 0;
         const cx = x + ci;
         const cy = y + cj;
         const r = Math.hypot(x - cx, y - cy);
@@ -212,8 +212,8 @@ export function parseExcellon(fileName: string, content: string): Layer {
     if (!raw || raw.startsWith(";")) {
       const fm = raw.match(/FORMAT\s*\{?(\d):(\d)/i);
       if (fm) {
-        int = +fm[1];
-        dec = +fm[2];
+        int = +fm[1]!;
+        dec = +fm[2]!;
       }
       continue;
     }
@@ -231,7 +231,7 @@ export function parseExcellon(fileName: string, content: string): Layer {
       if (raw.includes("TZ")) trailingZerosKept = true;
       const f = raw.match(/0+\.0+/);
       if (f) {
-        const [a, b] = f[0].split(".");
+        const [a = "", b = ""] = f[0].split(".");
         int = a.length;
         dec = b.length;
       } else if (!raw.includes("M71")) {
@@ -250,13 +250,13 @@ export function parseExcellon(fileName: string, content: string): Layer {
     }
     const tdef = raw.match(/^T(\d+)(?:F\d+)?(?:S\d+)?C([\d.]+)/);
     if (tdef) {
-      tools.set(+tdef[1], parseFloat(tdef[2]) * (metric ? 1 : 25.4));
+      tools.set(+tdef[1]!, parseFloat(tdef[2]!) * (metric ? 1 : 25.4));
       continue;
     }
     if (raw === "M30" || raw === "M00") break;
     const tsel = raw.match(/^T(\d+)$/);
     if (tsel) {
-      tool = +tsel[1];
+      tool = +tsel[1]!;
       header = false;
       continue;
     }
@@ -281,8 +281,8 @@ export function parseExcellon(fileName: string, content: string): Layer {
       }
       return n * (metric ? 1 : 25.4);
     };
-    if (xm) x = conv(xm[1].split("G85")[0]);
-    if (ym) y = conv(ym[1]);
+    if (xm) x = conv(xm[1]!.split("G85")[0]!);
+    if (ym) y = conv(ym[1]!);
     const d = tools.get(tool);
     if (d === undefined) warnings.push(`Sculă T${tool} nedefinită`);
     holes.push({ x, y, d: d ?? 0 });

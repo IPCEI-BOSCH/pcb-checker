@@ -37,7 +37,7 @@ function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Bun venit{user.user_metadata?.full_name ? `, ${user.user_metadata.full_name}` : ""}</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Bun venit{user.user_metadata?.["full_name"] ? `, ${user.user_metadata.full_name}` : ""}</h1>
         <p className="text-sm text-muted-foreground">{user.email}</p>
       </div>
 

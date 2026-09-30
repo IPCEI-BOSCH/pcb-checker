@@ -89,7 +89,7 @@ function Review() {
 
   const runBatch = async () => {
     const targets = rows.filter((r) => r.official?.zip_path);
-    if (!targets.length) return toast.info("Nu există predări oficiale în această grupă.");
+    if (!targets.length) return void toast.info("Nu există predări oficiale în această grupă.");
     let done = 0;
     for (const r of targets) {
       setBatch(`${++done}/${targets.length} · ${r.st.full_name}`);
@@ -110,7 +110,7 @@ function Review() {
 
   const setStatus = async (sub: Sub, status: "approved" | "rejected", why?: string) => {
     const { error } = await supabase.from("submissions").update({ review_status: status, review_reason: why ?? null, reviewed_by: user.id, reviewed_at: new Date().toISOString() }).eq("id", sub.id);
-    if (error) return toast.error(error.message);
+    if (error) return void toast.error(error.message);
     await logAudit(user.id, "PANEL_APPROVAL", "submission", sub.id, { status, reason: why });
     qc.invalidateQueries({ queryKey: ["review", groupId] });
     toast.success(status === "approved" ? "Aprobat pentru fabricație." : "Proiect respins.");
@@ -118,7 +118,7 @@ function Review() {
 
   const approveStudent = async (id: string) => {
     const { error } = await supabase.from("students").update({ status: "approved" }).eq("id", id);
-    if (error) return toast.error(error.message);
+    if (error) return void toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["review", groupId] });
   };
 

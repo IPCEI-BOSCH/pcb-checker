@@ -33,7 +33,7 @@ function Enroll() {
   const me = useQuery({ queryKey: ["my-student", user.id], queryFn: () => fetchMyStudent(user.id) });
   const [seriesId, setSeriesId] = useState("");
   const [groupId, setGroupId] = useState("");
-  const [name, setName] = useState((user.user_metadata?.full_name as string) ?? "");
+  const [name, setName] = useState((user.user_metadata?.["full_name"] as string) ?? "");
   const [theme, setTheme] = useState("");
   const [num, setNum] = useState("");
   const [variant, setVariant] = useState<"SMT" | "THT">("SMT");
@@ -57,21 +57,21 @@ function Enroll() {
   const groups = s?.groups.filter((g) => g.series_id === seriesId && !g.is_archived && g.open_enrollment) ?? [];
 
   const submit = async () => {
-    if (!groupId || !name.trim()) return toast.error("Completează numele și grupa.");
+    if (!groupId || !name.trim()) return void toast.error("Completează numele și grupa.");
     setBusy(true);
     const prefix = name.trim().split(/\s+/).map((p) => p.normalize("NFD").replace(/[^\w]/g, "")).join("_");
     const { error } = await supabase.from("students").insert({
       user_id: user.id,
       group_id: groupId,
       full_name: name.trim(),
-      email: user.email,
+      email: user.email ?? null,
       theme_name: theme || null,
       theme_number: num ? parseInt(num, 10) : null,
       variant,
       file_prefix: prefix,
     });
     setBusy(false);
-    if (error) return toast.error(error.message.includes("duplicate") ? "Ești deja înscris." : error.message);
+    if (error) return void toast.error(error.message.includes("duplicate") ? "Ești deja înscris." : error.message);
     toast.success("Înscriere trimisă.");
     await qc.invalidateQueries({ queryKey: ["my-student"] });
     navigate({ to: "/self-check" });

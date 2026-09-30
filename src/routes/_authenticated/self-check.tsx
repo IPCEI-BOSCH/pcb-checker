@@ -63,7 +63,7 @@ function SelfCheck() {
   const st = student.data;
 
   const run = async (file: File) => {
-    if (!/\.zip$/i.test(file.name)) return toast.error("Încarcă o arhivă .zip cu fișierele Gerber și Excellon.");
+    if (!/\.zip$/i.test(file.name)) return void toast.error("Încarcă o arhivă .zip cu fișierele Gerber și Excellon.");
     try {
       setBusy("Se parsează straturile…");
       const layers = await loadGerberZip(file);
@@ -134,7 +134,7 @@ function SelfCheck() {
       report: current.report as never,
     });
     setBusy(null);
-    if (error) return toast.error(error.message);
+    if (error) return void toast.error(error.message);
     toast.success(`Predare oficială v${revision} înregistrată.`);
     qc.invalidateQueries({ queryKey: ["my-subs-all"] });
   };
