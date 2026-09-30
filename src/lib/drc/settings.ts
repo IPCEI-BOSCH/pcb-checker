@@ -1,0 +1,227 @@
+import { supabase } from "@/integrations/supabase/client";
+import type { Severity } from "./engine-types";
+
+/** All tunable values — DRC thresholds, scoring and CAM geometry. Stored as JSON per scope (global / series). */
+export interface RuleValues {
+  boardSize: number;
+  boardTol: number;
+  originTol: number;
+  edgeClearance: number;
+  outlineMaxWidth: number;
+  minTrace: number;
+  minClearance: number;
+  minHole: number;
+  maxHole: number;
+  annularRing: number;
+  stencilT: number;
+  stencilMinAR: number;
+  stencilMinAreaRatio: number;
+  windowpaneArea: number;
+  fiducialMin: number;
+  fiducialMax: number;
+  fiducialMaskExtra: number;
+  minFiducials: number;
+  maskDuplicateRatio: number;
+}
+
+export interface PenaltyValue {
+  points: number;
+  severity: Severity;
+  enabled: boolean;
+  smtOnly: boolean;
+}
+
+export interface CamValues {
+  panelCols: number;
+  panelRows: number;
+  panelPitch: number;
+  board: number;
+  rail: number;
+  fiducial: number;
+  coupons: boolean;
+  fiducials: boolean;
+  stencilCols: number;
+  stencilRows: number;
+  stencilPitch: number;
+  stencilFrameW: number;
+  stencilFrameH: number;
+  stencilMargin: number;
+}
+
+export interface Settings {
+  rules: RuleValues;
+  penalties: Record<string, PenaltyValue>;
+  cam: CamValues;
+  notes?: string;
+}
+
+const MIL = 0.0254;
+
+export const DEFAULT_SETTINGS: Settings = {
+  rules: {
+    boardSize: 40,
+    boardTol: 0.2,
+    originTol: 0.05,
+    edgeClearance: 1.0,
+    outlineMaxWidth: 0.2,
+    minTrace: +(16 * MIL).toFixed(3),
+    minClearance: +(14 * MIL).toFixed(3),
+    minHole: 0.3,
+    maxHole: 3.2,
+    annularRing: 0.15,
+    stencilT: 0.12,
+    stencilMinAR: 1.5,
+    stencilMinAreaRatio: 0.66,
+    windowpaneArea: 9,
+    fiducialMin: 0.8,
+    fiducialMax: 2.0,
+    fiducialMaskExtra: 0.3,
+    minFiducials: 2,
+    maskDuplicateRatio: 0.5,
+  },
+  penalties: {
+    MISSING_LAYER: { points: 20, severity: "blocking", enabled: true, smtOnly: false },
+    DRL_COUNT: { points: 20, severity: "blocking", enabled: true, smtOnly: false },
+    BOARD_SIZE: { points: 15, severity: "blocking", enabled: true, smtOnly: false },
+    ORIGIN: { points: 5, severity: "warning", enabled: true, smtOnly: false },
+    OUTLINE_WIDTH: { points: 5, severity: "warning", enabled: true, smtOnly: false },
+    EDGE_CLEARANCE: { points: 10, severity: "blocking", enabled: true, smtOnly: false },
+    VIA_IN_PAD: { points: 15, severity: "blocking", enabled: true, smtOnly: true },
+    SSTOP_OVER_PAD: { points: 10, severity: "blocking", enabled: true, smtOnly: false },
+    MASK_DUPLICATE: { points: 25, severity: "blocking", enabled: true, smtOnly: false },
+    FIDUCIALS: { points: 10, severity: "blocking", enabled: true, smtOnly: true },
+    MIN_TRACE: { points: 5, severity: "warning", enabled: true, smtOnly: false },
+    CLEARANCE: { points: 5, severity: "warning", enabled: true, smtOnly: false },
+    ANNULAR_RING: { points: 5, severity: "warning", enabled: true, smtOnly: false },
+    HOLE_SIZE: { points: 5, severity: "warning", enabled: true, smtOnly: false },
+    MISSING_PASTE: { points: 10, severity: "blocking", enabled: true, smtOnly: true },
+    STENCIL_RATIO: { points: 5, severity: "warning", enabled: true, smtOnly: true },
+    STENCIL_WINDOWPANE: { points: 0, severity: "info", enabled: true, smtOnly: true },
+  },
+  cam: {
+    panelCols: 7,
+    panelRows: 6,
+    panelPitch: 40.508,
+    board: 40,
+    rail: 8,
+    fiducial: 1.0,
+    coupons: true,
+    fiducials: true,
+    stencilCols: 7,
+    stencilRows: 6,
+    stencilPitch: 40.508,
+    stencilFrameW: 420,
+    stencilFrameH: 297,
+    stencilMargin: 10,
+  },
+};
+
+type FieldMeta = { label: string; unit: string; group: string; step?: number; help?: string };
+
+export const RULE_FIELDS: Record<keyof RuleValues, FieldMeta> = {
+  boardSize: { label: "Dimensiune placă", unit: "mm", group: "Geometrie", step: 0.1 },
+  boardTol: { label: "Toleranță dimensiune", unit: "mm", group: "Geometrie", step: 0.01 },
+  originTol: { label: "Toleranță origine (0,0)", unit: "mm", group: "Geometrie", step: 0.01 },
+  outlineMaxWidth: { label: "Lățime maximă contur", unit: "mm", group: "Geometrie", step: 0.01 },
+  edgeClearance: { label: "Gardă margine (cupru)", unit: "mm", group: "Geometrie", step: 0.05 },
+  minTrace: { label: "Lățime minimă traseu", unit: "mm", group: "Cupru", step: 0.001, help: "16 mil = 0.406 mm" },
+  minClearance: { label: "Izolație minimă (clearance)", unit: "mm", group: "Cupru", step: 0.001, help: "14 mil = 0.356 mm" },
+  annularRing: { label: "Inel anular minim", unit: "mm", group: "Cupru", step: 0.01 },
+  minHole: { label: "Diametru minim gaură", unit: "mm", group: "Găurire", step: 0.05 },
+  maxHole: { label: "Diametru maxim gaură", unit: "mm", group: "Găurire", step: 0.05 },
+  fiducialMin: { label: "Fiducial Ø minim", unit: "mm", group: "Fiduciali & mască", step: 0.05 },
+  fiducialMax: { label: "Fiducial Ø maxim", unit: "mm", group: "Fiduciali & mască", step: 0.05 },
+  fiducialMaskExtra: { label: "Deschidere mască fiducial (+)", unit: "mm", group: "Fiduciali & mască", step: 0.05 },
+  minFiducials: { label: "Număr minim fiduciali", unit: "buc", group: "Fiduciali & mască", step: 1 },
+  maskDuplicateRatio: { label: "Prag capcană SMTOP=TOP", unit: "raport", group: "Fiduciali & mască", step: 0.05 },
+  stencilT: { label: "Grosime stencil", unit: "mm", group: "Stencil IPC-7525B", step: 0.01 },
+  stencilMinAR: { label: "Aspect Ratio minim", unit: "", group: "Stencil IPC-7525B", step: 0.05 },
+  stencilMinAreaRatio: { label: "Area Ratio minim", unit: "", group: "Stencil IPC-7525B", step: 0.01 },
+  windowpaneArea: { label: "Arie pad termic (segmentare)", unit: "mm²", group: "Stencil IPC-7525B", step: 0.5 },
+};
+
+export const CAM_FIELDS: Record<keyof CamValues, FieldMeta> = {
+  panelCols: { label: "Panou — coloane", unit: "", group: "Panou PCB", step: 1 },
+  panelRows: { label: "Panou — rânduri", unit: "", group: "Panou PCB", step: 1 },
+  panelPitch: { label: "Panou — pas", unit: "mm", group: "Panou PCB", step: 0.001 },
+  board: { label: "Plăcuță", unit: "mm", group: "Panou PCB", step: 0.1 },
+  rail: { label: "Ramă tehnologică", unit: "mm", group: "Panou PCB", step: 0.5 },
+  fiducial: { label: "Fiducial panou Ø", unit: "mm", group: "Panou PCB", step: 0.1 },
+  coupons: { label: "Cupoane de test", unit: "", group: "Panou PCB" },
+  fiducials: { label: "Fiduciali de panou", unit: "", group: "Panou PCB" },
+  stencilCols: { label: "Stencil — coloane", unit: "", group: "Stencil A3", step: 1 },
+  stencilRows: { label: "Stencil — rânduri", unit: "", group: "Stencil A3", step: 1 },
+  stencilPitch: { label: "Stencil — pas", unit: "mm", group: "Stencil A3", step: 0.001 },
+  stencilFrameW: { label: "Folie — lățime", unit: "mm", group: "Stencil A3", step: 1 },
+  stencilFrameH: { label: "Folie — înălțime", unit: "mm", group: "Stencil A3", step: 1 },
+  stencilMargin: { label: "Margine minimă", unit: "mm", group: "Stencil A3", step: 1 },
+};
+
+export function mergeSettings(...parts: (Partial<Settings> | null | undefined)[]): Settings {
+  const out: Settings = structuredClone(DEFAULT_SETTINGS);
+  for (const p of parts) {
+    if (!p) continue;
+    Object.assign(out.rules, p.rules ?? {});
+    Object.assign(out.cam, p.cam ?? {});
+    for (const [k, v] of Object.entries(p.penalties ?? {})) out.penalties[k] = { ...(out.penalties[k] ?? DEFAULT_SETTINGS.penalties.ORIGIN!), ...v };
+    if (p.notes !== undefined) out.notes = p.notes;
+  }
+  return out;
+}
+
+/** Effective settings for a series: defaults <- global row <- series row. */
+export async function fetchSettings(seriesId?: string | null): Promise<Settings> {
+  const { data, error } = await supabase.from("drc_settings").select("series_id, settings");
+  if (error) throw error;
+  const global = data.find((r) => !r.series_id)?.settings as Partial<Settings> | undefined;
+  const own = seriesId ? (data.find((r) => r.series_id === seriesId)?.settings as Partial<Settings> | undefined) : undefined;
+  return mergeSettings(global, own);
+}
+
+export async function saveSettings(seriesId: string | null, settings: Settings, userId: string) {
+  const q = supabase.from("drc_settings").select("id");
+  const { data: existing } = seriesId ? await q.eq("series_id", seriesId).maybeSingle() : await q.is("series_id", null).maybeSingle();
+  const row = { series_id: seriesId, settings: settings as never, updated_by: userId, updated_at: new Date().toISOString() };
+  const { error } = existing
+    ? await supabase.from("drc_settings").update(row).eq("id", existing.id)
+    : await supabase.from("drc_settings").insert(row);
+  if (error) throw error;
+}
+
+/** Flatten to key/value rows for spreadsheets. */
+export function flattenSettings(s: Settings): [string, string, string][] {
+  const rows: [string, string, string][] = [];
+  for (const [k, v] of Object.entries(s.rules)) rows.push([`rules.${k}`, String(v), RULE_FIELDS[k as keyof RuleValues]?.label ?? ""]);
+  for (const [k, v] of Object.entries(s.penalties)) {
+    rows.push([`penalties.${k}.points`, String(v.points), `Penalizare ${k}`]);
+    rows.push([`penalties.${k}.severity`, v.severity, `Severitate ${k} (blocking/warning/info)`]);
+    rows.push([`penalties.${k}.enabled`, String(v.enabled), `Activă ${k}`]);
+  }
+  for (const [k, v] of Object.entries(s.cam)) rows.push([`cam.${k}`, String(v), CAM_FIELDS[k as keyof CamValues]?.label ?? ""]);
+  rows.push(["notes", s.notes ?? "", "Note"]);
+  return rows;
+}
+
+export function unflattenSettings(rows: string[][], base: Settings): Settings {
+  const out = structuredClone(base);
+  const parse = (v: string, ref: unknown) => (typeof ref === "number" ? Number(v.replace(",", ".")) : typeof ref === "boolean" ? /^(true|1|da|yes)$/i.test(v.trim()) : v.trim());
+  for (const [key, value] of rows) {
+    if (!key || value === undefined) continue;
+    const parts = key.trim().split(".");
+    if (parts[0] === "rules" && parts[1] && parts[1] in out.rules) {
+      const n = parse(value, 0) as number;
+      if (Number.isFinite(n)) (out.rules as unknown as Record<string, number>)[parts[1]] = n;
+    } else if (parts[0] === "cam" && parts[1] && parts[1] in out.cam) {
+      const ref = (out.cam as unknown as Record<string, unknown>)[parts[1]];
+      const v = parse(value, ref);
+      if (typeof v !== "number" || Number.isFinite(v)) (out.cam as unknown as Record<string, unknown>)[parts[1]] = v;
+    } else if (parts[0] === "penalties" && parts[1] && parts[2]) {
+      const p = out.penalties[parts[1]] ?? { points: 0, severity: "warning", enabled: true, smtOnly: false };
+      if (parts[2] === "points") p.points = Number(value) || 0;
+      else if (parts[2] === "severity" && ["blocking", "warning", "info"].includes(value.trim())) p.severity = value.trim() as Severity;
+      else if (parts[2] === "enabled") p.enabled = /^(true|1|da|yes)$/i.test(value.trim());
+      out.penalties[parts[1]] = p;
+    } else if (parts[0] === "notes") out.notes = value;
+  }
+  return out;
+}
