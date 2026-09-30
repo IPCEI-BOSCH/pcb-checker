@@ -18,6 +18,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedEnrollRouteImport } from './routes/_authenticated/enroll'
 import { Route as AuthenticatedGradebookRouteImport } from './routes/_authenticated/gradebook'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
+import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
 import { Route as AuthenticatedSelfCheckRouteImport } from './routes/_authenticated/self-check'
 
 const IndexRoute = IndexRouteImport.update({
@@ -64,6 +65,11 @@ const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
   path: '/review',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRulesRoute = AuthenticatedRulesRouteImport.update({
+  id: '/rules',
+  path: '/rules',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSelfCheckRoute = AuthenticatedSelfCheckRouteImport.update({
   id: '/self-check',
   path: '/self-check',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/enroll': typeof AuthenticatedEnrollRoute
   '/gradebook': typeof AuthenticatedGradebookRoute
   '/review': typeof AuthenticatedReviewRoute
+  '/rules': typeof AuthenticatedRulesRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRoutesByTo {
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/enroll': typeof AuthenticatedEnrollRoute
   '/gradebook': typeof AuthenticatedGradebookRoute
   '/review': typeof AuthenticatedReviewRoute
+  '/rules': typeof AuthenticatedRulesRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRoutesById {
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/_authenticated/enroll': typeof AuthenticatedEnrollRoute
   '/_authenticated/gradebook': typeof AuthenticatedGradebookRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
+  '/_authenticated/rules': typeof AuthenticatedRulesRoute
   '/_authenticated/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRouteTypes {
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/enroll'
     | '/gradebook'
     | '/review'
+    | '/rules'
     | '/self-check'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/enroll'
     | '/gradebook'
     | '/review'
+    | '/rules'
     | '/self-check'
   id:
     | '__root__'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/_authenticated/enroll'
     | '/_authenticated/gradebook'
     | '/_authenticated/review'
+    | '/_authenticated/rules'
     | '/_authenticated/self-check'
   fileRoutesById: FileRoutesById
 }
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReviewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/rules': {
+      id: '/_authenticated/rules'
+      path: '/rules'
+      fullPath: '/rules'
+      preLoaderRoute: typeof AuthenticatedRulesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/self-check': {
       id: '/_authenticated/self-check'
       path: '/self-check'
@@ -230,6 +249,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedEnrollRoute: typeof AuthenticatedEnrollRoute
   AuthenticatedGradebookRoute: typeof AuthenticatedGradebookRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
+  AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
   AuthenticatedSelfCheckRoute: typeof AuthenticatedSelfCheckRoute
 }
 
@@ -240,6 +260,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedEnrollRoute: AuthenticatedEnrollRoute,
   AuthenticatedGradebookRoute: AuthenticatedGradebookRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
+  AuthenticatedRulesRoute: AuthenticatedRulesRoute,
   AuthenticatedSelfCheckRoute: AuthenticatedSelfCheckRoute,
 }
 
