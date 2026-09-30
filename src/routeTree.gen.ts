@@ -16,8 +16,10 @@ import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedCamRouteImport } from './routes/_authenticated/cam'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEnrollRouteImport } from './routes/_authenticated/enroll'
+import { Route as AuthenticatedFilesRouteImport } from './routes/_authenticated/files'
 import { Route as AuthenticatedGradebookRouteImport } from './routes/_authenticated/gradebook'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
+import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
 import { Route as AuthenticatedSelfCheckRouteImport } from './routes/_authenticated/self-check'
 
 const IndexRoute = IndexRouteImport.update({
@@ -54,6 +56,11 @@ const AuthenticatedEnrollRoute = AuthenticatedEnrollRouteImport.update({
   path: '/enroll',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedFilesRoute = AuthenticatedFilesRouteImport.update({
+  id: '/files',
+  path: '/files',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedGradebookRoute = AuthenticatedGradebookRouteImport.update({
   id: '/gradebook',
   path: '/gradebook',
@@ -62,6 +69,11 @@ const AuthenticatedGradebookRoute = AuthenticatedGradebookRouteImport.update({
 const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
   id: '/review',
   path: '/review',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedRulesRoute = AuthenticatedRulesRouteImport.update({
+  id: '/rules',
+  path: '/rules',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSelfCheckRoute = AuthenticatedSelfCheckRouteImport.update({
@@ -77,8 +89,10 @@ export interface FileRoutesByFullPath {
   '/cam': typeof AuthenticatedCamRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/enroll': typeof AuthenticatedEnrollRoute
+  '/files': typeof AuthenticatedFilesRoute
   '/gradebook': typeof AuthenticatedGradebookRoute
   '/review': typeof AuthenticatedReviewRoute
+  '/rules': typeof AuthenticatedRulesRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRoutesByTo {
@@ -88,8 +102,10 @@ export interface FileRoutesByTo {
   '/cam': typeof AuthenticatedCamRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/enroll': typeof AuthenticatedEnrollRoute
+  '/files': typeof AuthenticatedFilesRoute
   '/gradebook': typeof AuthenticatedGradebookRoute
   '/review': typeof AuthenticatedReviewRoute
+  '/rules': typeof AuthenticatedRulesRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRoutesById {
@@ -101,8 +117,10 @@ export interface FileRoutesById {
   '/_authenticated/cam': typeof AuthenticatedCamRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/enroll': typeof AuthenticatedEnrollRoute
+  '/_authenticated/files': typeof AuthenticatedFilesRoute
   '/_authenticated/gradebook': typeof AuthenticatedGradebookRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
+  '/_authenticated/rules': typeof AuthenticatedRulesRoute
   '/_authenticated/self-check': typeof AuthenticatedSelfCheckRoute
 }
 export interface FileRouteTypes {
@@ -114,8 +132,10 @@ export interface FileRouteTypes {
     | '/cam'
     | '/dashboard'
     | '/enroll'
+    | '/files'
     | '/gradebook'
     | '/review'
+    | '/rules'
     | '/self-check'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -125,8 +145,10 @@ export interface FileRouteTypes {
     | '/cam'
     | '/dashboard'
     | '/enroll'
+    | '/files'
     | '/gradebook'
     | '/review'
+    | '/rules'
     | '/self-check'
   id:
     | '__root__'
@@ -137,8 +159,10 @@ export interface FileRouteTypes {
     | '/_authenticated/cam'
     | '/_authenticated/dashboard'
     | '/_authenticated/enroll'
+    | '/_authenticated/files'
     | '/_authenticated/gradebook'
     | '/_authenticated/review'
+    | '/_authenticated/rules'
     | '/_authenticated/self-check'
   fileRoutesById: FileRoutesById
 }
@@ -199,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEnrollRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/files': {
+      id: '/_authenticated/files'
+      path: '/files'
+      fullPath: '/files'
+      preLoaderRoute: typeof AuthenticatedFilesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/gradebook': {
       id: '/_authenticated/gradebook'
       path: '/gradebook'
@@ -211,6 +242,13 @@ declare module '@tanstack/react-router' {
       path: '/review'
       fullPath: '/review'
       preLoaderRoute: typeof AuthenticatedReviewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rules': {
+      id: '/_authenticated/rules'
+      path: '/rules'
+      fullPath: '/rules'
+      preLoaderRoute: typeof AuthenticatedRulesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/self-check': {
@@ -228,8 +266,10 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedCamRoute: typeof AuthenticatedCamRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEnrollRoute: typeof AuthenticatedEnrollRoute
+  AuthenticatedFilesRoute: typeof AuthenticatedFilesRoute
   AuthenticatedGradebookRoute: typeof AuthenticatedGradebookRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
+  AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
   AuthenticatedSelfCheckRoute: typeof AuthenticatedSelfCheckRoute
 }
 
@@ -238,8 +278,10 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCamRoute: AuthenticatedCamRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEnrollRoute: AuthenticatedEnrollRoute,
+  AuthenticatedFilesRoute: AuthenticatedFilesRoute,
   AuthenticatedGradebookRoute: AuthenticatedGradebookRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
+  AuthenticatedRulesRoute: AuthenticatedRulesRoute,
   AuthenticatedSelfCheckRoute: AuthenticatedSelfCheckRoute,
 }
 

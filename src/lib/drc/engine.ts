@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS, type Settings } from "./settings";
 import { layerBBox, primitiveBBox } from "../gerber/parser";
 import type { BBox, Layer, LayerKind, Primitive } from "../gerber/types";
 
@@ -53,20 +54,20 @@ export const RULES = {
   fiducialMax: 2.0,
 };
 
-const TITLES: Record<string, string> = {
+export const TITLES: Record<string, string> = {
   MISSING_LAYER: "Straturi obligatorii",
   DRL_COUNT: "Fișier DRL unic",
-  BOARD_SIZE: "Dimensiune placă 40×40 mm",
+  BOARD_SIZE: "Dimensiune placă",
   ORIGIN: "Origine coordonate (0,0)",
-  OUTLINE_WIDTH: "Lățime contur ≤ 0.2 mm",
-  EDGE_CLEARANCE: "Gardă margine ≥ 1 mm",
+  OUTLINE_WIDTH: "Lățime contur",
+  EDGE_CLEARANCE: "Gardă margine cupru",
   VIA_IN_PAD: "Interdicție VIA în PAD",
   SSTOP_OVER_PAD: "Deschideri mască pe pad-uri",
   MASK_DUPLICATE: "Capcana duplicării (SMTOP = TOP)",
   FIDUCIALS: "Fiduciali optici TOP",
   MIN_TRACE: "Lățime minimă trasee",
   CLEARANCE: "Izolație minimă cupru",
-  ANNULAR_RING: "Inel anular ≥ 0.15 mm",
+  ANNULAR_RING: "Inel anular minim",
   HOLE_SIZE: "Diametre găuri",
   MISSING_PASTE: "Strat pastă (stencil)",
   STENCIL_RATIO: "Stencil IPC-7525B (AR / Area Ratio)",
@@ -74,7 +75,7 @@ const TITLES: Record<string, string> = {
 };
 
 // code -> [penalty, severity when failing, SMT only]
-const PENALTY: Record<string, [number, Severity, boolean]> = {
+export const LEGACY_PENALTY: Record<string, [number, Severity, boolean]> = {
   MISSING_LAYER: [20, "blocking", false],
   DRL_COUNT: [20, "blocking", false],
   BOARD_SIZE: [15, "blocking", false],
@@ -197,7 +198,9 @@ function clearanceScan(layer: Layer, limit: number) {
   return { min, hits };
 }
 
-export function runDrc(layers: Layer[], variant: Variant): DrcReport {
+export function runDrc(layers: Layer[], variant: Variant, settings: Settings = DEFAULT_SETTINGS): DrcReport {
+  const R = settings.rules;
+  const P = settings.penalties;
   const byKind = (k: LayerKind) => layers.filter((l) => l.kind === k);
   const one = (k: LayerKind) => byKind(k)[0];
   const issues: DrcIssue[] = [];
@@ -207,7 +210,7 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
 
   const fail = (code: string, message: string, pos?: { x?: number; y?: number; layer?: LayerKind }) => {
     if (!failed.has(code)) failed.set(code, message);
-    const sev = PENALTY[code]?.[1] ?? "warning";
+    const sev = P[code]?.severity ?? "warning";
     issues.push({ code, title: TITLES[code] ?? code, severity: sev, message, ...pos });
   };
   const note = (code: string, d: string) => details.set(code, d);
@@ -240,18 +243,18 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
     const w = board.maxX - board.minX;
     const h = board.maxY - board.minY;
     boardInfo = { width: +w.toFixed(3), height: +h.toFixed(3), minX: +board.minX.toFixed(3), minY: +board.minY.toFixed(3) };
-    if (Math.abs(w - RULES.boardSize) > RULES.boardTol || Math.abs(h - RULES.boardSize) > RULES.boardTol)
-      fail("BOARD_SIZE", `Placa măsoară ${w.toFixed(2)} × ${h.toFixed(2)} mm (cerut 40.00 × 40.00 ±0.2).`, { x: board.maxX, y: board.maxY, layer: "outline" });
+    if (Math.abs(w - R.boardSize) > R.boardTol || Math.abs(h - R.boardSize) > R.boardTol)
+      fail("BOARD_SIZE", `Placa măsoară ${w.toFixed(2)} × ${h.toFixed(2)} mm (cerut ${R.boardSize.toFixed(2)} × ${R.boardSize.toFixed(2)} ±${R.boardTol}).`, { x: board.maxX, y: board.maxY, layer: "outline" });
     else note("BOARD_SIZE", `${w.toFixed(2)} × ${h.toFixed(2)} mm.`);
-    if (Math.abs(board.minX) > 0.05 || Math.abs(board.minY) > 0.05)
+    if (Math.abs(board.minX) > R.originTol || Math.abs(board.minY) > R.originTol)
       fail("ORIGIN", `Colțul stânga-jos este la (${board.minX.toFixed(2)}, ${board.minY.toFixed(2)}) mm. Verificarea a continuat cu offset virtual.`, { x: board.minX, y: board.minY, layer: "outline" });
     else note("ORIGIN", "Colțul plăcii este în (0,0).");
   } else fail("BOARD_SIZE", "Nu s-a putut determina conturul plăcii.");
 
   // Outline width
   if (outline) {
-    const wide = outline.primitives.filter((p) => p.t === "line" && p.w > RULES.outlineMaxWidth) as Extract<Primitive, { t: "line" }>[];
-    if (wide.length) fail("OUTLINE_WIDTH", `Linie de contur de ${wide[0]!.w.toFixed(3)} mm (max 0.2 mm).`, { x: wide[0]!.x1, y: wide[0]!.y1, layer: "outline" });
+    const wide = outline.primitives.filter((p) => p.t === "line" && p.w > R.outlineMaxWidth) as Extract<Primitive, { t: "line" }>[];
+    if (wide.length) fail("OUTLINE_WIDTH", `Linie de contur de ${wide[0]!.w.toFixed(3)} mm (max ${R.outlineMaxWidth} mm).`, { x: wide[0]!.x1, y: wide[0]!.y1, layer: "outline" });
     else note("OUTLINE_WIDTH", "Lățimea conturului este conformă.");
   }
 
@@ -263,13 +266,13 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
         if (p.clear) continue;
         const b = primitiveBBox(p);
         const d = Math.min(b.minX - board.minX, board.maxX - b.maxX, b.minY - board.minY, board.maxY - b.maxY);
-        if (d < RULES.edgeClearance - 0.01) {
+        if (d < R.edgeClearance - 0.01) {
           count++;
-          if (count <= 8) fail("EDGE_CLEARANCE", `Cupru la ${Math.max(0, d).toFixed(2)} mm de margine (min 1.00 mm).`, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, layer: layer.kind });
+          if (count <= 8) fail("EDGE_CLEARANCE", `Cupru la ${Math.max(0, d).toFixed(2)} mm de margine (min ${R.edgeClearance.toFixed(2)} mm).`, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, layer: layer.kind });
         }
       }
     }
-    if (!count) note("EDGE_CLEARANCE", "Tot cuprul respectă garda de 1 mm.");
+    if (!count) note("EDGE_CLEARANCE", "Tot cuprul respectă garda de ${R.edgeClearance} mm.");
     else failed.set("EDGE_CLEARANCE", `${count} elemente de cupru prea aproape de margine.`);
   }
 
@@ -279,9 +282,9 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
     let bad = 0;
     for (const h of holes) {
       const outside = board && (h.x < board.minX || h.x > board.maxX || h.y < board.minY || h.y > board.maxY);
-      if (h.d < RULES.minHole - 0.001 || h.d > RULES.maxHole + 0.001 || outside) {
+      if (h.d < R.minHole - 0.001 || h.d > R.maxHole + 0.001 || outside) {
         bad++;
-        if (bad <= 6) fail("HOLE_SIZE", outside ? `Gaură în afara plăcii la (${h.x.toFixed(2)}, ${h.y.toFixed(2)}).` : `Gaură Ø${h.d.toFixed(2)} mm în afara domeniului 0.30–3.20 mm.`, { x: h.x, y: h.y, layer: "drill" });
+        if (bad <= 6) fail("HOLE_SIZE", outside ? `Gaură în afara plăcii la (${h.x.toFixed(2)}, ${h.y.toFixed(2)}).` : `Gaură Ø${h.d.toFixed(2)} mm în afara domeniului ${R.minHole.toFixed(2)}–${R.maxHole.toFixed(2)} mm.`, { x: h.x, y: h.y, layer: "drill" });
       }
     }
     if (!bad) note("HOLE_SIZE", holes.length ? `${holes.length} găuri, diametre: ${diam.join(", ")} mm.` : "Nicio gaură.");
@@ -322,7 +325,7 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
     // Duplication trap
     const topLines = top.primitives.filter((p) => p.t === "line").length;
     const maskLines = mask.primitives.filter((p) => p.t === "line").length;
-    if (topLines > 5 && maskLines >= topLines * 0.5) fail("MASK_DUPLICATE", `Masca conține ${maskLines} trasee (cupru: ${topLines}) — probabil cuprul a fost exportat ca mască.`, { layer: "top_mask" });
+    if (topLines > 5 && maskLines >= topLines * R.maskDuplicateRatio) fail("MASK_DUPLICATE", `Masca conține ${maskLines} trasee (cupru: ${topLines}) — probabil cuprul a fost exportat ca mască.`, { layer: "top_mask" });
     else note("MASK_DUPLICATE", "Masca este distinctă de cupru.");
   }
 
@@ -331,13 +334,13 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
     const fids = topPads.filter(
       (p) =>
         p.shape === "C" &&
-        p.w >= RULES.fiducialMin &&
-        p.w <= RULES.fiducialMax &&
+        p.w >= R.fiducialMin &&
+        p.w <= R.fiducialMax &&
         !holes.some((h) => Math.hypot(h.x - p.x, h.y - p.y) < p.w / 2) &&
         !pasteAps.some((a) => Math.hypot(a.x - p.x, a.y - p.y) < 0.1) &&
-        maskAps.some((m) => Math.hypot(m.x - p.x, m.y - p.y) < 0.1 && m.w >= p.w + 0.3),
+        maskAps.some((m) => Math.hypot(m.x - p.x, m.y - p.y) < 0.1 && m.w >= p.w + R.fiducialMaskExtra),
     );
-    if (fids.length < 2) fail("FIDUCIALS", `Au fost detectați ${fids.length} fiduciali (minim 2: pad rotund 0.8–2 mm, fără gaură, deschidere mască mai mare).`, { layer: "top_copper" });
+    if (fids.length < R.minFiducials) fail("FIDUCIALS", `Au fost detectați ${fids.length} fiduciali (minim ${R.minFiducials}: pad rotund ${R.fiducialMin}–${R.fiducialMax} mm, fără gaură, deschidere mască mai mare).`, { layer: "top_copper" });
     else note("FIDUCIALS", `${fids.length} fiduciali la ${fids.map((f) => `(${f.x.toFixed(1)}, ${f.y.toFixed(1)})`).join(", ")}.`);
   }
 
@@ -347,8 +350,8 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
     for (const p of layer.primitives) {
       if (p.t !== "line" || p.clear || p.w <= 0) continue;
       if (minTrace === null || p.w < minTrace) minTrace = p.w;
-      if (p.w < RULES.minTrace - 0.001 && issues.filter((i) => i.code === "MIN_TRACE").length < 6)
-        fail("MIN_TRACE", `Traseu de ${p.w.toFixed(3)} mm (min ${RULES.minTrace} mm).`, { x: (p.x1 + p.x2) / 2, y: (p.y1 + p.y2) / 2, layer: layer.kind });
+      if (p.w < R.minTrace - 0.001 && issues.filter((i) => i.code === "MIN_TRACE").length < 6)
+        fail("MIN_TRACE", `Traseu de ${p.w.toFixed(3)} mm (min ${R.minTrace} mm).`, { x: (p.x1 + p.x2) / 2, y: (p.y1 + p.y2) / 2, layer: layer.kind });
     }
   }
   if (!failed.has("MIN_TRACE")) note("MIN_TRACE", minTrace !== null ? `Lățime minimă: ${minTrace.toFixed(3)} mm.` : "Fără trasee.");
@@ -356,9 +359,9 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
   // Clearance
   let minClearance: number | null = null;
   for (const layer of [top, bottom].filter(Boolean) as Layer[]) {
-    const { min, hits } = clearanceScan(layer, RULES.minClearance);
+    const { min, hits } = clearanceScan(layer, R.minClearance);
     if (min !== null && (minClearance === null || min < minClearance)) minClearance = min;
-    hits.slice(0, 6).forEach((h) => fail("CLEARANCE", `Izolație de ${h.gap.toFixed(3)} mm (min ${RULES.minClearance} mm).`, { x: h.x, y: h.y, layer: layer.kind }));
+    hits.slice(0, 6).forEach((h) => fail("CLEARANCE", `Izolație de ${h.gap.toFixed(3)} mm (min ${R.minClearance} mm).`, { x: h.x, y: h.y, layer: layer.kind }));
   }
   if (!failed.has("CLEARANCE")) note("CLEARANCE", minClearance !== null ? `Izolație minimă estimată: ${minClearance.toFixed(3)} mm.` : "Nu s-a putut estima.");
 
@@ -369,7 +372,7 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
       const pad = topPads.find((p) => pointInFlash(h.x, h.y, p));
       if (!pad) continue;
       const ring = (Math.min(pad.w, pad.h) - h.d) / 2;
-      if (ring < RULES.annularRing) {
+      if (ring < R.annularRing) {
         n++;
         if (n <= 6) fail("ANNULAR_RING", `Inel anular ${ring.toFixed(3)} mm la (${h.x.toFixed(2)}, ${h.y.toFixed(2)}).`, { x: h.x, y: h.y, layer: "top_copper" });
       }
@@ -382,7 +385,7 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
     if (!paste) fail("MISSING_PASTE", "Lipsește stratul de pastă TOP necesar pentru stencil.");
     else {
       note("MISSING_PASTE", `${pasteAps.length} deschideri de stencil.`);
-      const T = RULES.stencilT;
+      const T = R.stencilT;
       let bad = 0;
       let big = 0;
       for (const a of pasteAps) {
@@ -390,12 +393,12 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
         const L = Math.max(a.w, a.h);
         const ar = W / T;
         const areaRatio = a.shape === "C" ? a.w / (4 * T) : (L * W) / (2 * (L + W) * T);
-        if (ar < 1.5 || areaRatio < 0.66) {
+        if (ar < R.stencilMinAR || areaRatio < R.stencilMinAreaRatio) {
           bad++;
           if (bad <= 6) fail("STENCIL_RATIO", `Deschidere ${a.w.toFixed(2)}×${a.h.toFixed(2)} mm: AR=${ar.toFixed(2)}, Area Ratio=${areaRatio.toFixed(2)}.`, { x: a.x, y: a.y, layer: "top_paste" });
         }
         const area = L * W;
-        if (area > 9) {
+        if (area > R.windowpaneArea) {
           big++;
           fail("STENCIL_WINDOWPANE", `Pad termic ${a.w.toFixed(1)}×${a.h.toFixed(1)} mm — recomandat segmentare ${area > 25 ? "3×3" : "2×2"} (50–70% arie).`, { x: a.x, y: a.y, layer: "top_paste" });
         }
@@ -408,7 +411,9 @@ export function runDrc(layers: Layer[], variant: Variant): DrcReport {
   // Build rule table & score
   const rules: RuleResult[] = [];
   let penalty = 0;
-  for (const [code, [pts, sev, smtOnly]] of Object.entries(PENALTY)) {
+  for (const [code, pv] of Object.entries(P)) {
+    const { points: pts, severity: sev, smtOnly, enabled } = pv;
+    if (!enabled) continue;
     if (smtOnly && !smt) continue;
     const isFailed = failed.has(code);
     if (!isFailed && !details.has(code)) continue;

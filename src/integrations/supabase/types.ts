@@ -112,6 +112,38 @@ export type Database = {
           },
         ]
       }
+      drc_settings: {
+        Row: {
+          id: string
+          series_id: string | null
+          settings: Json
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          series_id?: string | null
+          settings?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          series_id?: string | null
+          settings?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drc_settings_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_instructors: {
         Row: {
           group_id: string
@@ -193,6 +225,62 @@ export type Database = {
           id?: string
         }
         Relationships: []
+      }
+      project_files: {
+        Row: {
+          created_at: string
+          description: string | null
+          file_name: string
+          file_path: string
+          folder: string
+          id: string
+          mime_type: string | null
+          points: number | null
+          points_by: string | null
+          points_note: string | null
+          size_bytes: number | null
+          student_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          file_name: string
+          file_path: string
+          folder?: string
+          id?: string
+          mime_type?: string | null
+          points?: number | null
+          points_by?: string | null
+          points_note?: string | null
+          size_bytes?: number | null
+          student_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          file_name?: string
+          file_path?: string
+          folder?: string
+          id?: string
+          mime_type?: string | null
+          points?: number | null
+          points_by?: string | null
+          points_note?: string | null
+          size_bytes?: number | null
+          student_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_files_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       series: {
         Row: {

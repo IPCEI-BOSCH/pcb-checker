@@ -6,6 +6,7 @@ import { Send, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchMyStudent } from "@/lib/data";
+import { fetchSettings } from "@/lib/drc/settings";
 import { loadGerberZip } from "@/lib/gerber/load";
 import { runDrc, type DrcReport } from "@/lib/drc/engine";
 import type { Layer } from "@/lib/gerber/types";
@@ -69,7 +70,8 @@ function SelfCheck() {
       const layers = await loadGerberZip(file);
       if (!layers.length) throw new Error("Arhiva nu conține fișiere Gerber/Excellon recunoscute.");
       setBusy("Se rulează DRC…");
-      const report = runDrc(layers, st.variant);
+      const settings = await fetchSettings(st.groups?.series_id ?? null);
+      const report = runDrc(layers, st.variant, settings);
       setBusy("Se salvează revizia…");
       const path = `${user.id}/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`;
       const up = await supabase.storage.from("gerbers").upload(path, file, { contentType: "application/zip" });

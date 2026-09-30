@@ -1,3 +1,4 @@
+import { fetchSettings } from "@/lib/drc/settings";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -90,13 +91,14 @@ function Review() {
   const runBatch = async () => {
     const targets = rows.filter((r) => r.official?.zip_path);
     if (!targets.length) return void toast.info("Nu există predări oficiale în această grupă.");
+    const settings = await fetchSettings(seriesId || null);
     let done = 0;
     for (const r of targets) {
       setBatch(`${++done}/${targets.length} · ${r.st.full_name}`);
       try {
         const dl = await supabase.storage.from("gerbers").download(r.official!.zip_path!);
         if (dl.error) throw dl.error;
-        const report = runDrc(await loadGerberZip(dl.data), r.st.variant);
+        const report = runDrc(await loadGerberZip(dl.data), r.st.variant, settings);
         await supabase.from("submissions").update({ report: report as never, drc_score: report.score, blocking_count: report.blockingCount }).eq("id", r.official!.id);
       } catch (e) {
         toast.error(`${r.st.full_name}: ${(e as Error).message}`);

@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
-import { CircuitBoard, ClipboardCheck, FileCheck2, Grid3x3, LayoutDashboard, LogOut, Settings2, Table2, UserPlus } from "lucide-react";
+import { CircuitBoard, ClipboardCheck, FileCheck2, FolderOpen, Grid3x3, SlidersHorizontal, LayoutDashboard, LogOut, Settings2, Table2, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthContext, ROLE_LABELS, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -72,7 +72,9 @@ function Layout() {
     { to: "/self-check", label: "Self-Check & Predare", icon: FileCheck2, show: ctx.has("student") || !ctx.isStaff },
     { to: "/enroll", label: "Înscriere grupă", icon: UserPlus, show: ctx.has("student") || !ctx.isStaff },
     { to: "/review", label: "Evaluare grupe", icon: ClipboardCheck, show: ctx.has("admin", "series_manager", "instructor") },
+    { to: "/files", label: "Dosarele proiectului", icon: FolderOpen, show: true },
     { to: "/gradebook", label: "Catalog & Sincronizare", icon: Table2, show: ctx.isStaff },
+    { to: "/rules", label: "Reguli & Setări", icon: SlidersHorizontal, show: ctx.has("admin", "series_manager") },
     { to: "/cam", label: "Generator CAM", icon: Grid3x3, show: ctx.has("admin", "series_manager", "instructor", "cam_tech") },
     { to: "/admin", label: "Administrare", icon: Settings2, show: ctx.has("admin", "series_manager") },
   ] as const;
