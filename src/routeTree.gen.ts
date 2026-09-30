@@ -16,6 +16,7 @@ import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedCamRouteImport } from './routes/_authenticated/cam'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEnrollRouteImport } from './routes/_authenticated/enroll'
+import { Route as AuthenticatedFilesRouteImport } from './routes/_authenticated/files'
 import { Route as AuthenticatedGradebookRouteImport } from './routes/_authenticated/gradebook'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
 import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
@@ -55,6 +56,11 @@ const AuthenticatedEnrollRoute = AuthenticatedEnrollRouteImport.update({
   path: '/enroll',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedFilesRoute = AuthenticatedFilesRouteImport.update({
+  id: '/files',
+  path: '/files',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedGradebookRoute = AuthenticatedGradebookRouteImport.update({
   id: '/gradebook',
   path: '/gradebook',
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/cam': typeof AuthenticatedCamRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/enroll': typeof AuthenticatedEnrollRoute
+  '/files': typeof AuthenticatedFilesRoute
   '/gradebook': typeof AuthenticatedGradebookRoute
   '/review': typeof AuthenticatedReviewRoute
   '/rules': typeof AuthenticatedRulesRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/cam': typeof AuthenticatedCamRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/enroll': typeof AuthenticatedEnrollRoute
+  '/files': typeof AuthenticatedFilesRoute
   '/gradebook': typeof AuthenticatedGradebookRoute
   '/review': typeof AuthenticatedReviewRoute
   '/rules': typeof AuthenticatedRulesRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/_authenticated/cam': typeof AuthenticatedCamRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/enroll': typeof AuthenticatedEnrollRoute
+  '/_authenticated/files': typeof AuthenticatedFilesRoute
   '/_authenticated/gradebook': typeof AuthenticatedGradebookRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/rules': typeof AuthenticatedRulesRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/cam'
     | '/dashboard'
     | '/enroll'
+    | '/files'
     | '/gradebook'
     | '/review'
     | '/rules'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
     | '/cam'
     | '/dashboard'
     | '/enroll'
+    | '/files'
     | '/gradebook'
     | '/review'
     | '/rules'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/_authenticated/cam'
     | '/_authenticated/dashboard'
     | '/_authenticated/enroll'
+    | '/_authenticated/files'
     | '/_authenticated/gradebook'
     | '/_authenticated/review'
     | '/_authenticated/rules'
@@ -211,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEnrollRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/files': {
+      id: '/_authenticated/files'
+      path: '/files'
+      fullPath: '/files'
+      preLoaderRoute: typeof AuthenticatedFilesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/gradebook': {
       id: '/_authenticated/gradebook'
       path: '/gradebook'
@@ -247,6 +266,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedCamRoute: typeof AuthenticatedCamRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEnrollRoute: typeof AuthenticatedEnrollRoute
+  AuthenticatedFilesRoute: typeof AuthenticatedFilesRoute
   AuthenticatedGradebookRoute: typeof AuthenticatedGradebookRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
@@ -258,6 +278,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCamRoute: AuthenticatedCamRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEnrollRoute: AuthenticatedEnrollRoute,
+  AuthenticatedFilesRoute: AuthenticatedFilesRoute,
   AuthenticatedGradebookRoute: AuthenticatedGradebookRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedRulesRoute: AuthenticatedRulesRoute,
