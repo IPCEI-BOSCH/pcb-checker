@@ -163,7 +163,7 @@ export function mergeSettings(...parts: (Partial<Settings> | null | undefined)[]
     if (!p) continue;
     Object.assign(out.rules, p.rules ?? {});
     Object.assign(out.cam, p.cam ?? {});
-    for (const [k, v] of Object.entries(p.penalties ?? {})) out.penalties[k] = { ...(out.penalties[k] ?? DEFAULT_SETTINGS.penalties.ORIGIN!), ...v };
+    for (const [k, v] of Object.entries(p.penalties ?? {})) out.penalties[k] = { ...(out.penalties[k] ?? DEFAULT_SETTINGS.penalties['ORIGIN']!), ...v };
     if (p.notes !== undefined) out.notes = p.notes;
   }
   return out;

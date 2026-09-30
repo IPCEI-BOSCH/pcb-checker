@@ -128,5 +128,5 @@ Propune modificări conform cererii profesorului. 1 mil = 0.0254 mm. Returnează
     const json = JSON.parse(text);
     const args = json.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
     if (!args) throw new Error("AI nu a returnat o propunere.");
-    return JSON.parse(args) as { explanation: string; rules?: Record<string, number>; cam?: Record<string, unknown>; penalties?: Record<string, { points?: number; severity?: string; enabled?: boolean }> };
+    return JSON.parse(args) as { explanation: string; rules?: Record<string, number>; cam?: Record<string, number | boolean>; penalties?: Record<string, { points?: number; severity?: string; enabled?: boolean }> };
   });
