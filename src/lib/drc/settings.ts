@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Severity } from "./engine-types";
+import type { Severity } from "./engine";
 
 /** All tunable values — DRC thresholds, scoring and CAM geometry. Stored as JSON per scope (global / series). */
 export interface RuleValues {
