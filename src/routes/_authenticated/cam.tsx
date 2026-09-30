@@ -39,7 +39,7 @@ interface Candidate {
 
 function Cam() {
   const { user, has } = useAuth();
-  const uploadRef = useRef<HTMLRef | HTMLInputElement>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
   const [seriesId, setSeriesId] = useState("");
   const [cfg, setCfg] = useState<PanelConfig>({
     cols: PANEL_DEFAULT.cols,
@@ -216,8 +216,8 @@ function Cam() {
           </SelectContent>
         </Select>
         <Button variant="secondary" onClick={autoFill} disabled={!!busy}><Layers className="mr-2 h-4 w-4" /> Completează cu proiectele aprobate ({approved.data?.length ?? 0})</Button>
-        <Button variant="secondary" onClick={() => (uploadRef.current as HTMLInputElement | null)?.click()} disabled={!!busy}><Upload className="mr-2 h-4 w-4" /> Adaugă arhivă manuală</Button>
-        <input ref={uploadRef as React.RefObject<HTMLInputElement>} type="file" accept=".zip" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBoard(f); e.target.value = ""; }} />
+        <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={!!busy}><Upload className="mr-2 h-4 w-4" /> Adaugă arhivă manuală</Button>
+        <input ref={uploadRef} type="file" accept=".zip" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBoard(f); e.target.value = ""; }} />
         {slots && Object.keys(slots).length > 0 && (
           <Button variant="ghost" onClick={() => { setSlots({}); setResult(null); }}><Trash2 className="mr-2 h-4 w-4" /> Golește panoul</Button>
         )}
@@ -272,8 +272,6 @@ function Cam() {
     </div>
   );
 }
-
-type HTMLRef = HTMLInputElement;
 
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);

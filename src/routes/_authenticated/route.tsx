@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
-import { CircuitBoard, ClipboardCheck, FileCheck2, LayoutDashboard, LogOut, Settings2, UserPlus } from "lucide-react";
+import { CircuitBoard, ClipboardCheck, FileCheck2, Grid3x3, LayoutDashboard, LogOut, Settings2, Table2, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthContext, ROLE_LABELS, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
