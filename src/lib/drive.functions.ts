@@ -102,7 +102,7 @@ export const syncToDrive = createServerFn({ method: "POST" })
     const table = data.kind === "slot" ? "student_fabrication_slots" : "project_files";
     const { data: row, error } = await context.supabase.from(table).select("*").eq("id", data.id).maybeSingle();
     if (error || !row) throw new Error("Fișier inexistent sau fără acces.");
-    const r = row as Record<string, string | null>;
+    const r = row as unknown as { student_id: string; storage_path?: string; file_path?: string; slot_key?: string; file_name?: string; drive_file_id: string | null };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: owner } = await supabaseAdmin.from("students").select("user_id").eq("id", r.student_id!).single();
     if (owner?.user_id !== context.userId) throw new Error("Doar studentul își poate sincroniza fișierele.");
@@ -110,7 +110,7 @@ export const syncToDrive = createServerFn({ method: "POST" })
     const path = (data.kind === "slot" ? r.storage_path : r.file_path)!;
     const dl = await supabaseAdmin.storage.from("gerbers").download(path);
     if (dl.error) throw new Error("Fișierul nu poate fi citit din stocare.");
-    const name = data.kind === "slot" ? SLOT_FILES[r.slot_key!] : r.file_name!;
+    const name = data.kind === "slot" ? SLOT_FILES[r.slot_key!]! : r.file_name!;
     const parent = data.kind === "slot" ? st.drive_layout_folder_id! : st.drive_project_folder_id!;
     const id = await uploadFile(name, parent, dl.data, r.drive_file_id);
     await supabaseAdmin.from(table).update({ drive_file_id: id }).eq("id", data.id);

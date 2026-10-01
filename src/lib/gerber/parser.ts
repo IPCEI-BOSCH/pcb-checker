@@ -10,7 +10,7 @@ export function classifyLayer(fileName: string, content: string): LayerKind {
     top: "top_copper", bottom: "bottom_copper", bot: "bottom_copper", smtop: "top_mask", smbot: "bottom_mask",
     sstop: "top_silk", ssbot: "bottom_silk", sptop: "top_paste", spbot: "bottom_paste", bo: "outline", fab: "unknown",
   };
-  if (stem in CETTI) return CETTI[stem];
+  if (CETTI[stem]) return CETTI[stem]!;
   const has = (...keys: string[]) => keys.some((k) => n.includes(k));
   if (has("paste") || /\.(gtp|crc)$/.test(n)) return n.includes("b_") || n.includes("bot") || n.endsWith(".gbp") ? "bottom_paste" : "top_paste";
   if (/\.gbp$/.test(n)) return "bottom_paste";
