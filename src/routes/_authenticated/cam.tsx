@@ -72,7 +72,7 @@ function Cam() {
   }, [settings.data]);
 
   const approved = useQuery({
-    queryKey: ["cam-approved", seriesId, structure.data?.groups.length],
+    queryKey: ["cam-approved", seriesId, structure.data?.groups.length, onlyApproved],
     enabled: allowed && !!structure.data,
     queryFn: async (): Promise<Candidate[]> => {
       const { data: students, error: se } = await supabase.from("students").select("id, full_name, group_id, theme_number, variant");
@@ -80,8 +80,9 @@ function Cam() {
       const inSeries = new Set((structure.data?.groups ?? []).filter((g) => !seriesId || g.series_id === seriesId).map((g) => g.id));
       const ids = students.filter((s) => inSeries.has(s.group_id)).map((s) => s.id);
       if (!ids.length) return [];
-      const { data: subs, error } = await supabase.from("submissions").select("id, student_id, zip_path, created_at")
-        .eq("kind", "OFFICIAL").eq("review_status", "approved").in("student_id", ids).order("created_at", { ascending: false });
+      let q = supabase.from("submissions").select("id, student_id, zip_path, created_at").eq("kind", "OFFICIAL").in("student_id", ids);
+      if (onlyApproved) q = q.eq("review_status", "approved");
+      const { data: subs, error } = await q.order("created_at", { ascending: false });
       if (error) throw error;
       const seen = new Set<string>();
       return subs.filter((s) => !seen.has(s.student_id) && seen.add(s.student_id)).map((s) => {
@@ -321,7 +322,7 @@ function Cam() {
         </Select>
         <Button onClick={pullDrive} disabled={!!busy}><Cloud className="mr-2 h-4 w-4" /> Preia din Google Drive</Button>
         <div className="flex items-center gap-2"><Switch checked={onlyApproved} onCheckedChange={setOnlyApproved} /><span className="text-sm">Doar aprobate</span></div>
-        <Button variant="secondary" onClick={autoFill} disabled={!!busy}><Layers className="mr-2 h-4 w-4" /> Adaugă proiectele aprobate ({(approved.data ?? []).filter((c) => mode === "panel" || c.variant === "SMT").length})</Button>
+        <Button variant="secondary" onClick={autoFill} disabled={!!busy}><Layers className="mr-2 h-4 w-4" /> {onlyApproved ? "Adaugă proiectele aprobate" : "Adaugă toate predările"} ({(approved.data ?? []).filter((c) => mode === "panel" || c.variant === "SMT").length})</Button>
         <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={!!busy}><Upload className="mr-2 h-4 w-4" /> Arhive manuale</Button>
         <input ref={uploadRef} type="file" accept=".zip" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) uploadBoards(e.target.files); e.target.value = ""; }} />
         {total > 0 && <Button variant="ghost" onClick={() => { setPages((p) => ({ ...p, [mode]: [[]] })); setActive((a) => ({ ...a, [mode]: 0 })); }}><Trash2 className="mr-2 h-4 w-4" /> Golește</Button>}

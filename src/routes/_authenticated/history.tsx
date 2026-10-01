@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Database, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,6 +42,38 @@ function History() {
   const groups = useMemo(() => s?.groups.filter((g) => g.series_id === seriesId) ?? [], [s, seriesId]);
   const groupName = new Map(groups.map((g) => [g.id, g.name]));
 
+  /** Câți studenți are fiecare serie — folosit la preselecție și la etichetele din listă. */
+  const counts = useQuery({
+    queryKey: ["history-counts", s?.groups.length],
+    enabled: !!s,
+    queryFn: async () => {
+      const r = await supabase.from("students").select("group_id");
+      if (r.error) throw r.error;
+      const bySeries = new Map<string, number>();
+      const gmap = new Map((s?.groups ?? []).map((g) => [g.id, g.series_id]));
+      for (const x of r.data) {
+        const sid = gmap.get(x.group_id);
+        if (sid) bySeries.set(sid, (bySeries.get(sid) ?? 0) + 1);
+      }
+      return bySeries;
+    },
+  });
+
+  useEffect(() => {
+    if (!s || !counts.data) return;
+    if (!yearId) {
+      const best = s.series.filter((x) => (counts.data.get(x.id) ?? 0) > 0).sort((a, b) => (counts.data.get(b.id) ?? 0) - (counts.data.get(a.id) ?? 0))[0]
+        ?? s.series.find((x) => s.years.some((y) => y.id === x.academic_year_id));
+      if (best) { setYearId(best.academic_year_id); setSeriesId(best.id); }
+      return;
+    }
+    if (!seriesId) {
+      const inYear = s.series.filter((x) => x.academic_year_id === yearId);
+      const first = inYear.sort((a, b) => (counts.data.get(b.id) ?? 0) - (counts.data.get(a.id) ?? 0))[0];
+      if (first) setSeriesId(first.id);
+    }
+  }, [s, counts.data, yearId, seriesId]);
+
   const rows = useQuery({
     queryKey: ["history", seriesId],
     enabled: !!seriesId,
@@ -57,6 +89,19 @@ function History() {
       return st.data.map((x) => ({ ...x, sub: last.get(x.id) }));
     },
   });
+
+  const stats = useMemo(() => {
+    const d = rows.data ?? [];
+    const scored = d.map((r) => r.sub?.drc_score).filter((x): x is number => x !== null && x !== undefined);
+    return {
+      total: d.length,
+      approved: d.filter((r) => r.sub?.review_status === "approved").length,
+      blocking: d.filter((r) => (r.sub?.blocking_count ?? 0) > 0).length,
+      avg: scored.length ? scored.reduce((a, b) => a + Number(b), 0) / scored.length : null,
+    };
+  }, [rows.data]);
+
+
 
   const exportCsv = () => {
     const head = ["Grupa", "Folder", "Student", "Tema", "N", "Varianta", "Scor DRC", "Erori blocante", "Intră în FAB?", "Nota schemă", "Nota doc", "Nota finală"];
@@ -97,10 +142,27 @@ function History() {
         </Select>
         <Select value={seriesId} onValueChange={setSeriesId} disabled={!yearId}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Serie" /></SelectTrigger>
-          <SelectContent>{series.map((x) => <SelectItem key={x.id} value={x.id}>Seria {x.name}</SelectItem>)}</SelectContent>
+          <SelectContent>{series.map((x) => <SelectItem key={x.id} value={x.id}>Seria {x.name} · {counts.data?.get(x.id) ?? 0} proiecte</SelectItem>)}</SelectContent>
         </Select>
         {!!rows.data?.length && <Button variant="secondary" onClick={exportCsv}>Exportă situația (CSV)</Button>}
       </div>
+
+      {!!rows.data?.length && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            { k: "Proiecte", v: String(stats.total) },
+            { k: "Intră în fabricație", v: String(stats.approved) },
+            { k: "Cu erori blocante", v: String(stats.blocking) },
+            { k: "Scor DRC mediu", v: stats.avg === null ? "—" : stats.avg.toFixed(1) },
+            { k: "Grupe", v: String(groups.length) },
+          ].map((c) => (
+            <Card key={c.k}><CardContent className="p-4">
+              <div className="text-xs text-muted-foreground">{c.k}</div>
+              <div className="text-2xl font-semibold text-foreground">{c.v}</div>
+            </CardContent></Card>
+          ))}
+        </div>
+      )}
 
       {seriesId && (
         <Card>
