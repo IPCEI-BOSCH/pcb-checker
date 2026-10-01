@@ -160,8 +160,8 @@ function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder
             <div className="flex items-center justify-between gap-2">
               <span className="truncate font-medium">{f.file_name}</span>
               <div className="flex shrink-0 gap-1">
-                <Button size="sm" variant="ghost" onClick={() => open(f.file_path, f.file_name, f.mime_type)}><Eye className="h-4 w-4" /></Button>
-                {canUpload && f.points == null && <Button size="sm" variant="ghost" onClick={() => remove(f.id, f.file_path, f.drive_file_id)}><Trash2 className="h-4 w-4" /></Button>}
+                <Button size="sm" variant="ghost" aria-label={`Vizualizează fișier ${f.file_name}`} onClick={() => open(f.file_path, f.file_name, f.mime_type)}><Eye className="h-4 w-4" /></Button>
+                {canUpload && f.points == null && <Button size="sm" variant="ghost" aria-label={`Șterge fișier ${f.file_name}`} onClick={() => remove(f.id, f.file_path, f.drive_file_id)}><Trash2 className="h-4 w-4" /></Button>}
               </div>
             </div>
             {canUpload
@@ -183,7 +183,7 @@ function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder
         <DialogContent className="max-w-4xl">
           <DialogHeader><DialogTitle>{preview?.name}</DialogTitle></DialogHeader>
           {preview && (viewable(preview.mime)
-            ? preview.mime.startsWith("image/") ? <img src={preview.url} alt={preview.name} className="max-h-[70vh] w-full object-contain" /> : <iframe src={preview.url} title={preview.name} className="h-[70vh] w-full rounded border border-border" />
+            ? preview.mime.startsWith("image/") ? <img src={preview.url} alt={`Previzualizare ${preview.name}`} className="max-h-[70vh] w-full object-contain" /> : <iframe src={preview.url} title={preview.name} className="h-[70vh] w-full rounded border border-border" />
             : <p className="text-sm">Acest tip de fișier nu poate fi afișat în browser. <a className="text-primary underline" href={preview.url} target="_blank" rel="noreferrer">Descarcă</a></p>)}
           {userId && null}
         </DialogContent>

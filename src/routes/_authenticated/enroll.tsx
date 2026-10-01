@@ -41,14 +41,17 @@ function Enroll() {
 
   if (me.data) {
     return (
-      <Card className="max-w-xl">
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold text-foreground">Înscriere în grupă</h1>
+        <Card className="max-w-xl">
         <CardHeader><CardTitle>Ești înscris</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>Grupa <span className="text-foreground">{me.data.groups?.name}</span> din <span className="text-foreground">{me.data.groups?.series?.name}</span>.</p>
           <p>Status: {me.data.status === "approved" ? "validat de îndrumător" : "în așteptarea validării"}.</p>
           <p>Pentru mutarea în altă grupă sau schimbarea variantei, contactează îndrumătorul.</p>
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     );
   }
 
@@ -78,7 +81,9 @@ function Enroll() {
   };
 
   return (
-    <Card className="max-w-xl">
+    <div className="space-y-4">
+      <h1 className="text-2xl font-semibold text-foreground">Înscriere în grupă</h1>
+      <Card className="max-w-xl">
       <CardHeader><CardTitle>Înscriere în serie și grupă</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         {!activeSeries.length && <p className="text-sm text-muted-foreground">Nu există încă serii active. Revino după ce administratorul le creează.</p>}
@@ -124,6 +129,7 @@ function Enroll() {
         </div>
         <Button onClick={submit} disabled={busy}>Trimite înscrierea</Button>
       </CardContent>
-    </Card>
+      </Card>
+    </div>
   );
 }
