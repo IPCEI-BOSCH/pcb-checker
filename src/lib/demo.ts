@@ -22,11 +22,28 @@ export function parseFolder(folder: string) {
   return { group: p[2], fullName: names.join(" "), tema, n, cad };
 }
 
+async function demoStudentCount() {
+  const { data: years } = await supabase.from("academic_years").select("id").eq("is_demo", true);
+  if (!years?.length) return { years: [], count: 0 };
+  const { data: series } = await supabase.from("series").select("id").in("academic_year_id", years.map((y) => y.id));
+  if (!series?.length) return { years, count: 0 };
+  const { data: groups } = await supabase.from("groups").select("id").in("series_id", series.map((s) => s.id));
+  if (!groups?.length) return { years, count: 0 };
+  const { count } = await supabase.from("students").select("id", { count: "exact", head: true }).in("group_id", groups.map((g) => g.id));
+  return { years, count: count ?? 0 };
+}
+
 export async function importDemo(userId: string, log: (m: string) => void) {
-  const { data: existing } = await supabase.from("academic_years").select("id").eq("is_demo", true);
-  if (existing?.length) throw new Error("Datele demo există deja. Ștergeți-le înainte de reimport.");
+  const state = await demoStudentCount();
+  if (state.years.length && state.count > 0) throw new Error("Datele demo există deja. Ștergeți-le înainte de reimport.");
+  if (state.years.length) {
+    log("Se curăță un import demo incomplet…");
+    await deleteDemo(userId, log);
+  }
   log("Se descarcă arhiva demo…");
-  const zip = await JSZip.loadAsync(await (await fetch("/demo/seria_b_2025.zip")).arrayBuffer());
+  const res = await fetch("/demo/seria_b_2025.zip");
+  if (!res.ok) throw new Error("Arhiva demo nu a putut fi descărcată.");
+  const zip = await JSZip.loadAsync(await res.arrayBuffer());
   const projects = new Map<string, { group: string; folder: string; files: Map<string, JSZip.JSZipObject> }>();
   for (const e of Object.values(zip.files)) {
     if (e.dir) continue;
@@ -59,7 +76,7 @@ export async function importDemo(userId: string, log: (m: string) => void) {
     const meta = parseFolder(p.folder);
     const st = await supabase.from("students").insert({
       group_id: groupIds.get(p.group)!, full_name: meta.fullName || p.folder, file_prefix: p.folder,
-      theme_name: meta.tema || null, theme_number: meta.n, variant: "SMT", status: "active",
+      theme_name: meta.tema || null, theme_number: meta.n, variant: "SMT", status: "approved",
     }).select("id").single();
     if (st.error) throw st.error;
     const out = new JSZip();
@@ -75,11 +92,19 @@ export async function importDemo(userId: string, log: (m: string) => void) {
     const zblob = await out.generateAsync({ type: "blob" });
     const zpath = `${userId}/demo/${st.data.id}/Layout.zip`;
     await supabase.storage.from("gerbers").upload(zpath, zblob, { upsert: true });
-    const report = runDrc(await loadGerberZip(zblob), "SMT", settings);
+    let score: number | null = null;
+    let blocking = 0;
+    let report: unknown = null;
+    try {
+      const r = runDrc(await loadGerberZip(zblob), "SMT", settings);
+      score = r.score; blocking = r.blockingCount; report = r;
+    } catch (e) {
+      report = { error: (e as Error).message };
+    }
     const sub = await supabase.from("submissions").insert({
       student_id: st.data.id, user_id: userId, kind: "OFFICIAL", zip_path: zpath, file_name: "Layout.zip", variant: "SMT",
-      drc_score: report.score, blocking_count: report.blockingCount, report: report as never,
-      review_status: report.blockingCount === 0 ? "approved" : "pending",
+      drc_score: score, blocking_count: blocking, report: report as never,
+      review_status: score !== null && blocking === 0 ? "approved" : "pending",
     });
     if (sub.error) throw sub.error;
   }
