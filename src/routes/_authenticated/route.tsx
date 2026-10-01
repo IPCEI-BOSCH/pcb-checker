@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
-import { CircuitBoard, ClipboardCheck, FileCheck2, FolderOpen, Grid3x3, SlidersHorizontal, LayoutDashboard, LogOut, Settings2, Table2, UserPlus } from "lucide-react";
+import { CircuitBoard, History as HistoryIcon, ClipboardCheck, FileCheck2, FolderOpen, Grid3x3, SlidersHorizontal, LayoutDashboard, LogOut, Settings2, Table2, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthContext, ROLE_LABELS, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -76,6 +76,7 @@ function Layout() {
     { to: "/gradebook", label: "Catalog & Sincronizare", icon: Table2, show: ctx.isStaff },
     { to: "/rules", label: "Reguli & Setări", icon: SlidersHorizontal, show: ctx.has("admin", "series_manager") },
     { to: "/cam", label: "Generator CAM", icon: Grid3x3, show: ctx.has("admin", "series_manager", "instructor", "cam_tech") },
+    { to: "/history", label: "Istoric pe ani", icon: HistoryIcon, show: ctx.isStaff },
     { to: "/admin", label: "Administrare", icon: Settings2, show: ctx.has("admin", "series_manager") },
   ] as const;
 

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Database, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,7 +54,7 @@ function History() {
       const subs = sids.length ? await supabase.from("submissions").select("student_id, drc_score, blocking_count, review_status, created_at").eq("kind", "OFFICIAL").in("student_id", sids).order("created_at", { ascending: false }) : { data: [] };
       const last = new Map<string, NonNullable<typeof subs.data>[number]>();
       for (const x of subs.data ?? []) if (!last.has(x.student_id)) last.set(x.student_id, x);
-      return st.data.map((x) => ({ ...x, sub: last.get(x.student_id ?? x.id) ?? last.get(x.id) }));
+      return st.data.map((x) => ({ ...x, sub: last.get(x.id) }));
     },
   });
 
@@ -114,7 +114,7 @@ function History() {
                 {rows.isLoading && <TableRow><TableCell colSpan={7} className="text-muted-foreground">Se încarcă…</TableCell></TableRow>}
                 {rows.data?.length === 0 && <TableRow><TableCell colSpan={7} className="text-muted-foreground">Niciun student în această serie.</TableCell></TableRow>}
                 {rows.data?.map((r) => (
-                  <>
+                  <Fragment key={r.id}>
                     <TableRow key={r.id}>
                       <TableCell>{groupName.get(r.group_id)}</TableCell>
                       <TableCell><div className="font-medium">{r.full_name}</div><div className="font-mono text-xs text-muted-foreground">{r.file_prefix}</div></TableCell>
@@ -129,7 +129,7 @@ function History() {
                         <FabricationSlots studentId={r.id} userId={user.id} canUpload={false} seriesId={seriesId} variant={r.variant} />
                       </TableCell></TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
