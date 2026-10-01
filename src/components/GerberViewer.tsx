@@ -36,7 +36,7 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
   useEffect(() => {
     const s: Record<number, LayerState> = {};
     layers.forEach((l, i) => {
-      s[i] = { visible: !["bottom_silk", "bottom_paste", "bottom_mask"].includes(l.kind), opacity: l.kind.includes("mask") ? 0.35 : 0.85 };
+      s[i] = { visible: !["bottom_silk", "bottom_paste", "bottom_mask", "fabrication"].includes(l.kind), opacity: l.kind.includes("mask") ? 0.35 : 0.85 };
     });
     setState(s);
   }, [layers]);
