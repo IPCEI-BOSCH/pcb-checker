@@ -23,3 +23,14 @@
 - [ ] Restricționare login la tenantul Microsoft UPB (credențiale proprii Entra ID)
 - [ ] Import listă studenți CSV/XLSX
 - [ ] Anti-plagiat (amprentă layout), OCR serigrafie
+
+## Etapa 4 — Arhivare, evaluare pe loturi, stencil X/Y, light (livrat)
+- [x] Excellon 2:5 / 2:4 (inch/mm, fără antet OrCAD) — găurile cad pe placă la toate cele 46 de proiecte demo
+- [x] Strat FAB recunoscut (Fabricație / Mecanic), ascuns implicit în vizualizator
+- [x] Remediere doar OrCAD / Allegro
+- [x] Import / arhivare ZIP de către profesor cu detecție serie/grupă/student/temă/N și corectare înainte de import
+- [x] Evaluare: toate seriile / toate grupele / un student; DRC pe toată selecția cu progres; Vizualizează Gerber; butoane aprobare colorate; export SITUATIE Excel
+- [x] Istoric: DRC pentru toți, Gerber la click pe nume, export Excel, toate seriile din an
+- [x] Google Sheets: Creează foaie nouă / Deschide (Catalog + Reguli)
+- [x] Stencil A3: pas X 40 mm, pas Y 50 mm, origine (20, 310), folie 300×400; date_in în sintaxa GerbTool „FOLDER X Y"
+- [x] Mod luminos
