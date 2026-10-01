@@ -49,7 +49,7 @@ function Cam() {
   const [mode, setMode] = useState<Mode>("panel");
   const [seriesId, setSeriesId] = useState("");
   const [cfg, setCfg] = useState<PanelConfig>({ cols: 7, rows: 6, pitch: 40.508, board: 40, rail: 8, name: "PANOU-CEF2", coupons: true, fiducials: true });
-  const [scfg, setScfg] = useState<StencilConfig>({ name: "STENCIL-CEF2", cols: 7, rows: 6, pitch: 40.508, board: 40, frameW: 420, frameH: 297, margin: 10 });
+  const [scfg, setScfg] = useState<StencilConfig>({ name: "STENCIL-CEF2", cols: 7, rows: 6, pitch: 40, pitchY: 50, originX: 20, originY: 310, board: 40, frameW: 300, frameH: 400, margin: 10 });
   const [boards, setBoards] = useState<Record<string, PanelBoard>>({});
   const [pages, setPages] = useState<Record<Mode, Page[]>>({ panel: [[]], stencil: [[]] });
   const [active, setActive] = useState<Record<Mode, number>>({ panel: 0, stencil: 0 });
@@ -68,7 +68,7 @@ function Cam() {
     const c = settings.data?.cam;
     if (!c) return;
     setCfg((p) => ({ ...p, cols: c.panelCols, rows: c.panelRows, pitch: c.panelPitch, board: c.board, rail: c.rail, coupons: c.coupons, fiducials: c.fiducials }));
-    setScfg((p) => ({ ...p, cols: c.stencilCols, rows: c.stencilRows, pitch: c.stencilPitch, board: c.board, frameW: c.stencilFrameW, frameH: c.stencilFrameH, margin: c.stencilMargin }));
+    setScfg((p) => ({ ...p, cols: c.stencilCols, rows: c.stencilRows, pitch: c.stencilPitch, pitchY: c.stencilPitchY, originX: c.stencilOriginX, originY: c.stencilOriginY, board: c.board, frameW: c.stencilFrameW, frameH: c.stencilFrameH, margin: c.stencilMargin }));
   }, [settings.data]);
 
   const approved = useQuery({
@@ -302,7 +302,10 @@ function Cam() {
               <Field label="Nume"><Input value={scfg.name} onChange={(e) => setScfg({ ...scfg, name: e.target.value })} /></Field>
               <Field label="Coloane"><Input type="number" min={1} value={scfg.cols} onChange={(e) => setScfg({ ...scfg, cols: Math.max(1, +e.target.value) })} /></Field>
               <Field label="Rânduri"><Input type="number" min={1} value={scfg.rows} onChange={(e) => setScfg({ ...scfg, rows: Math.max(1, +e.target.value) })} /></Field>
-              <Field label="Pas (mm)"><Input type="number" step="0.001" value={scfg.pitch} onChange={(e) => setScfg({ ...scfg, pitch: +e.target.value })} /></Field>
+              <Field label="Pas X — coloane (mm)"><Input type="number" step="0.001" value={scfg.pitch} onChange={(e) => setScfg({ ...scfg, pitch: +e.target.value })} /></Field>
+              <Field label="Pas Y — rânduri (mm)"><Input type="number" step="0.001" value={scfg.pitchY} onChange={(e) => setScfg({ ...scfg, pitchY: +e.target.value })} /></Field>
+              <Field label="X prima coloană (mm)"><Input type="number" step="0.1" value={scfg.originX} onChange={(e) => setScfg({ ...scfg, originX: +e.target.value })} /></Field>
+              <Field label="Y primul rând, sus (mm)"><Input type="number" step="0.1" value={scfg.originY} onChange={(e) => setScfg({ ...scfg, originY: +e.target.value })} /></Field>
               <Field label="Folie lățime (mm)"><Input type="number" value={scfg.frameW} onChange={(e) => setScfg({ ...scfg, frameW: +e.target.value })} /></Field>
               <Field label="Folie înălțime (mm)"><Input type="number" value={scfg.frameH} onChange={(e) => setScfg({ ...scfg, frameH: +e.target.value })} /></Field>
               <Field label="Margine (mm)"><Input type="number" value={scfg.margin} onChange={(e) => setScfg({ ...scfg, margin: +e.target.value })} /></Field>

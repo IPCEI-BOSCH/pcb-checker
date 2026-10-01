@@ -333,33 +333,42 @@ export function positionTable(slots: PanelSlot[], cols: number, origin: (c: numb
     .sort((a, b) => a.index - b.index);
 }
 
-/** GerbTool macro input: one line per position with offset and source project. */
-export function dateInFile(kind: "LAYERS" | "STENCILS", rows: PositionRow[], title: string) {
-  return [
-    `; date_in_${kind}.txt — ${title}`,
-    "; POZ;COL;RAND;X_mm;Y_mm;PROIECT",
-    ...rows.map((r) => `${r.index};${r.col};${r.row};${r.x.toFixed(3)};${r.y.toFixed(3)};${r.label}`),
-    "",
-  ].join("\n");
+const num = (v: number, fixed: boolean) => (fixed ? v.toFixed(3) : String(+v.toFixed(3)));
+
+/**
+ * GerbTool CETTI macro input, exact historical syntax: "FOLDER X Y" per line, space separated,
+ * no header. Panel offsets keep 3 decimals (e.g. 121.524), stencil offsets are bare (e.g. 20 310).
+ * Spaces inside the project name are replaced so the macro tokenizer stays aligned.
+ */
+export function dateInFile(kind: "LAYERS" | "STENCILS", rows: PositionRow[], _title?: string) {
+  return rows.map((r) => `${r.label.replace(/\s+/g, "_")} ${num(r.x, kind === "LAYERS")} ${num(r.y, kind === "LAYERS")}`).join("\r\n") + "\r\n";
 }
 
 export interface StencilConfig {
   name: string;
   cols: number;
   rows: number;
+  /** Pitch between columns (X). */
   pitch: number;
+  /** Pitch between rows (Y) — larger than X on the official A3 stencil map. */
+  pitchY: number;
+  /** X of the first column and Y of the top row (board lower-left corner), per Harta_STENCILs. */
+  originX: number;
+  originY: number;
   board: number;
   frameW: number;
   frameH: number;
   margin: number;
 }
 
+/** Row 1 is the top row; Y decreases by pitchY (310, 260, … 60 on the official map). */
 export function stencilOrigin(cfg: StencilConfig) {
   const gw = cfg.pitch * (cfg.cols - 1) + cfg.board;
-  const gh = cfg.pitch * (cfg.rows - 1) + cfg.board;
-  const x0 = (cfg.frameW - gw) / 2;
-  const y0 = (cfg.frameH - gh) / 2;
-  return { fits: x0 >= cfg.margin && y0 >= cfg.margin, gw, gh, at: (c: number, r: number) => ({ x: x0 + c * cfg.pitch, y: y0 + r * cfg.pitch }) };
+  const gh = cfg.pitchY * (cfg.rows - 1) + cfg.board;
+  const yBottom = cfg.originY - cfg.pitchY * (cfg.rows - 1);
+  const fits = cfg.originX >= cfg.margin - 1e-6 && yBottom >= cfg.margin - 1e-6
+    && cfg.originX + gw <= cfg.frameW - cfg.margin + 1e-6 && cfg.originY + cfg.board <= cfg.frameH - cfg.margin + 1e-6;
+  return { fits, gw, gh, at: (c: number, r: number) => ({ x: cfg.originX + c * cfg.pitch, y: cfg.originY - r * cfg.pitchY }) };
 }
 
 export function stencilLayers(slots: PanelSlot[], cfg: StencilConfig): Layer[] {
@@ -397,7 +406,7 @@ export async function buildStencil(slots: PanelSlot[], cfg: StencilConfig): Prom
   add("date_in_STENCILS.txt", dateInFile("STENCILS", rows, cfg.name));
   add("STENCIL-harta.txt", [
     `Stencil: ${cfg.name}`,
-    `Folie: ${cfg.frameW} x ${cfg.frameH} mm, matrice ${cfg.cols} x ${cfg.rows} la pas ${cfg.pitch} mm`,
+    `Folie: ${cfg.frameW} x ${cfg.frameH} mm, matrice ${cfg.cols} x ${cfg.rows}, pas X ${cfg.pitch} mm / pas Y ${cfg.pitchY} mm, origine (${cfg.originX}, ${cfg.originY})`,
     `Pozitii ocupate: ${filled.length} / ${cfg.cols * cfg.rows}`,
     "",
     ...(warnings.length ? ["Avertismente:", ...warnings] : []),
