@@ -24,6 +24,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { RuleSandbox, settingsDiff } from "@/components/RuleSandbox";
 
 export const Route = createFileRoute("/_authenticated/rules")({
   head: () => ({
@@ -65,6 +66,7 @@ function RulesPage() {
   const pull = useServerFn(pullSettingsSheet);
   const createSheet = useServerFn(createSpreadsheet);
   const [manualLink, setManualLink] = useState(false);
+  const [activeTab, setActiveTab] = useState("rules");
 
   const isAdmin = has("admin");
   const allowed = has("admin", "series_manager");
@@ -133,7 +135,8 @@ function RulesPage() {
     const merged = mergeSettings(draft, { rules: patch.rules as Partial<RuleValues> as RuleValues, cam: patch.cam as Partial<CamValues> as CamValues, penalties: patch.penalties as Settings["penalties"] });
     setDraft(merged);
     setPatch(null);
-    toast.success("Propunerea a fost aplicată în formular. Verificați și apăsați Salvează.");
+    setActiveTab("test");
+    toast.success("Propunerea a fost aplicată. Testați-o pe proiecte înainte de activare.");
   };
 
   const sid = extractSpreadsheetId(sheetUrl) ?? sheetUrl.trim();
@@ -173,18 +176,25 @@ function RulesPage() {
             </SelectContent>
           </Select>
           <Button variant="ghost" onClick={() => setDraft(structuredClone(DEFAULT_SETTINGS))}><RotateCcw className="mr-2 h-4 w-4" /> Valori Rev. G</Button>
-          <Button onClick={() => save()} disabled={!!busy}><Save className="mr-2 h-4 w-4" /> Salvează</Button>
+          <Button onClick={() => {
+            if (current.data && settingsDiff(current.data, draft).length) { setActiveTab("test"); toast.info("Regulile modificate trebuie testate pe proiecte și confirmate înainte de activare."); return; }
+            void save();
+          }} disabled={!!busy}><Save className="mr-2 h-4 w-4" /> Salvează</Button>
+          {isAdmin && current.data && settingsDiff(current.data, draft).length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => { if (window.confirm("Salvați fără testare? Acțiunea se notează în jurnal.")) void save(); }}>Salvează fără test</Button>
+          )}
         </div>
       </div>
       {busy && <p className="text-sm text-muted-foreground">{busy}</p>}
 
-      <Tabs defaultValue="rules">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="rules">Reguli DRC</TabsTrigger>
           <TabsTrigger value="score">Punctaj & severitate</TabsTrigger>
           <TabsTrigger value="cam">Panou & Stencil</TabsTrigger>
           <TabsTrigger value="ai">Asistent AI</TabsTrigger>
           <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
+          <TabsTrigger value="test">Testare reguli{current.data && settingsDiff(current.data, draft).length ? ` (${settingsDiff(current.data, draft).length})` : ""}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="rules" className="grid gap-4 md:grid-cols-2">
@@ -308,6 +318,9 @@ function RulesPage() {
               <Badge variant="secondary">{flattenSettings(draft).length} setări</Badge>
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="test">
+          {current.data && <RuleSandbox seriesId={seriesId} baseline={current.data} candidate={draft} userId={user.id} onActivate={(x) => save(x)} />}
         </TabsContent>
       </Tabs>
     </div>

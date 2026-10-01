@@ -23,3 +23,4 @@
 - Excellon files with undeclared coordinate format are parsed after Gerbers and the candidate format (2:5/2:4/…) that best fits the board outline is chosen (`src/lib/gerber/load.ts`) — OrCAD drills often lack a format header.
 - Teacher bulk ZIP import (`src/lib/zipImport.ts`) reuses series/groups by name and updates students by folder name (`file_prefix`), so re-imports never duplicate; staff insert slots/submissions via `can_manage_group` policies.
 - `date_in_*.txt` uses GerbTool's exact "FOLDER X Y" syntax with no header; stencil geometry has independent X/Y pitch and an explicit top-row origin.
+- Rule changes are activated through the sandbox (`src/components/RuleSandbox.tsx`), which runs baseline vs candidate DRC and requires manual per-project confirmation; runs are stored in `rule_test_runs` — keeps rule edits auditable and evidence-based.
