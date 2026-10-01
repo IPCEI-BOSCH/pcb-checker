@@ -36,6 +36,13 @@
       "when": 1790840133838,
       "tag": "0004_history_and_demo",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790847154650,
+      "tag": "0005_tighten_read_policies",
+      "breakpoints": true
     }
   ]
 }

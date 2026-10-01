@@ -612,6 +612,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_member: { Args: { _uid: string }; Returns: boolean }
       is_staff: { Args: { _uid: string }; Returns: boolean }
       manages_series: {
         Args: { _series: string; _uid: string }
