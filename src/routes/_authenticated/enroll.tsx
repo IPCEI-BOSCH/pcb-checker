@@ -41,7 +41,9 @@ function Enroll() {
 
   if (me.data) {
     return (
-      <Card className="max-w-xl">
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold text-foreground">Înscriere în grupă</h1>
+        <Card className="max-w-xl">
         <CardHeader><CardTitle>Ești înscris</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>Grupa <span className="text-foreground">{me.data.groups?.name}</span> din <span className="text-foreground">{me.data.groups?.series?.name}</span>.</p>

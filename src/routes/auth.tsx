@@ -59,7 +59,7 @@ function AuthPage() {
     <div className="flex min-h-screen items-center justify-center bg-background pcb-grid px-4">
       <div className="w-full max-w-sm rounded-lg border border-border bg-card p-8 text-center shadow-xl">
         <CircuitBoard className="mx-auto h-8 w-8 text-primary" />
-        <h1 className="mt-4 text-xl font-semibold text-card-foreground">PCB Checker & CAM</h1>
+        <h1 className="mt-4 text-xl font-semibold text-card-foreground">Conectare la PCB Checker &amp; CAM</h1>
         <p className="mt-2 text-sm text-muted-foreground">Folosește contul universitar Microsoft 365.</p>
         <Button className="mt-6 w-full" size="lg" onClick={signIn} disabled={busy}>
           <svg viewBox="0 0 21 21" className="mr-2 h-4 w-4" aria-hidden>
