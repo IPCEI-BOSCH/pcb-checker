@@ -14,7 +14,7 @@ const SLOT_FILES: Record<string, string> = {
 export function parseFolder(folder: string) {
   const p = folder.replace(/_Layout$/, "").split("_");
   const nIdx = p.findIndex((x, i) => i > 2 && /^N\d+$/i.test(x));
-  const n = nIdx > 0 ? Number(p[nIdx].slice(1)) : null;
+  const n = nIdx > 0 ? Number(p[nIdx]!.slice(1)) : null;
   const cad = nIdx > 0 ? p.slice(nIdx + 1).join("_") : "";
   const mid = p.slice(3, nIdx > 0 ? nIdx : undefined);
   const tema = mid.length > 2 ? mid[mid.length - 1] : "";
@@ -33,10 +33,10 @@ export async function importDemo(userId: string, log: (m: string) => void) {
     const parts = e.name.split("/");
     const li = parts.lastIndexOf("Layout");
     if (li < 2) continue;
-    const base = parts[parts.length - 1];
+    const base = parts[parts.length - 1]!;
     if (!SLOT_FILES[base]) continue;
-    const folder = parts[li - 1] === "Layout" ? parts[li - 2] : parts[li - 1];
-    const group = parts[1];
+    const folder = parts[li - 1] === "Layout" ? parts[li - 2]! : parts[li - 1]!;
+    const group = parts[1]!;
     const p = projects.get(folder) ?? { group, folder, files: new Map() };
     p.files.set(base, e);
     projects.set(folder, p);
@@ -69,7 +69,7 @@ export async function importDemo(userId: string, log: (m: string) => void) {
       const path = `${userId}/demo/${st.data.id}/${base}`;
       const up = await supabase.storage.from("gerbers").upload(path, blob, { upsert: true, contentType: "application/octet-stream" });
       if (up.error) throw up.error;
-      const r = await supabase.from("student_fabrication_slots").insert({ student_id: st.data.id, slot_key: SLOT_FILES[base], file_name: base, storage_path: path, size_bytes: blob.size, uploaded_by: userId });
+      const r = await supabase.from("student_fabrication_slots").insert({ student_id: st.data.id, slot_key: SLOT_FILES[base]!, file_name: base, storage_path: path, size_bytes: blob.size, uploaded_by: userId });
       if (r.error) throw r.error;
     }
     const zblob = await out.generateAsync({ type: "blob" });
