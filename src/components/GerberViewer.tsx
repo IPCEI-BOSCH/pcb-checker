@@ -19,7 +19,7 @@ type LayerState = { visible: boolean; opacity: number };
 
 const MARKER_COLORS = { blocking: "#ef4444", warning: "#f5b83d", info: "#5aa9e6" } as const;
 
-export function GerberViewer({ layers, issues, focus, cad = "kicad", onSelectIssue }: Props) {
+export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIssue }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
