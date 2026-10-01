@@ -230,6 +230,7 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          drive_file_id: string | null
           file_name: string
           file_path: string
           folder: string
@@ -245,6 +246,7 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          drive_file_id?: string | null
           file_name: string
           file_path: string
           folder?: string
@@ -260,6 +262,7 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          drive_file_id?: string | null
           file_name?: string
           file_path?: string
           folder?: string
@@ -384,9 +387,56 @@ export type Database = {
           },
         ]
       }
+      student_fabrication_slots: {
+        Row: {
+          drive_file_id: string | null
+          file_name: string
+          id: string
+          size_bytes: number
+          slot_key: string
+          storage_path: string
+          student_id: string
+          updated_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          drive_file_id?: string | null
+          file_name: string
+          id?: string
+          size_bytes?: number
+          slot_key: string
+          storage_path: string
+          student_id: string
+          updated_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          drive_file_id?: string | null
+          file_name?: string
+          id?: string
+          size_bytes?: number
+          slot_key?: string
+          storage_path?: string
+          student_id?: string
+          updated_at?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_fabrication_slots_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       students: {
         Row: {
           created_at: string
+          drive_folder_id: string | null
+          drive_layout_folder_id: string | null
+          drive_project_folder_id: string | null
           email: string | null
           file_prefix: string | null
           full_name: string
@@ -404,6 +454,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          drive_folder_id?: string | null
+          drive_layout_folder_id?: string | null
+          drive_project_folder_id?: string | null
           email?: string | null
           file_prefix?: string | null
           full_name: string
@@ -421,6 +474,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          drive_folder_id?: string | null
+          drive_layout_folder_id?: string | null
+          drive_project_folder_id?: string | null
           email?: string | null
           file_prefix?: string | null
           full_name?: string

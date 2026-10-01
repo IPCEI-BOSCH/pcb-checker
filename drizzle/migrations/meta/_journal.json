@@ -22,6 +22,13 @@
       "when": 1790798582982,
       "tag": "0002_rules_settings_and_project_files",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790838799317,
+      "tag": "0003_fabrication_slots_and_drive",
+      "breakpoints": true
     }
   ]
 }
