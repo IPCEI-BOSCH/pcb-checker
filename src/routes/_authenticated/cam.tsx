@@ -75,7 +75,7 @@ function Cam() {
     queryKey: ["cam-approved", seriesId, structure.data?.groups.length, onlyApproved],
     enabled: allowed && !!structure.data,
     queryFn: async (): Promise<Candidate[]> => {
-      const { data: students, error: se } = await supabase.from("students").select("id, full_name, group_id, theme_number, variant");
+      const { data: students, error: se } = await supabase.from("students").select("id, full_name, group_id, theme_number, variant, file_prefix");
       if (se) throw se;
       const inSeries = new Set((structure.data?.groups ?? []).filter((g) => !seriesId || g.series_id === seriesId).map((g) => g.id));
       const ids = students.filter((s) => inSeries.has(s.group_id)).map((s) => s.id);
@@ -87,7 +87,7 @@ function Cam() {
       const seen = new Set<string>();
       return subs.filter((s) => !seen.has(s.student_id) && seen.add(s.student_id)).map((s) => {
         const st = students.find((x) => x.id === s.student_id)!;
-        return { submissionId: s.id, label: `${st.theme_number ?? "—"} · ${st.full_name} (${st.variant})`, zipPath: s.zip_path, variant: st.variant };
+        return { submissionId: s.id, label: st.file_prefix || `${st.full_name.replace(/\s+/g, "_")}_N${st.theme_number ?? "x"}`, zipPath: s.zip_path, variant: st.variant };
       });
     },
   });
