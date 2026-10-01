@@ -222,7 +222,7 @@ export function parseExcellon(fileName: string, content: string, fitBox?: BBox |
   const inch = /^(INCH|M72)/m.test(content);
   const metricDecl = /^(METRIC|M71)/m.test(content);
   const IN = [{ int: 2, dec: 5, inch: true }, { int: 2, dec: 4, inch: true }, { int: 2, dec: 3, inch: true }];
-  const MM = [{ int: 3, dec: 3, inch: false }, { int: 3, dec: 2, inch: false }, { int: 4, dec: 2, inch: false }];
+  const MM = [3, 2, 4, 5].map((dec) => ({ int: dec === 5 ? 2 : 3, dec, inch: false }));
   // No unit header at all (bare OrCAD NC drill): inch candidates first, then metric.
   const cands = inch ? IN : metricDecl ? MM : [...IN, ...MM];
   const box = fitBox ?? { minX: -1, minY: -1, maxX: 200, maxY: 200 };
@@ -232,7 +232,10 @@ export function parseExcellon(fileName: string, content: string, fitBox?: BBox |
     const l = parseExcellonWith(fileName, content, c);
     if (!l.holes.length) return l;
     const inside = l.holes.filter((h) => h.x >= box.minX - 0.5 && h.x <= box.maxX + 0.5 && h.y >= box.minY - 0.5 && h.y <= box.maxY + 0.5).length;
-    const score = inside / l.holes.length;
+    // Tie-break by how much of the board the holes span (a wrong, too-large divisor squeezes them into a corner).
+    const xs = l.holes.map((h) => h.x), ys = l.holes.map((h) => h.y);
+    const span = Math.min(1, (Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys)) / Math.max(1, box.maxX - box.minX + box.maxY - box.minY));
+    const score = inside / l.holes.length + 0.01 * span;
     if (score > bestScore + 1e-9) { best = l; bestScore = score; }
   }
   best!.warnings.push(`Format coordonate dedus automat: ${best!.fmt?.int}:${best!.fmt?.dec} (${best!.fmt?.inch ? "inch" : "mm"})`);
