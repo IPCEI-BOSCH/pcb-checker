@@ -78,8 +78,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "PCB Checker & CAM — UPB ETTI" },
-      { name: "description", content: "Verificare DRC și pregătire CAM pentru proiectele PCB P1 / P1-DCE." },
     ],
     links: [
       {
