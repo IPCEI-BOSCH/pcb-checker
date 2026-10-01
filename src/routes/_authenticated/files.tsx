@@ -12,6 +12,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useServerFn } from "@tanstack/react-start";
+import { FabricationSlots } from "@/components/FabricationSlots";
+import { deleteFromDrive, syncToDrive } from "@/lib/drive.functions";
 
 export const Route = createFileRoute("/_authenticated/files")({
   head: () => ({
@@ -29,8 +32,8 @@ export const Route = createFileRoute("/_authenticated/files")({
 
 type Folder = "fabrication" | "project";
 const FOLDERS: Record<Folder, { title: string; hint: string }> = {
-  fabrication: { title: "Fișiere de fabricație", hint: "Gerber, Excellon, BOM, Pick&Place, desene mecanice…" },
-  project: { title: "Proiect", hint: "Schemă, documentație, simulări, calcule, poze, sursele CAD…" },
+  fabrication: { title: "Anexe fabricație (opțional)", hint: "BOM, Pick&Place, alte fișiere tehnice — nu intră în panou." },
+  project: { title: "Proiect (sincronizat în Google Drive)", hint: "Schemă & breviar PDF, simulări PSpice, BOM, prezentare PPT, sursele CAD… Un fișier cu același nume îl înlocuiește pe cel vechi." },
 };
 
 function FilesPage() {
@@ -61,7 +64,9 @@ function FilesPage() {
       {!isStaff && !me.isLoading && !me.data && <p className="text-sm text-muted-foreground">Înscrieți-vă mai întâi într-o grupă.</p>}
       {studentId && (
         <div className="grid gap-6 lg:grid-cols-2">
-          {(Object.keys(FOLDERS) as Folder[]).map((f) => <FolderCard key={f} folder={f} studentId={studentId} canUpload={!isStaff} canGrade={isStaff} userId={user.id} />)}
+          <FabricationSlots studentId={studentId} userId={user.id} canUpload={!isStaff} seriesId={isStaff ? null : me.data?.groups?.series_id ?? null} variant={(isStaff ? "SMT" : me.data?.variant) ?? "SMT"} />
+          <FolderCard folder="project" studentId={studentId} canUpload={!isStaff} canGrade={isStaff} userId={user.id} />
+          <FolderCard folder="fabrication" studentId={studentId} canUpload={!isStaff} canGrade={isStaff} userId={user.id} />
         </div>
       )}
     </div>
@@ -70,6 +75,8 @@ function FilesPage() {
 
 function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder: Folder; studentId: string; canUpload: boolean; canGrade: boolean; userId: string }) {
   const qc = useQueryClient();
+  const sync = useServerFn(syncToDrive);
+  const delDrive = useServerFn(deleteFromDrive);
   const ref = useRef<HTMLInputElement>(null);
   const [desc, setDesc] = useState("");
   const [busy, setBusy] = useState(false);
@@ -91,8 +98,15 @@ function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder
         const path = `${userId}/files/${folder}/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`;
         const up = await supabase.storage.from("gerbers").upload(path, file, { contentType: file.type || "application/octet-stream" });
         if (up.error) throw up.error;
-        const { error } = await supabase.from("project_files").insert({ student_id: studentId, user_id: userId, folder, file_path: path, file_name: file.name, mime_type: file.type, size_bytes: file.size, description: desc || null });
+        // same name in the same folder => replace the old file (no duplicates in Drive)
+        const old = (files.data ?? []).find((f) => f.file_name === file.name && f.points == null);
+        const { data, error } = await supabase.from("project_files").insert({ student_id: studentId, user_id: userId, folder, file_path: path, file_name: file.name, mime_type: file.type, size_bytes: file.size, description: desc || old?.description || null, drive_file_id: old?.drive_file_id ?? null }).select("id").single();
         if (error) throw error;
+        if (old) { await supabase.storage.from("gerbers").remove([old.file_path]); await supabase.from("project_files").delete().eq("id", old.id); }
+        if (folder === "project") {
+          try { await sync({ data: { kind: "project", id: data.id } }); }
+          catch (e) { toast.warning(`Salvat, dar sincronizarea Drive a eșuat: ${(e as Error).message}`); }
+        }
       }
       setDesc("");
       toast.success("Fișiere încărcate.");
@@ -107,7 +121,8 @@ function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder
     setPreview({ url: data.signedUrl, name, mime: mime ?? "" });
   };
 
-  const remove = async (id: string, path: string) => {
+  const remove = async (id: string, path: string, driveId: string | null) => {
+    if (driveId) await delDrive({ data: { driveFileId: driveId } }).catch(() => null);
     await supabase.storage.from("gerbers").remove([path]);
     const { error } = await supabase.from("project_files").delete().eq("id", id);
     if (error) toast.error(error.message);
@@ -146,7 +161,7 @@ function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder
               <span className="truncate font-medium">{f.file_name}</span>
               <div className="flex shrink-0 gap-1">
                 <Button size="sm" variant="ghost" onClick={() => open(f.file_path, f.file_name, f.mime_type)}><Eye className="h-4 w-4" /></Button>
-                {canUpload && f.points == null && <Button size="sm" variant="ghost" onClick={() => remove(f.id, f.file_path)}><Trash2 className="h-4 w-4" /></Button>}
+                {canUpload && f.points == null && <Button size="sm" variant="ghost" onClick={() => remove(f.id, f.file_path, f.drive_file_id)}><Trash2 className="h-4 w-4" /></Button>}
               </div>
             </div>
             {canUpload
