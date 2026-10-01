@@ -2,7 +2,6 @@ import { useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GerberViewer } from "@/components/GerberViewer";
 import type { DrcReport } from "@/lib/drc/engine";
 import { CAD_LABELS, REMEDIES, type CadTool } from "@/lib/drc/remedies";
@@ -10,7 +9,7 @@ import type { Layer } from "@/lib/gerber/types";
 import { cn } from "@/lib/utils";
 
 export function DrcReportView({ report, layers }: { report: DrcReport; layers: Layer[] | null }) {
-  const [cad, setCad] = useState<CadTool>("kicad");
+  const [cad] = useState<CadTool>("orcad");
   const [focus, setFocus] = useState<number | null>(null);
 
   return (
@@ -30,10 +29,7 @@ export function DrcReportView({ report, layers }: { report: DrcReport; layers: L
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-base">Vizualizator PCB</CardTitle>
-            <Select value={cad} onValueChange={(v) => setCad(v as CadTool)}>
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-              <SelectContent>{Object.entries(CAD_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>Ghid: {v}</SelectItem>)}</SelectContent>
-            </Select>
+            <span className="text-xs text-muted-foreground">Ghid remediere: {CAD_LABELS[cad]}</span>
           </CardHeader>
           <CardContent>
             <GerberViewer layers={layers} issues={report.issues} focus={focus} cad={cad} onSelectIssue={setFocus} />

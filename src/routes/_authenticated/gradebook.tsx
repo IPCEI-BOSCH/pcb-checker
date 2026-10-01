@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createSpreadsheet } from "@/lib/sheets.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -57,6 +58,8 @@ function Gradebook() {
 
   const push = useServerFn(pushGradebook);
   const pull = useServerFn(pullGradebook);
+  const createSheet = useServerFn(createSpreadsheet);
+  const [manualLink, setManualLink] = useState(false);
 
   const structure = useQuery({ queryKey: ["structure"], queryFn: fetchStructure });
   const rows = useQuery({ queryKey: ["gradebook", seriesId], queryFn: () => fetchGradeRows(seriesId || null) });
@@ -84,6 +87,21 @@ function Gradebook() {
     setSheetUrl("");
     toast.success("Foaia de calcul a fost asociată seriei.");
     qc.invalidateQueries({ queryKey: ["sheet-links"] });
+  };
+
+  const createAndLink = async () => {
+    if (!seriesId) return void toast.error("Alege mai întâi seria.");
+    setBusy("Se creează foaia Google Sheets…");
+    try {
+      const name = structure.data?.series.find((x) => x.id === seriesId)?.name ?? "Serie";
+      const r = await createSheet({ data: { title: `P1DCE — Situație Seria ${name}`, tabs: [sheetName] } });
+      const { error } = await supabase.from("sheet_links").upsert({ series_id: seriesId, spreadsheet_id: r.spreadsheetId, sheet_name: sheetName, updated_by: user.id }, { onConflict: "series_id" });
+      if (error) throw error;
+      await push({ data: { spreadsheetId: r.spreadsheetId, sheetName, header: [...AUTO_COLUMNS], manualHeader: [...MANUAL_COLUMNS], values: data.map(autoCells) } });
+      toast.success("Foaia a fost creată, asociată seriei și completată.");
+      window.open(r.url, "_blank", "noreferrer");
+      qc.invalidateQueries({ queryKey: ["sheet-links"] });
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
 
   const doPush = async () => {
@@ -198,7 +216,7 @@ function Gradebook() {
           {seriesId && link && (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge variant="secondary" className="font-mono">{link.sheet_name}</Badge>
-              <a className="text-primary underline" href={`https://docs.google.com/spreadsheets/d/${link.spreadsheet_id}/edit`} target="_blank" rel="noreferrer">Deschide foaia</a>
+              <Button asChild size="sm" variant="outline"><a href={`https://docs.google.com/spreadsheets/d/${link.spreadsheet_id}/edit`} target="_blank" rel="noreferrer">Deschide în Google Sheets</a></Button>
               <span className="text-muted-foreground">
                 {link.last_synced_at ? `Ultima sincronizare: ${new Date(link.last_synced_at).toLocaleString("ro-RO")}` : "Încă nesincronizată"}
               </span>
@@ -208,11 +226,22 @@ function Gradebook() {
               </div>
             </div>
           )}
-          {seriesId && canManage && (
+          {seriesId && canManage && !link && !manualLink && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-3 text-sm">
+              <span className="text-muted-foreground">Seria nu are încă o foaie Google Sheets.</span>
+              <Button size="sm" onClick={createAndLink} disabled={!!busy}>Creează foaie nouă</Button>
+              <Button size="sm" variant="outline" onClick={() => setManualLink(true)}>Am deja o foaie</Button>
+            </div>
+          )}
+          {seriesId && canManage && link && !manualLink && (
+            <Button size="sm" variant="ghost" onClick={() => setManualLink(true)}>Schimbă foaia asociată</Button>
+          )}
+          {seriesId && canManage && manualLink && (
             <div className="flex flex-wrap items-end gap-2">
               <Input className="w-96" placeholder="Link Google Sheets" value={sheetUrl} onChange={(e) => setSheetUrl(e.target.value)} />
               <Input className="w-64" placeholder="Nume filă" value={sheetName} onChange={(e) => setSheetName(e.target.value)} />
-              <Button variant="outline" onClick={saveLink}>{link ? "Actualizează asocierea" : "Asociază"}</Button>
+              <Button variant="outline" onClick={async () => { await saveLink(); setManualLink(false); }}>{link ? "Actualizează asocierea" : "Asociază"}</Button>
+              <Button variant="ghost" onClick={() => setManualLink(false)}>Renunță</Button>
             </div>
           )}
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

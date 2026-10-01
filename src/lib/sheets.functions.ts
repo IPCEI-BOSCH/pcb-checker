@@ -67,3 +67,21 @@ export const pullGradebook = createServerFn({ method: "POST" })
 export const checkSheetsConnection = createServerFn({ method: "GET" }).handler(async () => ({
   connected: !!process.env["LOVABLE_API_KEY"] && !!process.env["GOOGLE_SHEETS_API_KEY"],
 }));
+
+/** Creates a new spreadsheet in the connected Google account with the given tabs; returns its ID. */
+export const createSpreadsheet = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { title: string; tabs: string[] }) => {
+    const title = String(input.title ?? "").slice(0, 200).trim();
+    const tabs = (Array.isArray(input.tabs) ? input.tabs : []).map((t) => String(t).slice(0, 90)).filter(Boolean).slice(0, 10);
+    if (!title || !tabs.length) throw new Error("Titlu sau file lipsă.");
+    return { title, tabs };
+  })
+  .handler(async ({ data, context }) => {
+    await assertStaff(context as never);
+    const json = (await gateway(`/spreadsheets`, {
+      method: "POST",
+      body: JSON.stringify({ properties: { title: data.title, locale: "ro_RO" }, sheets: data.tabs.map((title) => ({ properties: { title } })) }),
+    })) as { spreadsheetId: string; spreadsheetUrl: string };
+    return { spreadsheetId: json.spreadsheetId, url: json.spreadsheetUrl };
+  });

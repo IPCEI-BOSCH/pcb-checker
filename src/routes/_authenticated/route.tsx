@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { CircuitBoard, History as HistoryIcon, ClipboardCheck, FileCheck2, FolderOpen, Grid3x3, SlidersHorizontal, LayoutDashboard, LogOut, Settings2, Table2, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthContext, ROLE_LABELS, type AppRole } from "@/lib/auth";
@@ -109,6 +110,7 @@ function Layout() {
             <Button variant="ghost" size="sm" className="mt-3 w-full justify-start" onClick={signOut}>
               <LogOut className="mr-2 h-4 w-4" /> Deconectare
             </Button>
+            <ThemeToggle />
           </div>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
@@ -120,6 +122,7 @@ function Layout() {
                   <n.icon className="h-4 w-4" />
                 </Link>
               ))}
+              <ThemeToggle compact />
               <button onClick={signOut} className="p-2 text-muted-foreground" aria-label="Deconectare"><LogOut className="h-4 w-4" /></button>
             </div>
           </div>

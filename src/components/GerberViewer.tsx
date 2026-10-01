@@ -19,7 +19,7 @@ type LayerState = { visible: boolean; opacity: number };
 
 const MARKER_COLORS = { blocking: "#ef4444", warning: "#f5b83d", info: "#5aa9e6" } as const;
 
-export function GerberViewer({ layers, issues, focus, cad = "kicad", onSelectIssue }: Props) {
+export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIssue }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -36,14 +36,16 @@ export function GerberViewer({ layers, issues, focus, cad = "kicad", onSelectIss
   useEffect(() => {
     const s: Record<number, LayerState> = {};
     layers.forEach((l, i) => {
-      s[i] = { visible: !["bottom_silk", "bottom_paste", "bottom_mask"].includes(l.kind), opacity: l.kind.includes("mask") ? 0.35 : 0.85 };
+      s[i] = { visible: !["bottom_silk", "bottom_paste", "bottom_mask", "fabrication"].includes(l.kind), opacity: l.kind.includes("mask") ? 0.35 : 0.85 };
     });
     setState(s);
   }, [layers]);
 
   const bounds = useMemo<BBox>(() => {
     let b: BBox | null = null;
-    for (const l of layers) {
+    // Fit to the board itself; the FAB drawing (charts, stack-up) would otherwise shrink the view.
+    const core = layers.some((l) => l.kind !== "fabrication") ? layers.filter((l) => l.kind !== "fabrication") : layers;
+    for (const l of core) {
       const lb = layerBBox(l);
       if (!lb) continue;
       b = b ? { minX: Math.min(b.minX, lb.minX), minY: Math.min(b.minY, lb.minY), maxX: Math.max(b.maxX, lb.maxX), maxY: Math.max(b.maxY, lb.maxY) } : lb;

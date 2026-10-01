@@ -9,6 +9,7 @@ export type LayerKind =
   | "bottom_paste"
   | "outline"
   | "drill"
+  | "fabrication"
   | "unknown";
 
 export type ApertureShape = "C" | "R" | "O" | "P" | "M";
@@ -36,6 +37,8 @@ export interface Layer {
   primitives: Primitive[];
   holes: Hole[];
   warnings: string[];
+  /** Excellon coordinate format actually used (int:dec). */
+  fmt?: { int: number; dec: number; inch?: boolean };
 }
 
 export interface BBox {
@@ -56,6 +59,7 @@ export const LAYER_LABELS: Record<LayerKind, string> = {
   bottom_paste: "Pastă BOTTOM",
   outline: "Contur / Mecanic",
   drill: "Găurire (Excellon)",
+  fabrication: "Fabricație / Mecanic (FAB)",
   unknown: "Nerecunoscut",
 };
 
@@ -71,6 +75,7 @@ export const LAYER_COLORS: Record<LayerKind, string> = {
   bottom_paste: "#8a8a99",
   outline: "#f2d04b",
   drill: "#0b0f0d",
+  fabrication: "#c77dff",
   unknown: "#888888",
 };
 
@@ -83,6 +88,7 @@ export const LAYER_ORDER: LayerKind[] = [
   "top_paste",
   "top_silk",
   "bottom_paste",
+  "fabrication",
   "outline",
   "drill",
   "unknown",

@@ -43,6 +43,9 @@ export interface CamValues {
   stencilCols: number;
   stencilRows: number;
   stencilPitch: number;
+  stencilPitchY: number;
+  stencilOriginX: number;
+  stencilOriginY: number;
   stencilFrameW: number;
   stencilFrameH: number;
   stencilMargin: number;
@@ -109,9 +112,12 @@ export const DEFAULT_SETTINGS: Settings = {
     fiducials: true,
     stencilCols: 7,
     stencilRows: 6,
-    stencilPitch: 40.508,
-    stencilFrameW: 420,
-    stencilFrameH: 297,
+    stencilPitch: 40,
+    stencilPitchY: 50,
+    stencilOriginX: 20,
+    stencilOriginY: 310,
+    stencilFrameW: 300,
+    stencilFrameH: 400,
     stencilMargin: 10,
   },
 };
@@ -151,7 +157,10 @@ export const CAM_FIELDS: Record<keyof CamValues, FieldMeta> = {
   fiducials: { label: "Fiduciali de panou", unit: "", group: "Panou PCB" },
   stencilCols: { label: "Stencil — coloane", unit: "", group: "Stencil A3", step: 1 },
   stencilRows: { label: "Stencil — rânduri", unit: "", group: "Stencil A3", step: 1 },
-  stencilPitch: { label: "Stencil — pas", unit: "mm", group: "Stencil A3", step: 0.001 },
+  stencilPitch: { label: "Stencil — pas pe X (între coloane)", unit: "mm", group: "Stencil A3", step: 0.001, help: "Harta oficială: 40 mm (X = 20, 60 … 260)" },
+  stencilPitchY: { label: "Stencil — pas pe Y (între rânduri)", unit: "mm", group: "Stencil A3", step: 0.001, help: "Harta oficială: 50 mm (Y = 310, 260 … 60)" },
+  stencilOriginX: { label: "Stencil — X prima coloană", unit: "mm", group: "Stencil A3", step: 0.1 },
+  stencilOriginY: { label: "Stencil — Y primul rând (sus)", unit: "mm", group: "Stencil A3", step: 0.1 },
   stencilFrameW: { label: "Folie — lățime", unit: "mm", group: "Stencil A3", step: 1 },
   stencilFrameH: { label: "Folie — înălțime", unit: "mm", group: "Stencil A3", step: 1 },
   stencilMargin: { label: "Margine minimă", unit: "mm", group: "Stencil A3", step: 1 },

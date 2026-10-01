@@ -14,6 +14,7 @@ import {
 } from "@/lib/drc/settings";
 import { aiSuggestSettings, pullSettingsSheet, pushSettingsSheet } from "@/lib/rules.functions";
 import { extractSpreadsheetId } from "@/lib/gradebook";
+import { createSpreadsheet } from "@/lib/sheets.functions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,8 @@ function RulesPage() {
   const ai = useServerFn(aiSuggestSettings);
   const push = useServerFn(pushSettingsSheet);
   const pull = useServerFn(pullSettingsSheet);
+  const createSheet = useServerFn(createSpreadsheet);
+  const [manualLink, setManualLink] = useState(false);
 
   const isAdmin = has("admin");
   const allowed = has("admin", "series_manager");
@@ -75,7 +78,22 @@ function RulesPage() {
   });
 
   useEffect(() => { if (current.data) setDraft(structuredClone(current.data)); }, [current.data]);
-  useEffect(() => { if (link.data?.spreadsheet_id) setSheetUrl(link.data.spreadsheet_id); }, [link.data]);
+  useEffect(() => {
+    const stored = typeof window !== "undefined" ? window.localStorage.getItem(`rules-sheet-${scope}`) : null;
+    setSheetUrl(stored ?? link.data?.spreadsheet_id ?? "");
+  }, [link.data, scope]);
+  const rememberSheet = (id: string) => { setSheetUrl(id); window.localStorage.setItem(`rules-sheet-${scope}`, id); };
+  const doCreate = async () => {
+    setBusy("Se creează foaia Google Sheets…");
+    try {
+      const name = scope === "GLOBAL" ? "Global" : structure.data?.series.find((x) => x.id === scope)?.name ?? "Serie";
+      const r = await createSheet({ data: { title: `PCB Checker — Setări ${name}`, tabs: [tab] } });
+      rememberSheet(r.spreadsheetId);
+      await push({ data: { spreadsheetId: r.spreadsheetId, tab, rows: flattenSettings(draft) } });
+      toast.success("Foaia a fost creată și completată cu setările curente.");
+      window.open(r.url, "_blank", "noreferrer");
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+  };
 
   const mySeries = useMemo(() => {
     const s = structure.data;
@@ -261,10 +279,27 @@ function RulesPage() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-base">Sincronizare bidirecțională</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid gap-3 md:grid-cols-[1fr_14rem]">
-                <div><Label>Link foaie Google Sheets</Label><Input value={sheetUrl} onChange={(e) => setSheetUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…" /></div>
-                <div><Label>Tab</Label><Input value={tab} onChange={(e) => setTab(e.target.value)} /></div>
-              </div>
+              {!sid || manualLink ? (
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <p className="text-sm text-muted-foreground">Nu există încă o foaie de setări pentru acest domeniu. O creez eu sau o folosiți pe a dumneavoastră?</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={doCreate} disabled={!!busy}>Creează foaie nouă</Button>
+                    <Button variant="outline" onClick={() => setManualLink(true)}>Am deja o foaie</Button>
+                  </div>
+                  {manualLink && (
+                    <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                      <Input aria-label="Link foaie existentă" placeholder="https://docs.google.com/spreadsheets/d/…" onBlur={(e) => { const id = extractSpreadsheetId(e.target.value); if (id) { rememberSheet(id); setManualLink(false); } }} />
+                      <Button variant="ghost" onClick={() => setManualLink(false)}>Renunță</Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <Button asChild variant="outline"><a href={`https://docs.google.com/spreadsheets/d/${sid}/edit`} target="_blank" rel="noreferrer">Deschide în Google Sheets</a></Button>
+                  <Button variant="ghost" size="sm" onClick={() => setManualLink(true)}>Schimbă foaia</Button>
+                </div>
+              )}
+              <div className="max-w-xs"><Label>Tab</Label><Input value={tab} onChange={(e) => setTab(e.target.value)} /></div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={doPush} disabled={!!busy}><Upload className="mr-2 h-4 w-4" /> Trimite setările în foaie</Button>
                 <Button variant="secondary" onClick={doPull} disabled={!!busy}><Download className="mr-2 h-4 w-4" /> Preia setările din foaie și salvează</Button>

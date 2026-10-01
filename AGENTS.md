@@ -20,3 +20,6 @@
 - Google Sheets access runs only through server functions (`src/lib/sheets.functions.ts`) over the Lovable connector gateway — connector credentials never reach the browser.
 - DRC thresholds, scoring and CAM geometry come from `drc_settings` (defaults <- global row <- series row, `src/lib/drc/settings.ts`); `runDrc` takes settings — no hardcoded rule values.
 - CAM pages never overwrite: overflowing boards go to a new panel/stencil page; each page exports its own ZIP with `date_in_*.txt`.
+- Excellon files with undeclared coordinate format are parsed after Gerbers and the candidate format (2:5/2:4/…) that best fits the board outline is chosen (`src/lib/gerber/load.ts`) — OrCAD drills often lack a format header.
+- Teacher bulk ZIP import (`src/lib/zipImport.ts`) reuses series/groups by name and updates students by folder name (`file_prefix`), so re-imports never duplicate; staff insert slots/submissions via `can_manage_group` policies.
+- `date_in_*.txt` uses GerbTool's exact "FOLDER X Y" syntax with no header; stencil geometry has independent X/Y pitch and an explicit top-row origin.
