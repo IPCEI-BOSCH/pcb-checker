@@ -38,7 +38,7 @@ export interface Layer {
   holes: Hole[];
   warnings: string[];
   /** Excellon coordinate format actually used (int:dec). */
-  fmt?: { int: number; dec: number };
+  fmt?: { int: number; dec: number; inch?: boolean };
 }
 
 export interface BBox {

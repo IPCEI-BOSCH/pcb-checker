@@ -220,7 +220,11 @@ export function parseExcellon(fileName: string, content: string, fitBox?: BBox |
   const declared = forced ?? excellonDeclaredFormat(content);
   if (declared) return parseExcellonWith(fileName, content, declared);
   const inch = /^(INCH|M72)/m.test(content);
-  const cands = inch ? [{ int: 2, dec: 5 }, { int: 2, dec: 4 }, { int: 2, dec: 3 }] : [{ int: 3, dec: 3 }, { int: 3, dec: 2 }, { int: 4, dec: 2 }];
+  const metricDecl = /^(METRIC|M71)/m.test(content);
+  const IN = [{ int: 2, dec: 5, inch: true }, { int: 2, dec: 4, inch: true }, { int: 2, dec: 3, inch: true }];
+  const MM = [{ int: 3, dec: 3, inch: false }, { int: 3, dec: 2, inch: false }, { int: 4, dec: 2, inch: false }];
+  // No unit header at all (bare OrCAD NC drill): inch candidates first, then metric.
+  const cands = inch ? IN : metricDecl ? MM : [...IN, ...MM];
   const box = fitBox ?? { minX: -1, minY: -1, maxX: 200, maxY: 200 };
   let best: Layer | null = null;
   let bestScore = -1;
@@ -231,15 +235,15 @@ export function parseExcellon(fileName: string, content: string, fitBox?: BBox |
     const score = inside / l.holes.length;
     if (score > bestScore + 1e-9) { best = l; bestScore = score; }
   }
-  best!.warnings.push(`Format coordonate dedus automat: ${best!.fmt?.int}:${best!.fmt?.dec}${inch ? " (inch)" : " (mm)"}`);
+  best!.warnings.push(`Format coordonate dedus automat: ${best!.fmt?.int}:${best!.fmt?.dec} (${best!.fmt?.inch ? "inch" : "mm"})`);
   return best!;
 }
 
-function parseExcellonWith(fileName: string, content: string, fmtIn: { int: number; dec: number }): Layer {
+function parseExcellonWith(fileName: string, content: string, fmtIn: { int: number; dec: number; inch?: boolean }): Layer {
   const holes: Hole[] = [];
   const warnings: string[] = [];
   const tools = new Map<number, number>();
-  let metric = true;
+  let metric = fmtIn.inch === undefined ? !/^(INCH|M72)/m.test(content) : !fmtIn.inch;
   const dec = fmtIn.dec;
   const int = fmtIn.int;
   let trailingZerosKept = false; // "LZ" means leading zeros kept => trailing omitted
@@ -251,7 +255,16 @@ function parseExcellonWith(fileName: string, content: string, fmtIn: { int: numb
   const lines = content.split(/\r?\n/);
   for (let raw of lines) {
     raw = raw.trim();
-    if (!raw || raw.startsWith(";")) continue;
+    if (!raw) continue;
+    if (raw.startsWith(";")) {
+      // OrCAD comment tool table: ";T01 Holesize 1. = 15.740000 ... PLATED MILS"
+      const ct = raw.match(/^;\s*T(\d+)\s+Holesize[^=]*=\s*([\d.]+).*?\b(MILS|MM|INCH)\b/i);
+      if (ct && !tools.has(+ct[1]!)) {
+        const v = parseFloat(ct[2]!); const u = ct[3]!.toUpperCase();
+        tools.set(+ct[1]!, u === "MILS" ? v * 0.0254 : u === "INCH" ? v * 25.4 : v);
+      }
+      continue;
+    }
     if (raw === "M48") {
       header = true;
       continue;
@@ -313,7 +326,7 @@ function parseExcellonWith(fileName: string, content: string, fmtIn: { int: numb
     holes.push({ x, y, d: d ?? 0 });
   }
   if (!holes.length) warnings.push("Fișier de găurire fără găuri");
-  return { fileName, kind: "drill", primitives: [], holes, warnings, fmt: { int, dec } };
+  return { fileName, kind: "drill", primitives: [], holes, warnings, fmt: { int, dec, inch: !metric } };
 }
 
 export function primitiveBBox(p: Primitive): BBox {
