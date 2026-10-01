@@ -2,12 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Database, Trash2 } from "lucide-react";
+import { Database, Eye, FileSpreadsheet, FolderInput, Play, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure } from "@/lib/data";
 import { deleteDemo, importDemo } from "@/lib/demo";
 import { FabricationSlots } from "@/components/FabricationSlots";
+import { ZipImportDialog } from "@/components/ZipImportDialog";
+import { exportSituatie, fetchSituatieRows, runBatchDrc } from "@/lib/situatie";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,11 +40,17 @@ function History() {
   const [seriesId, setSeriesId] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [autoCheck, setAutoCheck] = useState(false);
+  const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const s = structure.data;
   const years = s?.years ?? [];
   const series = s?.series.filter((x) => x.academic_year_id === yearId) ?? [];
-  const groups = useMemo(() => s?.groups.filter((g) => g.series_id === seriesId) ?? [], [s, seriesId]);
+  const ALL = "__ALL__";
+  const groups = useMemo(() => s?.groups.filter((g) => (seriesId === ALL ? series.some((x) => x.id === g.series_id) : g.series_id === seriesId)) ?? [], [s, seriesId, series.length]);
   const groupName = new Map(groups.map((g) => [g.id, g.name]));
+  const seriesOfGroup = new Map((s?.groups ?? []).map((g) => [g.id, g.series_id]));
+  const seriesName = new Map((s?.series ?? []).map((x) => [x.id, x.name]));
 
   /** Câți studenți are fiecare serie — folosit la preselecție și la etichetele din listă. */
   const counts = useQuery({
@@ -75,7 +85,7 @@ function History() {
   }, [s, counts.data, yearId, seriesId]);
 
   const rows = useQuery({
-    queryKey: ["history", seriesId],
+    queryKey: ["history", seriesId, yearId, groups.length],
     enabled: !!seriesId,
     queryFn: async () => {
       const ids = groups.map((g) => g.id);
@@ -83,7 +93,7 @@ function History() {
       const st = await supabase.from("students").select("*").in("group_id", ids).order("full_name");
       if (st.error) throw st.error;
       const sids = st.data.map((x) => x.id);
-      const subs = sids.length ? await supabase.from("submissions").select("student_id, drc_score, blocking_count, review_status, created_at").eq("kind", "OFFICIAL").in("student_id", sids).order("created_at", { ascending: false }) : { data: [] };
+      const subs = sids.length ? await supabase.from("submissions").select("id, student_id, zip_path, drc_score, blocking_count, review_status, created_at").eq("kind", "OFFICIAL").in("student_id", sids).order("created_at", { ascending: false }) : { data: [] };
       const last = new Map<string, NonNullable<typeof subs.data>[number]>();
       for (const x of subs.data ?? []) if (!last.has(x.student_id)) last.set(x.student_id, x);
       return st.data.map((x) => ({ ...x, sub: last.get(x.id) }));
@@ -103,12 +113,31 @@ function History() {
 
 
 
+  const runAll = async () => {
+    const targets = (rows.data ?? []).filter((r) => r.sub?.zip_path).map((r) => ({
+      submissionId: r.sub!.id, zipPath: r.sub!.zip_path!, variant: r.variant, seriesId: seriesOfGroup.get(r.group_id) ?? null, label: r.full_name,
+    }));
+    if (!targets.length) return void toast.info("Nu există predări oficiale în selecție.");
+    const errors = await runBatchDrc(targets, (done, total, label) => setBatch({ done, total, label }));
+    setBatch(null);
+    qc.invalidateQueries({ queryKey: ["history"] });
+    if (errors.length) toast.warning(`${errors.length} proiecte cu erori: ${errors.slice(0, 2).join("; ")}`);
+    toast.success(`DRC rulat pe ${targets.length - errors.length} proiecte.`);
+  };
+
+  const exportXlsx = async () => {
+    try {
+      const list = await fetchSituatieRows(groups.map((g) => g.id));
+      exportSituatie(list, `P1DCE_SITUATIE_${years.find((y) => y.id === yearId)?.name ?? ""}_${seriesId === ALL ? "toate" : seriesName.get(seriesId) ?? ""}.xlsx`.replace(/\s+/g, "_"));
+    } catch (e) { toast.error((e as Error).message); }
+  };
+
   const exportCsv = () => {
     const head = ["Grupa", "Folder", "Student", "Tema", "N", "Varianta", "Scor DRC", "Erori blocante", "Intră în FAB?", "Nota schemă", "Nota doc", "Nota finală"];
     const lines = (rows.data ?? []).map((r) => [groupName.get(r.group_id), r.file_prefix, r.full_name, r.theme_name, r.theme_number, r.variant, r.sub?.drc_score, r.sub?.blocking_count, r.sub?.review_status === "approved" ? "DA" : "NU", r.grade_schema, r.grade_doc, r.grade_final].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(["\ufeff" + [head.join(","), ...lines].join("\n")], { type: "text/csv" }));
-    a.download = `Situatie_${years.find((y) => y.id === yearId)?.name}_${series.find((x) => x.id === seriesId)?.name}.csv`;
+    a.download = `Situatie_${years.find((y) => y.id === yearId)?.name}_${seriesId === ALL ? "toate" : seriesName.get(seriesId)}.csv`;
     a.click();
   };
 
@@ -119,9 +148,12 @@ function History() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Istoric pe ani universitari</h1>
-        <p className="text-sm text-muted-foreground">Alegeți anul și seria pentru a vedea situația, fișierele și rezultatele DRC.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Istoric pe ani universitari</h1>
+          <p className="text-sm text-muted-foreground">Alegeți anul și seria (sau toate seriile) pentru situație, fișiere și DRC. Click pe numele studentului deschide vizualizarea Gerber.</p>
+        </div>
+        {(has("admin") || has("series_manager")) && <Button variant="secondary" onClick={() => setImportOpen(true)}><FolderInput className="mr-2 h-4 w-4" /> Arhivează proiecte din ZIP</Button>}
       </div>
 
       {has("admin") && (
@@ -142,10 +174,25 @@ function History() {
         </Select>
         <Select value={seriesId} onValueChange={setSeriesId} disabled={!yearId}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Serie" /></SelectTrigger>
-          <SelectContent>{series.map((x) => <SelectItem key={x.id} value={x.id}>Seria {x.name} · {counts.data?.get(x.id) ?? 0} proiecte</SelectItem>)}</SelectContent>
+          <SelectContent>
+            <SelectItem value={ALL}>Toate seriile din an</SelectItem>
+            {series.map((x) => <SelectItem key={x.id} value={x.id}>Seria {x.name} · {counts.data?.get(x.id) ?? 0} proiecte</SelectItem>)}
+          </SelectContent>
         </Select>
-        {!!rows.data?.length && <Button variant="secondary" onClick={exportCsv}>Exportă situația (CSV)</Button>}
+        {!!rows.data?.length && (
+          <>
+            <Button onClick={runAll} disabled={!!batch}><Play className="mr-2 h-4 w-4" /> Rulează DRC pentru toți ({rows.data.length})</Button>
+            <Button variant="secondary" onClick={exportXlsx}><FileSpreadsheet className="mr-2 h-4 w-4" /> Exportă situația Excel</Button>
+            <Button variant="ghost" onClick={exportCsv}>CSV</Button>
+          </>
+        )}
       </div>
+      {batch && (
+        <div className="space-y-1">
+          <Progress value={(batch.done / Math.max(1, batch.total)) * 100} />
+          <p className="text-xs text-muted-foreground">DRC {batch.done}/{batch.total}{batch.label ? ` · ${batch.label}` : ""}</p>
+        </div>
+      )}
 
       {!!rows.data?.length && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -179,16 +226,22 @@ function History() {
                   <Fragment key={r.id}>
                     <TableRow key={r.id}>
                       <TableCell>{groupName.get(r.group_id)}</TableCell>
-                      <TableCell><div className="font-medium">{r.full_name}</div><div className="font-mono text-xs text-muted-foreground">{r.file_prefix}</div></TableCell>
+                      <TableCell>
+                        <button type="button" className="text-left font-medium underline-offset-2 hover:underline" onClick={() => { setAutoCheck(true); setOpen(r.id); }}>{r.full_name}</button>
+                        <div className="font-mono text-xs text-muted-foreground">{r.file_prefix}</div>
+                      </TableCell>
                       <TableCell>{r.theme_name ?? "—"} · N{r.theme_number ?? "?"}</TableCell>
                       <TableCell>{r.sub ? <span>{Number(r.sub.drc_score).toFixed(0)} · <span className="text-muted-foreground">{r.sub.blocking_count} blocante</span></span> : "—"}</TableCell>
-                      <TableCell><Badge variant={r.sub?.review_status === "approved" ? "default" : "secondary"}>{r.sub?.review_status === "approved" ? "DA" : "NU"}</Badge></TableCell>
+                      <TableCell><Badge variant={r.sub?.review_status === "approved" ? "default" : "secondary"} className={cn(r.sub?.review_status === "approved" && "bg-success text-success-foreground")}>{r.sub?.review_status === "approved" ? "DA" : "NU"}</Badge></TableCell>
                       <TableCell>{r.grade_final ?? "—"}</TableCell>
-                      <TableCell><Button size="sm" variant="ghost" onClick={() => setOpen(open === r.id ? null : r.id)}>{open === r.id ? "Închide" : "Fișiere"}</Button></TableCell>
+                      <TableCell className="whitespace-nowrap text-right">
+                        <Button size="sm" variant="secondary" onClick={() => { setAutoCheck(true); setOpen(r.id); }}><Eye className="mr-1 h-4 w-4" /> Gerber</Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setAutoCheck(false); setOpen(open === r.id ? null : r.id); }}>{open === r.id ? "Închide" : "Fișiere"}</Button>
+                      </TableCell>
                     </TableRow>
                     {open === r.id && (
                       <TableRow key={r.id + "-d"}><TableCell colSpan={7}>
-                        <FabricationSlots studentId={r.id} userId={user.id} canUpload={false} seriesId={seriesId} variant={r.variant} />
+                        <FabricationSlots key={`${r.id}-${autoCheck}`} studentId={r.id} userId={user.id} canUpload={false} seriesId={seriesOfGroup.get(r.group_id) ?? null} variant={r.variant} autoCheck={autoCheck} />
                       </TableCell></TableRow>
                     )}
                   </Fragment>
@@ -198,6 +251,7 @@ function History() {
           </CardContent>
         </Card>
       )}
+      <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => qc.invalidateQueries()} />
     </div>
   );
 }

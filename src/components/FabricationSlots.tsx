@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import JSZip from "jszip";
@@ -34,9 +34,9 @@ const matchSlot = (name: string): SlotKey | null => {
   return s ? s.key : null;
 };
 
-interface Props { studentId: string; userId: string; canUpload: boolean; seriesId: string | null; variant: "SMT" | "THT" }
+interface Props { studentId: string; userId: string; canUpload: boolean; seriesId: string | null; variant: "SMT" | "THT"; autoCheck?: boolean }
 
-export function FabricationSlots({ studentId, userId, canUpload, seriesId, variant }: Props) {
+export function FabricationSlots({ studentId, userId, canUpload, seriesId, variant, autoCheck }: Props) {
   const qc = useQueryClient();
   const sync = useServerFn(syncToDrive);
   const zipRef = useRef<HTMLInputElement>(null);
@@ -115,6 +115,12 @@ export function FabricationSlots({ studentId, userId, canUpload, seriesId, varia
     } catch (e) { toast.error((e as Error).message); }
     finally { setBusy(null); }
   };
+
+  const [autoDone, setAutoDone] = useState(false);
+  useEffect(() => {
+    if (autoCheck && !autoDone && slots.data?.length) { setAutoDone(true); void check(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCheck, autoDone, slots.data]);
 
   const download = async () => {
     const blob = await buildZip();
