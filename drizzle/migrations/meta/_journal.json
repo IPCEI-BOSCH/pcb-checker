@@ -43,6 +43,13 @@
       "when": 1790847154650,
       "tag": "0005_tighten_read_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790849650946,
+      "tag": "0006_staff_import_policies",
+      "breakpoints": true
     }
   ]
 }
