@@ -8,10 +8,12 @@ export function classifyLayer(fileName: string, content: string): LayerKind {
   const stem = n.replace(/\.[^.]+$/, "");
   const CETTI: Record<string, LayerKind> = {
     top: "top_copper", bottom: "bottom_copper", bot: "bottom_copper", smtop: "top_mask", smbot: "bottom_mask",
-    sstop: "top_silk", ssbot: "bottom_silk", sptop: "top_paste", spbot: "bottom_paste", bo: "outline", fab: "unknown",
+    sstop: "top_silk", ssbot: "bottom_silk", sptop: "top_paste", spbot: "bottom_paste", bo: "outline", fab: "fabrication", mech: "fabrication", mechanical: "fabrication", assy: "fabrication",
   };
   if (CETTI[stem]) return CETTI[stem]!;
   const has = (...keys: string[]) => keys.some((k) => n.includes(k));
+  if (/drl_map|drill_map|-job\.gbrjob/.test(n)) return "fabrication";
+  if (has("fab", "fabrication", "assembly", "dwgs", "user.drawings", "drawing") || /\.(fab|gm2|gm3|gd1|gg1)$/.test(n)) return "fabrication";
   if (has("paste") || /\.(gtp|crc)$/.test(n)) return n.includes("b_") || n.includes("bot") || n.endsWith(".gbp") ? "bottom_paste" : "top_paste";
   if (/\.gbp$/.test(n)) return "bottom_paste";
   if (has("mask", "sstop", "smtop", "smbot") || /\.(gts|gbs|stc|sts)$/.test(n)) {
@@ -200,13 +202,46 @@ export function parseGerber(fileName: string, content: string, kind: LayerKind):
   return { fileName, kind, primitives, holes: [], warnings };
 }
 
-export function parseExcellon(fileName: string, content: string): Layer {
+/** Detect Excellon integer:decimal format; returns null when it must be inferred. */
+function excellonDeclaredFormat(content: string): { int: number; dec: number } | null {
+  const m = content.match(/FILE_FORMAT\s*=\s*(\d):(\d)/i) ?? content.match(/FORMAT\s*\{?\s*(\d):(\d)/i);
+  if (m) return { int: +m[1]!, dec: +m[2]! };
+  const f = content.match(/^(?:METRIC|INCH)\s*,\s*(?:LZ|TZ)\s*,\s*(0+)\.(0+)/im);
+  if (f) return { int: f[1]!.length, dec: f[2]!.length };
+  return null;
+}
+
+/**
+ * Parse Excellon. When the decimal count is not declared (e.g. OrCAD "INCH,TZ"),
+ * candidate formats 2:5 / 2:4 / 2:3 (inch) or 3:3 / 3:2 / 4:2 (metric) are tried and the one
+ * whose holes best fit `fitBox` (board outline, mm) — or a 0..200 mm window — is kept.
+ */
+export function parseExcellon(fileName: string, content: string, fitBox?: BBox | null, forced?: { int: number; dec: number }): Layer {
+  const declared = forced ?? excellonDeclaredFormat(content);
+  if (declared) return parseExcellonWith(fileName, content, declared);
+  const inch = /^(INCH|M72)/m.test(content);
+  const cands = inch ? [{ int: 2, dec: 5 }, { int: 2, dec: 4 }, { int: 2, dec: 3 }] : [{ int: 3, dec: 3 }, { int: 3, dec: 2 }, { int: 4, dec: 2 }];
+  const box = fitBox ?? { minX: -1, minY: -1, maxX: 200, maxY: 200 };
+  let best: Layer | null = null;
+  let bestScore = -1;
+  for (const c of cands) {
+    const l = parseExcellonWith(fileName, content, c);
+    if (!l.holes.length) return l;
+    const inside = l.holes.filter((h) => h.x >= box.minX - 0.5 && h.x <= box.maxX + 0.5 && h.y >= box.minY - 0.5 && h.y <= box.maxY + 0.5).length;
+    const score = inside / l.holes.length;
+    if (score > bestScore + 1e-9) { best = l; bestScore = score; }
+  }
+  best!.warnings.push(`Format coordonate dedus automat: ${best!.fmt?.int}:${best!.fmt?.dec}${inch ? " (inch)" : " (mm)"}`);
+  return best!;
+}
+
+function parseExcellonWith(fileName: string, content: string, fmtIn: { int: number; dec: number }): Layer {
   const holes: Hole[] = [];
   const warnings: string[] = [];
   const tools = new Map<number, number>();
   let metric = true;
-  let dec = 3;
-  let int = 3;
+  const dec = fmtIn.dec;
+  const int = fmtIn.int;
   let trailingZerosKept = false; // "LZ" means leading zeros kept => trailing omitted
   let lzMode = false;
   let tool = 0;
@@ -216,14 +251,7 @@ export function parseExcellon(fileName: string, content: string): Layer {
   const lines = content.split(/\r?\n/);
   for (let raw of lines) {
     raw = raw.trim();
-    if (!raw || raw.startsWith(";")) {
-      const fm = raw.match(/FORMAT\s*\{?(\d):(\d)/i);
-      if (fm) {
-        int = +fm[1]!;
-        dec = +fm[2]!;
-      }
-      continue;
-    }
+    if (!raw || raw.startsWith(";")) continue;
     if (raw === "M48") {
       header = true;
       continue;
@@ -236,25 +264,15 @@ export function parseExcellon(fileName: string, content: string): Layer {
       metric = true;
       if (raw.includes("LZ")) lzMode = true;
       if (raw.includes("TZ")) trailingZerosKept = true;
-      const f = raw.match(/0+\.0+/);
-      if (f) {
-        const [a = "", b = ""] = f[0].split(".");
-        int = a.length;
-        dec = b.length;
-      } else if (!raw.includes("M71")) {
-        int = 3;
-        dec = 3;
-      }
       continue;
     }
     if (/^(INCH|M72)/.test(raw)) {
       metric = false;
       if (raw.includes("LZ")) lzMode = true;
       if (raw.includes("TZ")) trailingZerosKept = true;
-      int = 2;
-      dec = 4;
       continue;
     }
+    if (/^(FMAT|G90|G05|ICI,OFF|VER)/.test(raw)) continue;
     const tdef = raw.match(/^T(\d+)(?:F\d+)?(?:S\d+)?C([\d.]+)/);
     if (tdef) {
       tools.set(+tdef[1]!, parseFloat(tdef[2]!) * (metric ? 1 : 25.4));
@@ -295,7 +313,7 @@ export function parseExcellon(fileName: string, content: string): Layer {
     holes.push({ x, y, d: d ?? 0 });
   }
   if (!holes.length) warnings.push("Fișier de găurire fără găuri");
-  return { fileName, kind: "drill", primitives: [], holes, warnings };
+  return { fileName, kind: "drill", primitives: [], holes, warnings, fmt: { int, dec } };
 }
 
 export function primitiveBBox(p: Primitive): BBox {
