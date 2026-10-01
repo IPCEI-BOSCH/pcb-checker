@@ -34,3 +34,8 @@
 - [x] Google Sheets: Creează foaie nouă / Deschide (Catalog + Reguli)
 - [x] Stencil A3: pas X 40 mm, pas Y 50 mm, origine (20, 310), folie 300×400; date_in în sintaxa GerbTool „FOLDER X Y"
 - [x] Mod luminos
+
+## Etapa 5 — Testare reguli (livrat)
+- [x] Tab „Testare reguli": diferențe față de regulile active, proiecte predate sau ZIP-uri locale, DRC vechi vs nou, impact per regulă
+- [x] Confirmare manuală Corect/Greșit per proiect, vizualizare Gerber, activare doar după confirmare (justificare dacă există „Greșit")
+- [x] Istoric teste salvat; Salvează / propunerea AI trimit spre testare; admin poate salva fără test
