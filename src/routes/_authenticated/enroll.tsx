@@ -50,7 +50,8 @@ function Enroll() {
           <p>Status: {me.data.status === "approved" ? "validat de îndrumător" : "în așteptarea validării"}.</p>
           <p>Pentru mutarea în altă grupă sau schimbarea variantei, contactează îndrumătorul.</p>
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     );
   }
 
