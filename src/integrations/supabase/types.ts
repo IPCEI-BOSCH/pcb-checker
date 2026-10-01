@@ -288,6 +288,59 @@ export type Database = {
           },
         ]
       }
+      rule_test_runs: {
+        Row: {
+          activated: boolean
+          baseline: Json | null
+          candidate: Json
+          confirmed_count: number
+          created_at: string
+          id: string
+          note: string | null
+          project_count: number
+          rejected_count: number
+          results: Json
+          series_id: string | null
+          tested_by: string
+        }
+        Insert: {
+          activated?: boolean
+          baseline?: Json | null
+          candidate: Json
+          confirmed_count?: number
+          created_at?: string
+          id?: string
+          note?: string | null
+          project_count?: number
+          rejected_count?: number
+          results?: Json
+          series_id?: string | null
+          tested_by: string
+        }
+        Update: {
+          activated?: boolean
+          baseline?: Json | null
+          candidate?: Json
+          confirmed_count?: number
+          created_at?: string
+          id?: string
+          note?: string | null
+          project_count?: number
+          rejected_count?: number
+          results?: Json
+          series_id?: string | null
+          tested_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_test_runs_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       series: {
         Row: {
           academic_year_id: string
