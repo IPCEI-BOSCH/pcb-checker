@@ -289,8 +289,8 @@ function Cam() {
               <Field label="Rânduri"><Input type="number" min={1} value={cfg.rows} onChange={(e) => setCfg({ ...cfg, rows: Math.max(1, +e.target.value) })} /></Field>
               <Field label="Pas (mm)"><Input type="number" step="0.001" value={cfg.pitch} onChange={(e) => setCfg({ ...cfg, pitch: +e.target.value })} /></Field>
               <Field label="Ramă (mm)"><Input type="number" step="0.5" value={cfg.rail} onChange={(e) => setCfg({ ...cfg, rail: +e.target.value })} /></Field>
-              <div className="flex items-center gap-2 pt-6"><Switch checked={cfg.fiducials} onCheckedChange={(v) => setCfg({ ...cfg, fiducials: v })} /><span className="text-sm">Fiduciali</span></div>
-              <div className="flex items-center gap-2 pt-6"><Switch checked={cfg.coupons} onCheckedChange={(v) => setCfg({ ...cfg, coupons: v })} /><span className="text-sm">Cupoane test</span></div>
+              <div className="flex items-center gap-2 pt-6"><Switch checked={cfg.fiducials} aria-label="Fiduciali pe panou" onCheckedChange={(v) => setCfg({ ...cfg, fiducials: v })} /><span className="text-sm">Fiduciali</span></div>
+              <div className="flex items-center gap-2 pt-6"><Switch checked={cfg.coupons} aria-label="Cupoane de test pe panou" onCheckedChange={(v) => setCfg({ ...cfg, coupons: v })} /><span className="text-sm">Cupoane test</span></div>
               <div className="pt-6 text-sm text-muted-foreground">Panou: <span className="font-mono text-foreground">{size.width.toFixed(2)} × {size.height.toFixed(2)} mm</span></div>
             </CardContent>
           </Card>
@@ -321,7 +321,7 @@ function Cam() {
           </SelectContent>
         </Select>
         <Button onClick={pullDrive} disabled={!!busy}><Cloud className="mr-2 h-4 w-4" /> Preia din Google Drive</Button>
-        <div className="flex items-center gap-2"><Switch checked={onlyApproved} onCheckedChange={setOnlyApproved} /><span className="text-sm">Doar aprobate</span></div>
+        <div className="flex items-center gap-2"><Switch checked={onlyApproved} aria-label="Include doar proiectele aprobate" onCheckedChange={setOnlyApproved} /><span className="text-sm">Doar aprobate</span></div>
         <Button variant="secondary" onClick={autoFill} disabled={!!busy}><Layers className="mr-2 h-4 w-4" /> {onlyApproved ? "Adaugă proiectele aprobate" : "Adaugă toate predările"} ({(approved.data ?? []).filter((c) => mode === "panel" || c.variant === "SMT").length})</Button>
         <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={!!busy}><Upload className="mr-2 h-4 w-4" /> Arhive manuale</Button>
         <input ref={uploadRef} type="file" accept=".zip" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) uploadBoards(e.target.files); e.target.value = ""; }} />

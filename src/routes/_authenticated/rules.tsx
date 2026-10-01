@@ -206,8 +206,8 @@ function RulesPage() {
                       <SelectItem value="info">Informativ</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Switch checked={p.enabled} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, enabled: v } } }))} />
-                  <Switch checked={p.smtOnly} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, smtOnly: v } } }))} />
+                  <Switch checked={p.enabled} aria-label={`Regulă activă: ${TITLES[code] ?? code}`} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, enabled: v } } }))} />
+                  <Switch checked={p.smtOnly} aria-label={`Doar SMT: ${TITLES[code] ?? code}`} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, smtOnly: v } } }))} />
                 </div>
               ))}
               <p className="mt-3 text-xs text-muted-foreground">Scorul = 100 − suma penalizărilor regulilor picate. Regulile blocante împiedică predarea oficială.</p>
@@ -226,7 +226,7 @@ function RulesPage() {
                     <div key={k} className="grid grid-cols-[1fr_8rem] items-center gap-3">
                       <Label className="text-sm">{CAM_FIELDS[k].label}{CAM_FIELDS[k].unit && <span className="text-muted-foreground"> ({CAM_FIELDS[k].unit})</span>}</Label>
                       {typeof v === "boolean"
-                        ? <Switch checked={v} onCheckedChange={(x) => setCam(k, x)} />
+                        ? <Switch checked={v} aria-label={CAM_FIELDS[k].label} onCheckedChange={(x) => setCam(k, x)} />
                         : <Input type="number" step={CAM_FIELDS[k].step} value={v} onChange={(e) => setCam(k, num(e.target.value))} className="font-mono" />}
                     </div>
                   );
