@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import { toast } from "sonner";
-import { Download, Grid3x3, Layers, Plus, Printer, Trash2, Upload } from "lucide-react";
+import { Cloud, Download, Grid3x3, Layers, Plus, Printer, Trash2, Upload } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { fetchDriveLayout, listDriveLayouts } from "@/lib/drive.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit } from "@/lib/data";
@@ -52,6 +54,11 @@ function Cam() {
   const [pages, setPages] = useState<Record<Mode, Page[]>>({ panel: [[]], stencil: [[]] });
   const [active, setActive] = useState<Record<Mode, number>>({ panel: 0, stencil: 0 });
   const [busy, setBusy] = useState<string | null>(null);
+  const [onlyApproved, setOnlyApproved] = useState(true);
+  const driveData = useRef<Record<string, { series: string; group: string; folder: string; files: { name: string; b64: string }[] }>>({});
+  const driveReport = useRef("");
+  const listLayouts = useServerFn(listDriveLayouts);
+  const fetchLayout = useServerFn(fetchDriveLayout);
 
   const allowed = has("admin", "series_manager", "cam_tech", "instructor");
   const structure = useQuery({ queryKey: ["structure"], queryFn: fetchStructure });
@@ -156,6 +163,43 @@ function Cam() {
     appendKeys(keys);
   };
 
+  /** Pulls Layout/ folders straight from each student's Google Drive folder for the selected series (or all). */
+  const pullDrive = async () => {
+    const groupIds = (structure.data?.groups ?? []).filter((g) => !g.is_archived && (!seriesId || g.series_id === seriesId)).map((g) => g.id);
+    if (!groupIds.length) return void toast.info("Nu există grupe în selecție.");
+    setBusy("Se citesc folderele din Google Drive…");
+    try {
+      const list = await listLayouts({ data: { groupIds } });
+      const placed = new Set(modePages.flat().filter(Boolean));
+      const report: string[] = [`Preluare Drive ${new Date().toLocaleString("ro-RO")} — ${mode === "panel" ? "PANOU" : "STENCIL"}`, ""];
+      const keys: string[] = [];
+      for (const s of list) {
+        const key = `drive:${s.studentId}`;
+        const why = !s.folderName ? "fără folder în Drive"
+          : s.missing.length ? `lipsesc: ${s.missing.join(", ")}`
+          : onlyApproved && s.review !== "approved" ? `neaprobat (${s.review ?? "nepredat"})`
+          : mode === "stencil" && s.variant !== "SMT" ? "THT — nu intră pe stencil"
+          : placed.has(key) ? "deja plasat" : null;
+        if (why) { report.push(`EXCLUS  ${s.group}  ${s.name}: ${why}`); continue; }
+        setBusy(`Se descarcă ${s.folderName}…`);
+        const { files } = await fetchLayout({ data: { studentId: s.studentId } });
+        const zip = new JSZip();
+        files.forEach((f) => zip.file(f.name, f.b64, { base64: true }));
+        const layers = await loadGerberZip(await zip.generateAsync({ type: "blob" }));
+        const g = structure.data?.groups.find((x) => x.name === s.group);
+        const ser = structure.data?.series.find((x) => x.id === g?.series_id)?.name ?? "Serie";
+        driveData.current[key] = { series: ser.replace(/\s+/g, "_"), group: s.group, folder: s.folderName!, files };
+        setBoards((b) => ({ ...b, [key]: { label: s.folderName!, layers } }));
+        keys.push(key);
+        report.push(`INCLUS  ${s.group}  ${s.folderName}`);
+      }
+      driveReport.current = report.join("\r\n");
+      appendKeys(keys);
+      toast.success(`${keys.length} proiecte preluate din Drive, ${list.length - keys.length} excluse (vezi raportul din arhivă).`);
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setBusy(null); }
+  };
+
   const removeAt = (i: number) => setPages((p) => ({ ...p, [mode]: p[mode].map((pg, j) => (j === pageIdx ? pg.map((k, x) => (x === i ? null : k)) : pg)) }));
 
   const pageName = (m: Mode, i: number) => `${m === "panel" ? cfg.name : scfg.name}-${i + 1}`;
@@ -180,6 +224,18 @@ function Cam() {
         });
         res.warnings.forEach((w) => toast.warning(w));
       }
+      // Original student folders, CETTI structure: PROIECTE/<Serie>/<Grupa>/<Folder>/Layout/*
+      const placedKeys = new Set(list.flatMap((x) => modePages[x.i]).filter(Boolean) as string[]);
+      const folders: string[] = [];
+      for (const k of placedKeys) {
+        const d = driveData.current[k];
+        if (!d) continue;
+        const base = `PROIECTE/${d.series}/${d.group}/${d.folder}/Layout`;
+        folders.push(`${d.series}/${d.group}/${d.folder}`);
+        for (const f of d.files) master.file(`${base}/${f.name}`, f.b64, { base64: true });
+      }
+      if (folders.length) master.file("PROIECTE/lista_foldere.txt", folders.sort().join("\r\n"));
+      if (driveReport.current) master.file("RAPORT_PRELUARE_DRIVE.txt", driveReport.current);
       const blob = await master.generateAsync({ type: "blob" });
       download(blob, `${mode === "panel" ? "PANOURI" : "STENCILE"}-${new Date().toISOString().slice(0, 10)}.zip`);
       await logAudit(user.id, mode === "panel" ? "CAM_PANEL" : "CAM_STENCIL", "series", seriesId || null, { pages: list.length });
@@ -263,6 +319,8 @@ function Cam() {
             {structure.data?.series.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Button onClick={pullDrive} disabled={!!busy}><Cloud className="mr-2 h-4 w-4" /> Preia din Google Drive</Button>
+        <div className="flex items-center gap-2"><Switch checked={onlyApproved} onCheckedChange={setOnlyApproved} /><span className="text-sm">Doar aprobate</span></div>
         <Button variant="secondary" onClick={autoFill} disabled={!!busy}><Layers className="mr-2 h-4 w-4" /> Adaugă proiectele aprobate ({(approved.data ?? []).filter((c) => mode === "panel" || c.variant === "SMT").length})</Button>
         <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={!!busy}><Upload className="mr-2 h-4 w-4" /> Arhive manuale</Button>
         <input ref={uploadRef} type="file" accept=".zip" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) uploadBoards(e.target.files); e.target.value = ""; }} />
