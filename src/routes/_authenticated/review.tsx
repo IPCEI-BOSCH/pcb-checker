@@ -50,7 +50,7 @@ function Review() {
   const [studentId, setStudentId] = useState<string>(ALL);
   const [variantFilter, setVariantFilter] = useState<"ALL" | "SMT" | "THT">("ALL");
   const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
-  const [view, setView] = useState<{ name: string; report: DrcReport; layers: Layer[] | null } | null>(null);
+  const [view, setView] = useState<{ name: string; report: DrcReport; layers: Layer[] | null; meta?: import("@/lib/drc/evaluationSheet").EvaluationMeta } | null>(null);
   const [reject, setReject] = useState<{ sub: Sub; name: string } | null>(null);
   const [reason, setReason] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -141,7 +141,7 @@ function Review() {
     qc.invalidateQueries({ queryKey: ["review"] });
   };
 
-  const openReport = async (name: string, sub: Sub, variant: "SMT" | "THT", sid: string | null) => {
+  const openReport = async (name: string, sub: Sub, variant: "SMT" | "THT", sid: string | null, st?: { group_id: string; theme_name: string | null; theme_number: number | null; file_prefix: string | null }) => {
     if (!sub.zip_path) return void toast.error("Predarea nu are arhivă Gerber.");
     const t = toast.loading("Se încarcă fișierele Gerber…");
     try {
@@ -150,7 +150,13 @@ function Review() {
       const layers = await loadGerberZip(dl.data);
       // Always re-evaluate with the current parser/settings so the viewer and the report agree.
       const report = runDrc(layers, variant, await fetchSettings(sid));
-      setView({ name, report, layers });
+      const seriesName = s?.series.find((x) => x.id === sid)?.name;
+      setView({ name, report, layers, meta: {
+        student: name, group: st ? groupName.get(st.group_id) : undefined, series: seriesName,
+        theme: st ? `${st.theme_name ?? ""}${st.theme_number != null ? ` (N${st.theme_number})` : ""}`.trim() || undefined : undefined,
+        submittedAt: `${new Date(sub.created_at).toLocaleString("ro-RO")} · v${sub.revision} (${variant})`,
+        archive: sub.zip_path.split("/").pop(),
+      } });
     } catch (e) { toast.error((e as Error).message); }
     finally { toast.dismiss(t); }
   };
@@ -254,6 +260,7 @@ function Review() {
                     <TableHead>Variantă</TableHead>
                     <TableHead>Temă</TableHead>
                     <TableHead>Self-check</TableHead>
+                    <TableHead>Predat</TableHead>
                     <TableHead>Scor DRC</TableHead>
                     <TableHead>Deficiențe cheie</TableHead>
                     <TableHead>Intră în FAB?</TableHead>
@@ -272,7 +279,7 @@ function Review() {
                       <TableRow key={st.id} className={cn(status === "approved" && "bg-success/5", status === "rejected" && "bg-destructive/5")}>
                         <TableCell>
                           {official?.zip_path
-                            ? <button type="button" className="text-left font-medium text-foreground underline-offset-2 hover:underline" onClick={() => openReport(st.full_name, official, st.variant, sid)}>{st.full_name}</button>
+                            ? <button type="button" className="text-left font-medium text-foreground underline-offset-2 hover:underline" onClick={() => openReport(st.full_name, official, st.variant, sid, st)}>{st.full_name}</button>
                             : <div className="font-medium text-foreground">{st.full_name}</div>}
                           <div className="font-mono text-[11px] text-muted-foreground">{st.file_prefix ?? st.email}</div>
                           {st.status === "pending" && (
@@ -283,6 +290,7 @@ function Review() {
                         <TableCell>{st.variant}</TableCell>
                         <TableCell className="text-sm">{st.theme_name ?? "—"}{st.theme_number != null ? ` · N${st.theme_number}` : ""}</TableCell>
                         <TableCell className="font-mono text-sm">{selfCount}</TableCell>
+                        <TableCell className="whitespace-nowrap font-mono text-xs">{official ? <>{new Date(official.created_at).toLocaleString("ro-RO", { dateStyle: "short", timeStyle: "short" })}<div className="text-muted-foreground">v{official.revision}</div></> : "—"}</TableCell>
                         <TableCell className="font-mono">{official?.drc_score != null ? `${Number(official.drc_score)}` : "—"}</TableCell>
                         <TableCell className="max-w-[220px] text-xs text-muted-foreground">{official ? key || (official.report ? "—" : "DRC nerulat") : "Fără predare"}</TableCell>
                         <TableCell>
@@ -295,7 +303,7 @@ function Review() {
                         <TableCell className="text-right">
                           {official && (
                             <div className="flex justify-end gap-1">
-                              <Button size="sm" variant="secondary" onClick={() => openReport(st.full_name, official, st.variant, sid)}><Eye className="mr-1 h-4 w-4" /> Vizualizează Gerber</Button>
+                              <Button size="sm" variant="secondary" onClick={() => openReport(st.full_name, official, st.variant, sid, st)}><Eye className="mr-1 h-4 w-4" /> Vizualizează Gerber</Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -341,7 +349,7 @@ function Review() {
       <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
         <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
           <DialogHeader><DialogTitle>Gerber & DRC — {view?.name}</DialogTitle></DialogHeader>
-          {view && <DrcReportView report={view.report} layers={view.layers} meta={{ student: view.name }} />}
+          {view && <DrcReportView report={view.report} layers={view.layers} meta={view.meta ?? { student: view.name }} />}
         </DialogContent>
       </Dialog>
 
