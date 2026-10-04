@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS, type Settings } from "./settings";
-import { layerBBox, primitiveBBox } from "../gerber/parser";
+import { layerBBox, outlineBBox, primitiveBBox } from "../gerber/parser";
 import type { BBox, Layer, LayerKind, Primitive } from "../gerber/types";
 
 export type Severity = "blocking" | "warning" | "info";
@@ -244,7 +244,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   else note("DRL_COUNT", `${drills[0]!.fileName} — ${holes.length} găuri.`);
 
   // Board box
-  let board: BBox | null = outline ? layerBBox(outline, true) : null;
+  let board: BBox | null = outline ? outlineBBox(outline) : null;
   if (!board && top) board = layerBBox(top);
   let boardInfo: DrcReport["board"] = null;
   if (board) {
