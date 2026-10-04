@@ -26,3 +26,4 @@
 - Rule changes are activated through the sandbox (`src/components/RuleSandbox.tsx`), which runs baseline vs candidate DRC and requires manual per-project confirmation; runs are stored in `rule_test_runs` — keeps rule edits auditable and evidence-based.
 - DRC scoring: per rule `points + perIssue × extra occurrences`, capped by `cap`; rules flagged `critical` cap the total score at `rules.criticalScoreCap` and force "respins" — all values live in `drc_settings`, student explanations in `src/lib/drc/catalog.ts`.
 - CAM board/pitch are derived from DRC board width/height via `deriveCam` when `cam.autoFromBoard` is on — one board size drives DRC, panel and stencil.
+- Board size comes from the largest closed loop in the outline layer (`outlineBBox`), and layer names are matched on whole tokens so prefixed student files classify correctly — dimension text and name prefixes caused false rejections.
