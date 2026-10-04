@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Eye, EyeOff, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import { Eye, EyeOff, Layers, Maximize2, Ruler, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { layerBBox } from "@/lib/gerber/parser";
-import { LAYER_COLORS, LAYER_LABELS, LAYER_ORDER, type BBox, type Layer } from "@/lib/gerber/types";
+import { LAYER_COLORS, LAYER_LABELS, LAYER_ORDER, type BBox, type Layer, type LayerKind } from "@/lib/gerber/types";
 import type { DrcIssue } from "@/lib/drc/engine";
 import { REMEDIES, type CadTool } from "@/lib/drc/remedies";
 
@@ -17,6 +17,14 @@ interface Props {
 
 type LayerState = { visible: boolean; opacity: number };
 
+const PAIRS: { label: string; kinds: LayerKind[]; hint: string }[] = [
+  { label: "TOP + DRILL", kinds: ["top_copper", "drill", "outline"], hint: "Găuri pe pad-uri, inel anular" },
+  { label: "TOP + SMTOP", kinds: ["top_copper", "top_mask", "outline"], hint: "Deschideri mască pe pad-uri" },
+  { label: "TOP + SPTOP", kinds: ["top_copper", "top_paste", "outline"], hint: "Pastă pe pad-urile SMD" },
+  { label: "SMTOP + SSTOP", kinds: ["top_mask", "top_silk", "outline"], hint: "Serigrafie peste pad-uri" },
+];
+const MIL = 0.0254;
+
 const MARKER_COLORS = { blocking: "#ef4444", warning: "#f5b83d", info: "#5aa9e6" } as const;
 
 export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIssue }: Props) {
@@ -26,6 +34,9 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
   const [view, setView] = useState({ scale: 10, ox: 0, oy: 0 });
   const [hover, setHover] = useState<{ i: number; px: number; py: number } | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [rulerOn, setRulerOn] = useState(false);
+  const [ruler, setRuler] = useState<{ a: { x: number; y: number }; b: { x: number; y: number } | null } | null>(null);
+  const [pair, setPair] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null);
 
   const sorted = useMemo(
@@ -69,6 +80,18 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
   }, []);
   useEffect(() => fit(), [fit]);
 
+  const cursorRef = useRef<{ x: number; y: number } | null>(null);
+  const applyPair = (p: (typeof PAIRS)[number] | null) => {
+    setPair(p?.label ?? null);
+    setState((s) => {
+      const n: Record<number, LayerState> = {};
+      layers.forEach((l, i) => {
+        const cur = s[i] ?? { visible: true, opacity: 0.85 };
+        n[i] = { ...cur, visible: p ? p.kinds.includes(l.kind) : !["bottom_silk", "bottom_paste", "bottom_mask", "fabrication"].includes(l.kind) };
+      });
+      return n;
+    });
+  };
   const toScreen = useCallback((x: number, y: number) => [view.ox + x * view.scale, view.oy - y * view.scale] as const, [view]);
 
   useEffect(() => {
@@ -79,6 +102,11 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
     const iy = iss.y;
     const scale = Math.max(view.scale, Math.min(size.w, size.h) / 12);
     setView({ scale, ox: size.w / 2 - ix * scale, oy: size.h / 2 + iy * scale });
+    if (iss.layer) setState((s) => {
+      const n = { ...s };
+      layers.forEach((l, i) => { if (l.kind === iss.layer && n[i]) n[i] = { ...n[i]!, visible: true }; });
+      return n;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
@@ -166,6 +194,20 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
     ctx.lineTo(ox, oy + 10);
     ctx.stroke();
 
+    if (ruler) {
+      const [ax, ay] = toScreen(ruler.a.x, ruler.a.y);
+      const end = ruler.b ?? cursorRef.current;
+      if (end) {
+        const [bx, by] = toScreen(end.x, end.y);
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.setLineDash([]);
+        [[ax, ay], [bx, by]].forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x!, y!, 3, 0, Math.PI * 2); ctx.fillStyle = "#38bdf8"; ctx.fill(); });
+      }
+    }
+
     issues.forEach((iss, i) => {
       if (iss.x == null || iss.y == null) return;
       const [x, y] = toScreen(iss.x, iss.y);
@@ -186,7 +228,7 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
       ctx.textAlign = "center";
       ctx.fillText(String(i + 1), x, y - 11);
     });
-  }, [sorted, state, view, size, issues, focus, hover, toScreen]);
+  }, [sorted, state, view, size, issues, focus, hover, toScreen, ruler, cursor]);
 
   const hitIssue = (px: number, py: number) => {
     for (let i = issues.length - 1; i >= 0; i--) {
@@ -231,14 +273,16 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
         <canvas
           ref={canvasRef}
           style={{ width: size.w, height: size.h }}
-          className="cursor-crosshair touch-none"
+          className={rulerOn ? "cursor-cell touch-none" : "cursor-crosshair touch-none"}
           onWheel={onWheel}
           onMouseDown={(e) => (drag.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy, moved: false })}
           onMouseMove={(e) => {
             const rect = canvasRef.current!.getBoundingClientRect();
             const px = e.clientX - rect.left;
             const py = e.clientY - rect.top;
-            setCursor({ x: (px - view.ox) / view.scale, y: (view.oy - py) / view.scale });
+            const world = { x: (px - view.ox) / view.scale, y: (view.oy - py) / view.scale };
+            cursorRef.current = world;
+            setCursor(world);
             if (drag.current) {
               const dx = e.clientX - drag.current.x;
               const dy = e.clientY - drag.current.y;
@@ -252,6 +296,12 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
           onMouseUp={(e) => {
             const d = drag.current;
             drag.current = null;
+            if (d && !d.moved && rulerOn) {
+              const rect = canvasRef.current!.getBoundingClientRect();
+              const w = { x: (e.clientX - rect.left - view.ox) / view.scale, y: (view.oy - (e.clientY - rect.top)) / view.scale };
+              setRuler((r) => (!r || r.b ? { a: w, b: null } : { ...r, b: w }));
+              return;
+            }
             if (d && !d.moved) {
               const rect = canvasRef.current!.getBoundingClientRect();
               const i = hitIssue(e.clientX - rect.left, e.clientY - rect.top);
@@ -264,7 +314,32 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
             setCursor(null);
           }}
         />
+        {focus != null && issues[focus]?.x != null && (() => {
+          const [rx, ry] = toScreen(issues[focus]!.x!, issues[focus]!.y!);
+          if (rx < -20 || ry < -20 || rx > size.w + 20 || ry > size.h + 20) return null;
+          return (
+            <div className="pointer-events-none absolute" style={{ left: rx - 18, top: ry - 18 }} aria-hidden>
+              <span className="absolute inset-0 h-9 w-9 animate-ping rounded-full border-2 border-destructive" />
+              <span className="absolute inset-0 h-9 w-9 rounded-full border-2 border-destructive" />
+              <span className="absolute left-1/2 top-0 h-9 w-px -translate-x-1/2 bg-destructive" />
+              <span className="absolute left-0 top-1/2 h-px w-9 -translate-y-1/2 bg-destructive" />
+            </div>
+          );
+        })()}
+        {ruler && (() => {
+          const end = ruler.b ?? cursor;
+          if (!end) return null;
+          const dx = end.x - ruler.a.x, dy = end.y - ruler.a.y, d = Math.hypot(dx, dy);
+          return (
+            <div className="absolute right-2 top-2 rounded bg-card/95 px-2 py-1 font-mono text-xs text-card-foreground shadow">
+              <div>ΔX {Math.abs(dx).toFixed(3)} mm · {(Math.abs(dx) / MIL).toFixed(1)} mil</div>
+              <div>ΔY {Math.abs(dy).toFixed(3)} mm · {(Math.abs(dy) / MIL).toFixed(1)} mil</div>
+              <div className="font-semibold">D {d.toFixed(3)} mm · {(d / MIL).toFixed(1)} mil</div>
+            </div>
+          );
+        })()}
         <div className="absolute left-2 top-2 flex gap-1">
+          <Button size="icon" variant={rulerOn ? "default" : "secondary"} onClick={() => { setRulerOn((v) => !v); setRuler(null); }} aria-label="Riglă de măsurare" aria-pressed={rulerOn} title="Riglă: click pe două puncte"><Ruler className="h-4 w-4" /></Button>
           <Button size="icon" variant="secondary" onClick={() => zoom(1.3)} aria-label="Mărește"><ZoomIn className="h-4 w-4" /></Button>
           <Button size="icon" variant="secondary" onClick={() => zoom(1 / 1.3)} aria-label="Micșorează"><ZoomOut className="h-4 w-4" /></Button>
           <Button size="icon" variant="secondary" onClick={fit} aria-label="Încadrează"><Maximize2 className="h-4 w-4" /></Button>
@@ -291,6 +366,14 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
         )}
       </div>
       <div className="space-y-2 rounded-md border border-border bg-card p-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Perechi rapide</div>
+        <div className="grid grid-cols-2 gap-1">
+          {PAIRS.map((p) => (
+            <Button key={p.label} size="sm" variant={pair === p.label ? "default" : "outline"} className="h-7 px-1 text-[10px]" title={p.hint} onClick={() => applyPair(p)}>{p.label}</Button>
+          ))}
+          <Button size="sm" variant={pair === null ? "default" : "outline"} className="col-span-2 h-7 text-[10px]" onClick={() => applyPair(null)}><Layers className="mr-1 h-3 w-3" /> Toate straturile</Button>
+        </div>
+        {rulerOn && <p className="text-[11px] text-muted-foreground">Riglă activă: click pe primul punct, apoi pe al doilea.</p>}
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Straturi</div>
         {sorted.map(({ l, idx }) => {
           const st = state[idx];
