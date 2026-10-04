@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit } from "@/lib/data";
 import { TITLES } from "@/lib/drc/engine";
 import {
-  CAM_FIELDS, DEFAULT_SETTINGS, RULE_FIELDS, fetchSettings, flattenSettings, mergeSettings, saveSettings, unflattenSettings,
+  CAM_FIELDS, DEFAULT_SETTINGS, deriveCam, RULE_FIELDS, fetchSettings, flattenSettings, mergeSettings, saveSettings, unflattenSettings,
   type CamValues, type RuleValues, type Settings,
 } from "@/lib/drc/settings";
 import { aiSuggestSettings, pullSettingsSheet, pushSettingsSheet } from "@/lib/rules.functions";
@@ -107,8 +107,8 @@ function RulesPage() {
 
   if (!allowed) return <p className="text-sm text-muted-foreground">Doar Administratorul și Managerii de serie pot modifica regulile.</p>;
 
-  const setRule = (k: keyof RuleValues, v: number) => setDraft((d) => ({ ...d, rules: { ...d.rules, [k]: v } }));
-  const setCam = (k: keyof CamValues, v: number | boolean) => setDraft((d) => ({ ...d, cam: { ...d.cam, [k]: v } }));
+  const setRule = (k: keyof RuleValues, v: number) => setDraft((d) => deriveCam({ ...d, rules: { ...d.rules, [k]: v }, cam: { ...d.cam } }));
+  const setCam = (k: keyof CamValues, v: number | boolean) => setDraft((d) => deriveCam({ ...d, cam: { ...d.cam, [k]: v } }));
 
   const save = async (s: Settings = draft) => {
     setBusy("Se salvează…");
@@ -219,13 +219,15 @@ function RulesPage() {
         <TabsContent value="score">
           <Card>
             <CardContent className="pt-6">
-              <div className="grid grid-cols-[1fr_6rem_9rem_5rem_4rem] items-center gap-2 border-b border-border pb-2 text-xs font-medium text-muted-foreground">
-                <span>Regulă</span><span>Penalizare</span><span>Severitate</span><span>Activă</span><span>Doar SMT</span>
+              <div className="grid grid-cols-[1fr_5rem_5rem_5rem_8rem_4rem_4rem_4rem] items-center gap-2 border-b border-border pb-2 text-xs font-medium text-muted-foreground">
+                <span>Regulă</span><span>Puncte</span><span>+/apariție</span><span>Plafon</span><span>Severitate</span><span>Critică</span><span>Activă</span><span>Doar SMT</span>
               </div>
               {Object.entries(draft.penalties).map(([code, p]) => (
-                <div key={code} className="grid grid-cols-[1fr_6rem_9rem_5rem_4rem] items-center gap-2 border-b border-border/50 py-1.5 text-sm">
+                <div key={code} className="grid grid-cols-[1fr_5rem_5rem_5rem_8rem_4rem_4rem_4rem] items-center gap-2 border-b border-border/50 py-1.5 text-sm">
                   <span>{TITLES[code] ?? code} <span className="font-mono text-xs text-muted-foreground">{code}</span></span>
-                  <Input type="number" value={p.points} onChange={(e) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, points: num(e.target.value) } } }))} className="h-8 font-mono" />
+                  <Input type="number" value={p.points} onChange={(e) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, points: num(e.target.value) } } }))} className="h-8 font-mono" aria-label={`Puncte: ${TITLES[code] ?? code}`} />
+                  <Input type="number" value={p.perIssue ?? 0} aria-label={`Puncte per apariție: ${TITLES[code] ?? code}`} onChange={(e) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, perIssue: num(e.target.value) } } }))} className="h-8 font-mono" />
+                  <Input type="number" value={p.cap ?? p.points} aria-label={`Plafon: ${TITLES[code] ?? code}`} onChange={(e) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, cap: num(e.target.value) } } }))} className="h-8 font-mono" />
                   <Select value={p.severity} onValueChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, severity: v as typeof p.severity } } }))}>
                     <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -234,11 +236,12 @@ function RulesPage() {
                       <SelectItem value="info">Informativ</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Switch checked={!!p.critical} aria-label={`Critică: ${TITLES[code] ?? code}`} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, critical: v } } }))} />
                   <Switch checked={p.enabled} aria-label={`Regulă activă: ${TITLES[code] ?? code}`} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, enabled: v } } }))} />
                   <Switch checked={p.smtOnly} aria-label={`Doar SMT: ${TITLES[code] ?? code}`} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, smtOnly: v } } }))} />
                 </div>
               ))}
-              <p className="mt-3 text-xs text-muted-foreground">Scorul = 100 − suma penalizărilor regulilor picate. Regulile blocante împiedică predarea oficială.</p>
+              <p className="mt-3 text-xs text-muted-foreground">Penalizare regulă = puncte + (+/apariție × apariții suplimentare), limitată la plafon. Scorul = 100 − suma penalizărilor. O regulă „Critică” picată limitează scorul la „Scor maxim când există o eroare critică” (tab Reguli DRC → Scorare) și respinge automat fabricația. Regulile blocante împiedică aprobarea.</p>
             </CardContent>
           </Card>
         </TabsContent>
