@@ -24,3 +24,5 @@
 - Teacher bulk ZIP import (`src/lib/zipImport.ts`) reuses series/groups by name and updates students by folder name (`file_prefix`), so re-imports never duplicate; staff insert slots/submissions via `can_manage_group` policies.
 - `date_in_*.txt` uses GerbTool's exact "FOLDER X Y" syntax with no header; stencil geometry has independent X/Y pitch and an explicit top-row origin.
 - Rule changes are activated through the sandbox (`src/components/RuleSandbox.tsx`), which runs baseline vs candidate DRC and requires manual per-project confirmation; runs are stored in `rule_test_runs` — keeps rule edits auditable and evidence-based.
+- DRC scoring: per rule `points + perIssue × extra occurrences`, capped by `cap`; rules flagged `critical` cap the total score at `rules.criticalScoreCap` and force "respins" — all values live in `drc_settings`, student explanations in `src/lib/drc/catalog.ts`.
+- CAM board/pitch are derived from DRC board width/height via `deriveCam` when `cam.autoFromBoard` is on — one board size drives DRC, panel and stencil.

@@ -39,3 +39,11 @@
 - [x] Tab „Testare reguli": diferențe față de regulile active, proiecte predate sau ZIP-uri locale, DRC vechi vs nou, impact per regulă
 - [x] Confirmare manuală Corect/Greșit per proiect, vizualizare Gerber, activare doar după confirmare (justificare dacă există „Greșit")
 - [x] Istoric teste salvat; Salvează / propunerea AI trimit spre testare; admin poate salva fără test
+
+## Etapa 6 — Catalog unificat & erori critice
+- [x] Erori critice (găuri în afara pad-urilor, placă supradimensionată) cu scor limitat și respingere
+- [x] Dimensiune placă X/Y editabilă → panou și stencil recalculate automat
+- [x] Penalizări editabile: puncte, +/apariție, plafon, critică; verdict tri-stare
+- [x] Serigrafie peste pad (-20p, blocant), distanță între găuri
+- [x] Explicații pe înțelesul studentului pentru fiecare depunctare
+- [ ] Riglă/perechi de straturi în vizualizator, fișă PDF de evaluare (următoarea etapă)
