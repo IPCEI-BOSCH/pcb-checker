@@ -150,7 +150,7 @@ function Review() {
       const layers = await loadGerberZip(dl.data);
       // Always re-evaluate with the current parser/settings so the viewer and the report agree.
       const report = runDrc(layers, variant, await fetchSettings(sid));
-      setView({ name, report, layers });
+      setView({ name, report, layers, submittedAt: (sub as { submitted_at?: string; created_at?: string }).submitted_at ?? (sub as { created_at?: string }).created_at, archive: sub.file_name ?? undefined });
     } catch (e) { toast.error((e as Error).message); }
     finally { toast.dismiss(t); }
   };
@@ -341,7 +341,7 @@ function Review() {
       <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
         <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
           <DialogHeader><DialogTitle>Gerber & DRC — {view?.name}</DialogTitle></DialogHeader>
-          {view && <DrcReportView report={view.report} layers={view.layers} />}
+          {view && <DrcReportView report={view.report} layers={view.layers} meta={{ student: view.name, submittedAt: view.submittedAt ? new Date(view.submittedAt).toLocaleString("ro-RO") : undefined, archive: view.archive }} />}
         </DialogContent>
       </Dialog>
 
