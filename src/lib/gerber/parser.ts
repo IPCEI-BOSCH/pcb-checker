@@ -230,7 +230,7 @@ export function parseExcellon(fileName: string, content: string, fitBox?: BBox |
   let bestScore = -1;
   for (const c of cands) {
     const l = parseExcellonWith(fileName, content, c);
-    if (!l.holes.length) return l;
+    if (!l.holes.length) { if (!best) best = l; continue; }
     const inside = l.holes.filter((h) => h.x >= box.minX - 0.5 && h.x <= box.maxX + 0.5 && h.y >= box.minY - 0.5 && h.y <= box.maxY + 0.5).length;
     // Tie-break by how much of the board the holes span (a wrong, too-large divisor squeezes them into a corner).
     const xs = l.holes.map((h) => h.x), ys = l.holes.map((h) => h.y);
@@ -238,6 +238,7 @@ export function parseExcellon(fileName: string, content: string, fitBox?: BBox |
     const score = inside / l.holes.length + 0.01 * span;
     if (score > bestScore + 1e-9) { best = l; bestScore = score; }
   }
+  if (!best!.holes.length) return best!;
   best!.warnings.push(`Format coordonate dedus automat: ${best!.fmt?.int}:${best!.fmt?.dec} (${best!.fmt?.inch ? "inch" : "mm"})`);
   return best!;
 }

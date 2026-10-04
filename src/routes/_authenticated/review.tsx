@@ -341,7 +341,7 @@ function Review() {
       <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
         <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
           <DialogHeader><DialogTitle>Gerber & DRC — {view?.name}</DialogTitle></DialogHeader>
-          {view && <DrcReportView report={view.report} layers={view.layers} />}
+          {view && <DrcReportView report={view.report} layers={view.layers} meta={{ student: view.name }} />}
         </DialogContent>
       </Dialog>
 

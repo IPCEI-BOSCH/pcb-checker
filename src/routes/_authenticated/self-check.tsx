@@ -177,7 +177,7 @@ function SelfCheck() {
         <p className="text-sm text-destructive">Predarea oficială devine disponibilă după eliminarea tuturor erorilor blocante.</p>
       )}
 
-      {current && <DrcReportView report={current.report} layers={current.layers} />}
+      {current && <DrcReportView report={current.report} layers={current.layers} meta={{ student: st.file_prefix ?? st.email ?? undefined, group: st.groups?.name ?? undefined, series: st.groups?.series?.name ?? undefined, archive: current.fileName ?? undefined }} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

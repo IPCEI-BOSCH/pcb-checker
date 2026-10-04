@@ -347,17 +347,20 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
 
   // Fiducials
   if (smt && top) {
+    // Fiducial: round/square copper pad 0.8–2 mm, no hole, not a trace end, with a mask opening at least as large.
+    // Paste on a fiducial is tolerated (common in OrCAD footprints) and only reported as info.
     const fids = topPads.filter(
       (p) =>
-        p.shape === "C" &&
-        p.w >= R.fiducialMin &&
-        p.w <= R.fiducialMax &&
-        !holes.some((h) => Math.hypot(h.x - p.x, h.y - p.y) < p.w / 2) &&
-        !pasteAps.some((a) => Math.hypot(a.x - p.x, a.y - p.y) < 0.1) &&
-        maskAps.some((m) => Math.hypot(m.x - p.x, m.y - p.y) < 0.1 && m.w >= p.w + R.fiducialMaskExtra),
+        (p.shape === "C" || (p.shape === "R" && Math.abs(p.w - p.h) < 0.01)) &&
+        p.w >= R.fiducialMin - 0.01 &&
+        p.w <= R.fiducialMax + 0.01 &&
+        !holes.some((h) => Math.hypot(h.x - p.x, h.y - p.y) < p.w / 2 + h.d / 2) &&
+        (maskAps.some((m) => Math.hypot(m.x - p.x, m.y - p.y) < 0.15 && Math.min(m.w, m.h) >= p.w + Math.min(R.fiducialMaskExtra, 0.1) - 0.01) ||
+          mask?.primitives.some((m) => m.t === "region" && pointInBBox(p.x, p.y, primitiveBBox(m)))),
     );
+    const fidWithPaste = fids.filter((f) => pasteAps.some((a) => Math.hypot(a.x - f.x, a.y - f.y) < 0.15)).length;
     if (fids.length < R.minFiducials) fail("FIDUCIALS", `Au fost detectați ${fids.length} fiduciali (minim ${R.minFiducials}: pad rotund ${R.fiducialMin}–${R.fiducialMax} mm, fără gaură, deschidere mască mai mare).`, { layer: "top_copper" });
-    else note("FIDUCIALS", `${fids.length} fiduciali la ${fids.map((f) => `(${f.x.toFixed(1)}, ${f.y.toFixed(1)})`).join(", ")}.`);
+    else note("FIDUCIALS", `${fids.length} fiduciali la ${fids.map((f) => `(${f.x.toFixed(1)}, ${f.y.toFixed(1)})`).join(", ")}.${fidWithPaste ? ` Atenție: ${fidWithPaste} au și deschidere de pastă (recomandat fără).` : ""}`);
   }
 
   // Holes outside any copper pad (critical) — usually a drill format/origin mismatch
