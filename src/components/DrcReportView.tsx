@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, Crosshair, FileText, Info, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { openEvaluationSheet, type EvaluationMeta } from "@/lib/drc/evaluationSheet";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GerberViewer } from "@/components/GerberViewer";
@@ -9,12 +11,22 @@ import { CATALOG, CATEGORY_LABELS } from "@/lib/drc/catalog";
 import type { Layer } from "@/lib/gerber/types";
 import { cn } from "@/lib/utils";
 
-export function DrcReportView({ report, layers }: { report: DrcReport; layers: Layer[] | null }) {
+export function DrcReportView({ report, layers, meta }: { report: DrcReport; layers: Layer[] | null; meta?: EvaluationMeta }) {
   const [cad] = useState<CadTool>("orcad");
   const [focus, setFocus] = useState<number | null>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const locate = (code: string) => {
+    const i = report.issues.findIndex((x) => x.code === code && x.x != null);
+    if (i < 0) return;
+    setFocus(i);
+    viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => openEvaluationSheet(report, meta)}><FileText className="mr-1 h-4 w-4" /> Fișă de evaluare (PDF / print)</Button>
+      </div>
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Scor DRC" value={`${report.score}/100`} tone={report.score >= 80 ? "ok" : report.score >= 50 ? "warn" : "bad"} />
         <Stat label="Proiectare (barem)" value={`${report.designPoints}/40`} />
@@ -48,7 +60,12 @@ export function DrcReportView({ report, layers }: { report: DrcReport; layers: L
                       {c && <Badge variant="outline" className="text-[10px]">{CATEGORY_LABELS[c.category]}</Badge>}
                       {r.critical && <Badge variant="destructive" className="text-[10px]">CRITIC</Badge>}
                     </div>
+                    <span className="flex items-center gap-2">
+                    {layers && report.issues.some((x) => x.code === r.code && x.x != null) && (
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => locate(r.code)}><Crosshair className="mr-1 h-3 w-3" /> Localizează pe placă</Button>
+                    )}
                     <span className="font-mono text-xs text-destructive">−{r.penalty}p{r.count && r.count > 1 ? ` · ${r.count} apariții` : ""}{r.penalty >= r.maxPenalty && r.maxPenalty ? " (plafon)" : ""}</span>
+                    </span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">Constatat: {r.detail}</p>
                   {c && (
@@ -67,7 +84,7 @@ export function DrcReportView({ report, layers }: { report: DrcReport; layers: L
       )}
 
       {layers && (
-        <Card>
+        <Card ref={viewerRef}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-base">Vizualizator PCB</CardTitle>
             <span className="text-xs text-muted-foreground">Ghid remediere: {CAD_LABELS[cad]}</span>
