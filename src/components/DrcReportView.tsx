@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GerberViewer } from "@/components/GerberViewer";
 import type { DrcReport } from "@/lib/drc/engine";
 import { CAD_LABELS, REMEDIES, type CadTool } from "@/lib/drc/remedies";
+import { CATALOG, CATEGORY_LABELS } from "@/lib/drc/catalog";
 import type { Layer } from "@/lib/gerber/types";
 import { cn } from "@/lib/utils";
 
@@ -20,10 +21,50 @@ export function DrcReportView({ report, layers }: { report: DrcReport; layers: L
         <Stat label="Erori blocante" value={String(report.blockingCount)} tone={report.blockingCount ? "bad" : "ok"} />
         <Stat
           label="Status fabricație"
-          value={report.manualReview ? "Evaluare manuală (THT)" : report.wouldPass ? "V-ar trece" : "V-ar fi respins"}
-          tone={report.manualReview ? undefined : report.wouldPass ? "ok" : "bad"}
+          value={report.manualReview ? "Evaluare manuală (THT)" : report.verdict === "admis" ? "Admis fabricație" : report.verdict === "rezerve" ? "Admis cu rezerve" : report.verdict === "respins" ? "Respins fabricație" : report.wouldPass ? "V-ar trece" : "V-ar fi respins"}
+          tone={report.manualReview ? undefined : report.verdict === "rezerve" ? "warn" : report.wouldPass ? "ok" : "bad"}
         />
       </div>
+
+      {!!report.criticalCount && (
+        <div role="alert" className="rounded-lg border border-destructive bg-destructive/10 p-4 text-sm text-foreground">
+          <div className="flex items-center gap-2 font-semibold text-destructive"><XCircle className="h-4 w-4" /> Eroare critică — proiectul nu poate intra în fabricație</div>
+          <p className="mt-1">Există {report.criticalCount} {report.criticalCount === 1 ? "eroare critică" : "erori critice"} (de ex. găuri în afara pad-urilor sau placă mai mare decât formatul). Scorul a fost limitat automat. Corectați-le întâi — explicațiile sunt mai jos.</p>
+        </div>
+      )}
+
+      {report.rules.some((r) => !r.passed) && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-base">De ce ai pierdut puncte și ce trebuie să repari</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {report.rules.filter((r) => !r.passed).sort((a, b) => Number(!!b.critical) - Number(!!a.critical) || b.penalty - a.penalty).map((r) => {
+              const c = CATALOG[r.code];
+              return (
+                <div key={r.code} className={cn("rounded-md border p-3 text-sm", r.critical ? "border-destructive" : "border-border")}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {c && <span className="font-mono text-xs text-muted-foreground">{c.err}</span>}
+                      <span className="font-semibold text-foreground">{r.title}</span>
+                      {c && <Badge variant="outline" className="text-[10px]">{CATEGORY_LABELS[c.category]}</Badge>}
+                      {r.critical && <Badge variant="destructive" className="text-[10px]">CRITIC</Badge>}
+                    </div>
+                    <span className="font-mono text-xs text-destructive">−{r.penalty}p{r.count && r.count > 1 ? ` · ${r.count} apariții` : ""}{r.penalty >= r.maxPenalty && r.maxPenalty ? " (plafon)" : ""}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">Constatat: {r.detail}</p>
+                  {c && (
+                    <dl className="mt-2 grid gap-1 text-xs">
+                      <div><dt className="inline font-semibold text-foreground">Ce e greșit: </dt><dd className="inline">{c.what}</dd></div>
+                      <div><dt className="inline font-semibold text-foreground">De ce contează: </dt><dd className="inline">{c.why}</dd></div>
+                      <div><dt className="inline font-semibold text-foreground">Cum repari: </dt><dd className="inline">{c.fix}</dd></div>
+                      {REMEDIES[r.code]?.[cad] && <div><dt className="inline font-semibold text-foreground">În {CAD_LABELS[cad]}: </dt><dd className="inline">{REMEDIES[r.code]?.[cad]}</dd></div>}
+                    </dl>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {layers && (
         <Card>
@@ -78,7 +119,7 @@ export function DrcReportView({ report, layers }: { report: DrcReport; layers: L
                 {focus === i && (
                   <div className="mt-2 rounded bg-muted p-2 text-xs text-foreground">
                     <span className="font-semibold">Remediere ({CAD_LABELS[cad]}): </span>
-                    {REMEDIES[iss.code]?.[cad] ?? REMEDIES[iss.code]?.general}
+                    {REMEDIES[iss.code]?.[cad] ?? REMEDIES[iss.code]?.general ?? CATALOG[iss.code]?.fix}
                   </div>
                 )}
               </button>
