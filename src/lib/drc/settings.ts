@@ -4,6 +4,13 @@ import type { Severity } from "./engine";
 /** All tunable values — DRC thresholds, scoring and CAM geometry. Stored as JSON per scope (global / series). */
 export interface RuleValues {
   boardSize: number;
+  boardHeight: number;
+  npthMinDiameter: number;
+  drillToDrill: number;
+  silkPadClearance: number;
+  passScore: number;
+  reserveScore: number;
+  criticalScoreCap: number;
   boardTol: number;
   originTol: number;
   edgeClearance: number;
@@ -29,6 +36,12 @@ export interface PenaltyValue {
   severity: Severity;
   enabled: boolean;
   smtOnly: boolean;
+  /** Extra points per additional occurrence after the first. */
+  perIssue?: number;
+  /** Maximum points this rule can subtract in total. */
+  cap?: number;
+  /** Critical: if it fails, the score is capped to rules.criticalScoreCap and fabrication is refused. */
+  critical?: boolean;
 }
 
 export interface CamValues {
@@ -49,6 +62,11 @@ export interface CamValues {
   stencilFrameW: number;
   stencilFrameH: number;
   stencilMargin: number;
+  /** When on, board size, panel pitch and stencil pitch are derived from the DRC board dimensions. */
+  autoFromBoard: boolean;
+  panelGap: number;
+  stencilGapX: number;
+  stencilGapY: number;
 }
 
 export interface Settings {
@@ -63,6 +81,13 @@ const MIL = 0.0254;
 export const DEFAULT_SETTINGS: Settings = {
   rules: {
     boardSize: 40,
+    boardHeight: 40,
+    npthMinDiameter: 2.5,
+    drillToDrill: 0.5,
+    silkPadClearance: 0,
+    passScore: 80,
+    reserveScore: 50,
+    criticalScoreCap: 30,
     boardTol: 0.2,
     originTol: 0.05,
     edgeClearance: 1.0,
@@ -83,23 +108,27 @@ export const DEFAULT_SETTINGS: Settings = {
     maskDuplicateRatio: 0.5,
   },
   penalties: {
-    MISSING_LAYER: { points: 20, severity: "blocking", enabled: true, smtOnly: false },
-    DRL_COUNT: { points: 20, severity: "blocking", enabled: true, smtOnly: false },
-    BOARD_SIZE: { points: 15, severity: "blocking", enabled: true, smtOnly: false },
-    ORIGIN: { points: 5, severity: "warning", enabled: true, smtOnly: false },
-    OUTLINE_WIDTH: { points: 5, severity: "warning", enabled: true, smtOnly: false },
-    EDGE_CLEARANCE: { points: 10, severity: "blocking", enabled: true, smtOnly: false },
-    VIA_IN_PAD: { points: 15, severity: "blocking", enabled: true, smtOnly: true },
-    SSTOP_OVER_PAD: { points: 10, severity: "blocking", enabled: true, smtOnly: false },
-    MASK_DUPLICATE: { points: 25, severity: "blocking", enabled: true, smtOnly: false },
-    FIDUCIALS: { points: 10, severity: "blocking", enabled: true, smtOnly: true },
-    MIN_TRACE: { points: 5, severity: "warning", enabled: true, smtOnly: false },
-    CLEARANCE: { points: 5, severity: "warning", enabled: true, smtOnly: false },
-    ANNULAR_RING: { points: 5, severity: "warning", enabled: true, smtOnly: false },
-    HOLE_SIZE: { points: 5, severity: "warning", enabled: true, smtOnly: false },
-    MISSING_PASTE: { points: 10, severity: "blocking", enabled: true, smtOnly: true },
-    STENCIL_RATIO: { points: 5, severity: "warning", enabled: true, smtOnly: true },
-    STENCIL_WINDOWPANE: { points: 0, severity: "info", enabled: true, smtOnly: true },
+    MISSING_LAYER: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 20 },
+    DRL_COUNT: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 20 },
+    BOARD_OVERSIZE: { points: 60, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 60, critical: true },
+    BOARD_SIZE: { points: 15, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 15 },
+    HOLE_OUTSIDE_PAD: { points: 40, severity: "blocking", enabled: true, smtOnly: false, perIssue: 5, cap: 60, critical: true },
+    ORIGIN: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 0, cap: 5 },
+    OUTLINE_WIDTH: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 0, cap: 5 },
+    EDGE_CLEARANCE: { points: 10, severity: "blocking", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    VIA_IN_PAD: { points: 15, severity: "blocking", enabled: true, smtOnly: true, perIssue: 2, cap: 25 },
+    SSTOP_OVER_PAD: { points: 10, severity: "blocking", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    SILK_OVER_PAD: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 2, cap: 30 },
+    MASK_DUPLICATE: { points: 25, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 25 },
+    FIDUCIALS: { points: 10, severity: "blocking", enabled: true, smtOnly: true, perIssue: 0, cap: 10 },
+    MIN_TRACE: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    CLEARANCE: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    DRILL_TO_DRILL: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    ANNULAR_RING: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    HOLE_SIZE: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    MISSING_PASTE: { points: 10, severity: "blocking", enabled: true, smtOnly: true, perIssue: 0, cap: 10 },
+    STENCIL_RATIO: { points: 5, severity: "warning", enabled: true, smtOnly: true, perIssue: 1, cap: 15 },
+    STENCIL_WINDOWPANE: { points: 0, severity: "info", enabled: true, smtOnly: true, perIssue: 0, cap: 0 },
   },
   cam: {
     panelCols: 7,
@@ -119,13 +148,24 @@ export const DEFAULT_SETTINGS: Settings = {
     stencilFrameW: 300,
     stencilFrameH: 400,
     stencilMargin: 10,
+    autoFromBoard: true,
+    panelGap: 0.508,
+    stencilGapX: 0,
+    stencilGapY: 10,
   },
 };
 
 type FieldMeta = { label: string; unit: string; group: string; step?: number; help?: string };
 
 export const RULE_FIELDS: Record<keyof RuleValues, FieldMeta> = {
-  boardSize: { label: "Dimensiune placă", unit: "mm", group: "Geometrie", step: 0.1 },
+  boardSize: { label: "Lățime placă (X)", unit: "mm", group: "Geometrie", step: 0.1, help: "Modifică automat panoul și stencilul (dacă e activă sincronizarea)" },
+  boardHeight: { label: "Înălțime placă (Y)", unit: "mm", group: "Geometrie", step: 0.1 },
+  npthMinDiameter: { label: "Gaură de montaj (fără pad) de la Ø", unit: "mm", group: "Găurire", step: 0.1, help: "Găurile mai mari sunt considerate găuri de prindere și pot sta în afara pad-urilor" },
+  drillToDrill: { label: "Distanță minimă între găuri (margine-margine)", unit: "mm", group: "Găurire", step: 0.05 },
+  silkPadClearance: { label: "Gardă serigrafie față de pad", unit: "mm", group: "Fiduciali & mască", step: 0.01 },
+  passScore: { label: "Scor minim „Admis fabricație”", unit: "pct", group: "Scorare", step: 1 },
+  reserveScore: { label: "Scor minim „Admis cu rezerve”", unit: "pct", group: "Scorare", step: 1 },
+  criticalScoreCap: { label: "Scor maxim când există o eroare critică", unit: "pct", group: "Scorare", step: 1, help: "Ex.: găuri în afara pad-urilor, placă mai mare decât formatul" },
   boardTol: { label: "Toleranță dimensiune", unit: "mm", group: "Geometrie", step: 0.01 },
   originTol: { label: "Toleranță origine (0,0)", unit: "mm", group: "Geometrie", step: 0.01 },
   outlineMaxWidth: { label: "Lățime maximă contur", unit: "mm", group: "Geometrie", step: 0.01 },
@@ -164,6 +204,10 @@ export const CAM_FIELDS: Record<keyof CamValues, FieldMeta> = {
   stencilFrameW: { label: "Folie — lățime", unit: "mm", group: "Stencil A3", step: 1 },
   stencilFrameH: { label: "Folie — înălțime", unit: "mm", group: "Stencil A3", step: 1 },
   stencilMargin: { label: "Margine minimă", unit: "mm", group: "Stencil A3", step: 1 },
+  autoFromBoard: { label: "Calculează automat din dimensiunea plăcii", unit: "", group: "Sincronizare cu placa", help: "Plăcuța, pasul panoului și pașii stencilului urmează dimensiunea din Reguli DRC" },
+  panelGap: { label: "Spațiu între plăci în panou", unit: "mm", group: "Sincronizare cu placa", step: 0.001 },
+  stencilGapX: { label: "Spațiu stencil între coloane", unit: "mm", group: "Sincronizare cu placa", step: 0.1 },
+  stencilGapY: { label: "Spațiu stencil între rânduri", unit: "mm", group: "Sincronizare cu placa", step: 0.1 },
 };
 
 export function mergeSettings(...parts: (Partial<Settings> | null | undefined)[]): Settings {
@@ -175,7 +219,20 @@ export function mergeSettings(...parts: (Partial<Settings> | null | undefined)[]
     for (const [k, v] of Object.entries(p.penalties ?? {})) out.penalties[k] = { ...(out.penalties[k] ?? DEFAULT_SETTINGS.penalties['ORIGIN']!), ...v };
     if (p.notes !== undefined) out.notes = p.notes;
   }
-  return out;
+  return deriveCam(out);
+}
+
+/** Board dimensions drive panel/stencil geometry when cam.autoFromBoard is on. */
+export function deriveCam(s: Settings): Settings {
+  if (!s.cam.autoFromBoard) return s;
+  const w = s.rules.boardSize;
+  const h = s.rules.boardHeight || w;
+  const big = Math.max(w, h);
+  s.cam.board = big;
+  s.cam.panelPitch = +(big + s.cam.panelGap).toFixed(3);
+  s.cam.stencilPitch = +(w + s.cam.stencilGapX).toFixed(3);
+  s.cam.stencilPitchY = +(h + s.cam.stencilGapY).toFixed(3);
+  return s;
 }
 
 /** Effective settings for a series: defaults <- global row <- series row. */
@@ -205,6 +262,9 @@ export function flattenSettings(s: Settings): [string, string, string][] {
     rows.push([`penalties.${k}.points`, String(v.points), `Penalizare ${k}`]);
     rows.push([`penalties.${k}.severity`, v.severity, `Severitate ${k} (blocking/warning/info)`]);
     rows.push([`penalties.${k}.enabled`, String(v.enabled), `Activă ${k}`]);
+    rows.push([`penalties.${k}.perIssue`, String(v.perIssue ?? 0), `Puncte per apariție suplimentară ${k}`]);
+    rows.push([`penalties.${k}.cap`, String(v.cap ?? v.points), `Plafon penalizare ${k}`]);
+    rows.push([`penalties.${k}.critical`, String(!!v.critical), `Eroare critică ${k}`]);
   }
   for (const [k, v] of Object.entries(s.cam)) rows.push([`cam.${k}`, String(v), CAM_FIELDS[k as keyof CamValues]?.label ?? ""]);
   rows.push(["notes", s.notes ?? "", "Note"]);
@@ -229,8 +289,11 @@ export function unflattenSettings(rows: string[][], base: Settings): Settings {
       if (parts[2] === "points") p.points = Number(value) || 0;
       else if (parts[2] === "severity" && ["blocking", "warning", "info"].includes(value.trim())) p.severity = value.trim() as Severity;
       else if (parts[2] === "enabled") p.enabled = /^(true|1|da|yes)$/i.test(value.trim());
+      else if (parts[2] === "perIssue") p.perIssue = Number(value) || 0;
+      else if (parts[2] === "cap") p.cap = Number(value) || 0;
+      else if (parts[2] === "critical") p.critical = /^(true|1|da|yes)$/i.test(value.trim());
       out.penalties[parts[1]] = p;
     } else if (parts[0] === "notes") out.notes = value;
   }
-  return out;
+  return deriveCam(out);
 }
