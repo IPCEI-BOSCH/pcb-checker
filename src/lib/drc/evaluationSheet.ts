@@ -3,12 +3,12 @@ import { CATALOG, CATEGORY_LABELS } from "./catalog";
 import { REMEDIES } from "./remedies";
 
 export interface EvaluationMeta {
-  student?: string;
-  group?: string;
-  series?: string;
-  theme?: string;
-  submittedAt?: string;
-  archive?: string;
+  student?: string | undefined;
+  group?: string | undefined;
+  series?: string | undefined;
+  theme?: string | undefined;
+  submittedAt?: string | undefined;
+  archive?: string | undefined;
 }
 
 const FAB_FILES: { name: string; kind: string; label: string }[] = [
