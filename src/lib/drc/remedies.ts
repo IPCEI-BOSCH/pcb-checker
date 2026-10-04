@@ -69,6 +69,22 @@ export const REMEDIES: Record<string, Partial<Record<CadTool, string>> & { gener
     general: "Pad-urile termice mari trebuie segmentate în stencil (matrice 2×2 sau 3×3, 50–70% din aria pad-ului).",
     orcad: "Creați forme separate pe PASTEMASK_TOP.",
   },
+  BOARD_OVERSIZE: {
+    general: "Placa depășește formatul stabilit și nu încape în panou/stencil.",
+    orcad: "Setup → Outlines → Board Outline: Edit, redesenați la dimensiunea cerută; Change Drawing Origin în colțul stânga-jos.",
+  },
+  HOLE_OUTSIDE_PAD: {
+    general: "Găurile trebuie să cadă pe pad-uri. De regulă formatul/originea fișierului de găurire diferă de Gerbere.",
+    orcad: "Manufacture → NC → NC Parameters: format 2.5, Inches, aceeași origine; regenerați NC Drill după Change Drawing Origin.",
+  },
+  SILK_OVER_PAD: {
+    general: "Serigrafia nu are voie să atingă pad-urile.",
+    orcad: "Mutați REFDES/contururile de pe Silkscreen_Top; în filmul SSTOP nu includeți PIN.",
+  },
+  DRILL_TO_DRILL: {
+    general: "Marginile găurilor trebuie să fie la distanța minimă una de alta.",
+    orcad: "Mutați componentele/via-urile; Constraint Manager → Spacing → Hole to Hole.",
+  },
   MISSING_PASTE: {
     general: "Varianta SMT necesită stratul de pastă TOP (SPTOP) pentru stencil.",
     orcad: "Adăugați filmul SPTOP (PASTEMASK_TOP).",

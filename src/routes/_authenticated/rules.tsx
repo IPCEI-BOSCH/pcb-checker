@@ -253,12 +253,15 @@ function RulesPage() {
               <CardContent className="space-y-3">
                 {keys.map((k) => {
                   const v = draft.cam[k];
+                  const derived = draft.cam.autoFromBoard && ["board", "panelPitch", "stencilPitch", "stencilPitchY"].includes(k);
                   return (
                     <div key={k} className="grid grid-cols-[1fr_8rem] items-center gap-3">
-                      <Label className="text-sm">{CAM_FIELDS[k].label}{CAM_FIELDS[k].unit && <span className="text-muted-foreground"> ({CAM_FIELDS[k].unit})</span>}</Label>
+                      <Label className="text-sm">{CAM_FIELDS[k].label}{CAM_FIELDS[k].unit && <span className="text-muted-foreground"> ({CAM_FIELDS[k].unit})</span>}
+                        {derived && <span className="block text-xs text-muted-foreground">Calculat automat din dimensiunea plăcii</span>}
+                        {CAM_FIELDS[k].help && <span className="block text-xs text-muted-foreground">{CAM_FIELDS[k].help}</span>}</Label>
                       {typeof v === "boolean"
                         ? <Switch checked={v} aria-label={CAM_FIELDS[k].label} onCheckedChange={(x) => setCam(k, x)} />
-                        : <Input type="number" step={CAM_FIELDS[k].step} value={v} onChange={(e) => setCam(k, num(e.target.value))} className="font-mono" />}
+                        : <Input type="number" step={CAM_FIELDS[k].step} value={v} disabled={derived} aria-label={CAM_FIELDS[k].label} onChange={(e) => setCam(k, num(e.target.value))} className="font-mono" />}
                     </div>
                   );
                 })}
