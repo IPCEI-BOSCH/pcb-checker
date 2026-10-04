@@ -1,0 +1,42 @@
+/** Student-facing explanation for every DRC rule: standardized code, category, what went wrong, why it matters, how to fix it. */
+export interface RuleExplanation {
+  err: string;
+  category: "STRUCT" | "MECH" | "DRILL" | "COPPER" | "SOLDERMASK" | "STENCIL" | "SILKSCREEN";
+  what: string;
+  why: string;
+  fix: string;
+}
+
+export const CATEGORY_LABELS: Record<RuleExplanation["category"], string> = {
+  STRUCT: "Structură fișiere",
+  MECH: "Mecanic / contur",
+  DRILL: "Găurire",
+  COPPER: "Cupru",
+  SOLDERMASK: "Mască de lipire",
+  STENCIL: "Stencil / pastă",
+  SILKSCREEN: "Serigrafie",
+};
+
+export const CATALOG: Record<string, RuleExplanation> = {
+  MISSING_LAYER: { err: "ERR_10", category: "STRUCT", what: "Lipsește cel puțin un fișier obligatoriu (cupru TOP, contur sau mască TOP).", why: "Fără toate filmele, fabrica nu poate realiza placa — proiectul nu poate fi produs deloc.", fix: "Exportați din nou toate cele 9 fișiere de fabricație (TOP, BOTTOM, SMTOP, SMBOT, SSTOP, SPTOP, BO, FAB, DRILL) și încărcați-le în sloturile dedicate." },
+  DRL_COUNT: { err: "ERR_28", category: "STRUCT", what: "Nu există exact un singur fișier de găurire Excellon.", why: "Mașina CNC primește un singur program de găurire; mai multe fișiere duc la găuri uitate sau dublate.", fix: "În NC Drill dezactivați separarea plated/non-plated și generați un singur DRILL.drl." },
+  BOARD_OVERSIZE: { err: "ERR_01", category: "MECH", what: "Placa este mai mare decât formatul stabilit.", why: "Eroare CRITICĂ: placa nu încape în locașul ei din panou și din stencil și s-ar suprapune cu plăcile colegilor — nu poate intra în fabricație.", fix: "Redesenați Board Outline exact la dimensiunea cerută (vezi valoarea „cerut” din mesaj) și mutați componentele în interior." },
+  BOARD_SIZE: { err: "ERR_02", category: "MECH", what: "Dimensiunea plăcii diferă de cea cerută (mai mică sau nu este pătrată/dreptunghiul cerut).", why: "Panelizarea presupune plăci de aceeași dimensiune; o placă greșită strică alinierea frezării.", fix: "Setup → Outlines → Board Outline: redesenați conturul la dimensiunea exactă cerută." },
+  HOLE_OUTSIDE_PAD: { err: "ERR_52", category: "DRILL", what: "Există găuri care nu cad pe niciun pad de cupru.", why: "Eroare CRITICĂ: o gaură în afara pad-ului taie trasee sau rămâne fără cupru de lipire — de obicei înseamnă că fișierul de găurire are alt format/origine decât Gerberele. Placa nu poate fi fabricată.", fix: "Verificați că DRILL.drl este generat cu aceeași origine și același format (2:5, inch) ca Gerberele. Re-exportați NC Drill după Change Drawing Origin." },
+  ORIGIN: { err: "ERR_53", category: "MECH", what: "Colțul stânga-jos al plăcii nu este în (0,0).", why: "La panelizare fiecare placă este poziționată după origine; un decalaj mută placa în afara locașului.", fix: "Setup → Change Drawing Origin, click exact pe colțul stânga-jos al conturului, apoi re-exportați toate fișierele." },
+  OUTLINE_WIDTH: { err: "ERR_31", category: "MECH", what: "Linia conturului este prea groasă.", why: "Freza urmează mijlocul liniei; o linie groasă face dimensiunea finală incertă.", fix: "Setați lățimea liniei Board Outline la 0.1 mm (sau 0.05 mm)." },
+  EDGE_CLEARANCE: { err: "ERR_29", category: "MECH", what: "Există cupru prea aproape de marginea plăcii.", why: "La frezare cuprul de la margine se rupe sau se scurtcircuitează cu placa vecină.", fix: "Constraint Manager → Spacing: Route Keepin la distanța cerută față de contur; mutați traseele/pad-urile spre interior." },
+  VIA_IN_PAD: { err: "ERR_34", category: "DRILL", what: "Un via (gaură) este plasat într-un pad SMD.", why: "Pasta de lipit se scurge prin gaură, iar componenta rămâne nelipită.", fix: "Mutați via-ul la cel puțin 0.25 mm de pad și legați-l cu un traseu scurt." },
+  SSTOP_OVER_PAD: { err: "ERR_25", category: "SOLDERMASK", what: "Unele pad-uri nu au deschidere în masca de lipire.", why: "Masca acoperă cuprul și pad-ul nu mai poate fi lipit.", fix: "Padstack-urile trebuie să conțină SOLDERMASK_TOP; filmul SMTOP trebuie să includă PIN și VIA." },
+  SILK_OVER_PAD: { err: "ERR_15", category: "SILKSCREEN", what: "Serigrafia (SSTOP) trece peste pad-uri.", why: "Vopseaua de serigrafie este izolatoare: pe pad împiedică lipirea și compromite asamblarea. Se depunctează masiv.", fix: "Mutați textele și contururile de componente în afara pad-urilor; în filmul SSTOP folosiți doar PACKAGE GEOMETRY/SILKSCREEN_TOP, nu PIN." },
+  MASK_DUPLICATE: { err: "ERR_27", category: "SOLDERMASK", what: "Masca TOP pare identică cu stratul de cupru.", why: "S-a exportat cuprul în locul măștii — toată placa ar rămâne fără protecție.", fix: "Filmul SMTOP trebuie să conțină doar PIN/SOLDERMASK_TOP, nu ETCH/TOP." },
+  FIDUCIALS: { err: "ERR_36", category: "SOLDERMASK", what: "Nu sunt suficienți fiduciali optici pe TOP.", why: "Mașina pick&place se aliniază după fiduciali; fără ei componentele SMD sunt plasate greșit.", fix: "Plasați 2 fiduciali (pad rotund ~1 mm, deschidere mască mai mare, fără gaură) în colțuri opuse." },
+  MIN_TRACE: { err: "ERR_03", category: "COPPER", what: "Există trasee mai subțiri decât minimul tehnologic.", why: "Traseele prea subțiri se corodează complet la developare sau se întrerup.", fix: "Constraint Manager → Physical → Min Line Width la valoarea cerută; re-rutați traseele subțiri." },
+  CLEARANCE: { err: "ERR_04", category: "COPPER", what: "Distanța dintre două elemente de cupru diferite este prea mică.", why: "Cuprul rămâne nedevelopat între ele și apare scurtcircuit.", fix: "Constraint Manager → Spacing → Line to Line / Pad la valoarea cerută; depărtați traseele." },
+  DRILL_TO_DRILL: { err: "ERR_42", category: "DRILL", what: "Două găuri sunt prea apropiate.", why: "Materialul dintre găuri se rupe la găurire, iar burghiul poate devia.", fix: "Depărtați componentele/via-urile astfel încât marginile găurilor să fie la distanța minimă cerută." },
+  ANNULAR_RING: { err: "ERR_40", category: "DRILL", what: "Inelul de cupru din jurul găurii este prea îngust.", why: "La o mică deviere a burghiului pad-ul se rupe și conexiunea se pierde.", fix: "Padstack Editor: diametru pad ≥ gaură + 2 × inelul minim." },
+  HOLE_SIZE: { err: "ERR_06", category: "DRILL", what: "Găuri cu diametru în afara domeniului sau în afara plăcii.", why: "Burghiele disponibile au diametre limitate; găurile în afara plăcii sunt imposibil de realizat.", fix: "Padstack Editor → Drill diameter în domeniul permis; verificați originea fișierului de găurire." },
+  MISSING_PASTE: { err: "ERR_14", category: "STENCIL", what: "Lipsește stratul de pastă TOP (SPTOP).", why: "Fără el nu se poate realiza stencilul pentru lipirea SMD.", fix: "Adăugați filmul SPTOP cu PASTEMASK_TOP." },
+  STENCIL_RATIO: { err: "ERR_32", category: "STENCIL", what: "Deschideri de stencil prea mici pentru grosimea foliei (IPC-7525B).", why: "Pasta nu se desprinde din deschideri mici și pad-ul rămâne fără aliaj.", fix: "Măriți PASTEMASK_TOP în padstack astfel încât Aspect Ratio ≥ 1.5 și Area Ratio ≥ 0.66." },
+  STENCIL_WINDOWPANE: { err: "ERR_33", category: "STENCIL", what: "Pad termic mare nesegmentat în stencil.", why: "Prea multă pastă ridică componenta (efect „plutire”) și produce bile de cositor.", fix: "Împărțiți deschiderea în 2×2 sau 3×3 ferestre (50–70% din arie)." },
+};

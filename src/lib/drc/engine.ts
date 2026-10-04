@@ -20,6 +20,8 @@ export interface RuleResult {
   title: string;
   penalty: number; // applied
   maxPenalty: number;
+  count?: number;
+  critical?: boolean;
   passed: boolean;
   severity: Severity;
   detail: string;
@@ -32,6 +34,8 @@ export interface DrcReport {
   designPoints: number; // 0..40
   blockingCount: number;
   wouldPass: boolean;
+  verdict?: "admis" | "rezerve" | "respins";
+  criticalCount?: number;
   manualReview: boolean;
   board: { width: number; height: number; minX: number; minY: number } | null;
   stats: { holes: number; drillDiameters: number[]; layers: { file: string; kind: LayerKind; count: number }[]; minTrace: number | null; minClearance: number | null };
@@ -59,6 +63,10 @@ export const TITLES: Record<string, string> = {
   DRL_COUNT: "Fișier DRL unic",
   BOARD_SIZE: "Dimensiune placă",
   ORIGIN: "Origine coordonate (0,0)",
+  BOARD_OVERSIZE: "Placă mai mare decât formatul (CRITIC)",
+  HOLE_OUTSIDE_PAD: "Găuri în afara pad-urilor (CRITIC)",
+  SILK_OVER_PAD: "Serigrafie peste pad-uri",
+  DRILL_TO_DRILL: "Distanță între găuri",
   OUTLINE_WIDTH: "Lățime contur",
   EDGE_CLEARANCE: "Gardă margine cupru",
   VIA_IN_PAD: "Interdicție VIA în PAD",
@@ -243,9 +251,17 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     const w = board.maxX - board.minX;
     const h = board.maxY - board.minY;
     boardInfo = { width: +w.toFixed(3), height: +h.toFixed(3), minX: +board.minX.toFixed(3), minY: +board.minY.toFixed(3) };
-    if (Math.abs(w - R.boardSize) > R.boardTol || Math.abs(h - R.boardSize) > R.boardTol)
-      fail("BOARD_SIZE", `Placa măsoară ${w.toFixed(2)} × ${h.toFixed(2)} mm (cerut ${R.boardSize.toFixed(2)} × ${R.boardSize.toFixed(2)} ±${R.boardTol}).`, { x: board.maxX, y: board.maxY, layer: "outline" });
-    else note("BOARD_SIZE", `${w.toFixed(2)} × ${h.toFixed(2)} mm.`);
+    const H = R.boardHeight || R.boardSize;
+    const req = `${R.boardSize.toFixed(2)} × ${H.toFixed(2)} mm ±${R.boardTol}`;
+    if (w > R.boardSize + R.boardTol || h > H + R.boardTol) {
+      fail("BOARD_OVERSIZE", `Placa măsoară ${w.toFixed(2)} × ${h.toFixed(2)} mm — depășește formatul (cerut ${req}). Nu încape în panou/stencil.`, { x: board.maxX, y: board.maxY, layer: "outline" });
+      note("BOARD_SIZE", "Vezi eroarea critică de supradimensionare.");
+    } else {
+      note("BOARD_OVERSIZE", `Placa încape în formatul ${req}.`);
+      if (Math.abs(w - R.boardSize) > R.boardTol || Math.abs(h - H) > R.boardTol)
+        fail("BOARD_SIZE", `Placa măsoară ${w.toFixed(2)} × ${h.toFixed(2)} mm (cerut ${req}).`, { x: board.maxX, y: board.maxY, layer: "outline" });
+      else note("BOARD_SIZE", `${w.toFixed(2)} × ${h.toFixed(2)} mm.`);
+    }
     if (Math.abs(board.minX) > R.originTol || Math.abs(board.minY) > R.originTol)
       fail("ORIGIN", `Colțul stânga-jos este la (${board.minX.toFixed(2)}, ${board.minY.toFixed(2)}) mm. Verificarea a continuat cu offset virtual.`, { x: board.minX, y: board.minY, layer: "outline" });
     else note("ORIGIN", "Colțul plăcii este în (0,0).");
@@ -272,7 +288,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
         }
       }
     }
-    if (!count) note("EDGE_CLEARANCE", "Tot cuprul respectă garda de ${R.edgeClearance} mm.");
+    if (!count) note("EDGE_CLEARANCE", `Tot cuprul respectă garda de ${R.edgeClearance} mm.`);
     else failed.set("EDGE_CLEARANCE", `${count} elemente de cupru prea aproape de margine.`);
   }
 
@@ -344,6 +360,66 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     else note("FIDUCIALS", `${fids.length} fiduciali la ${fids.map((f) => `(${f.x.toFixed(1)}, ${f.y.toFixed(1)})`).join(", ")}.`);
   }
 
+  // Holes outside any copper pad (critical) — usually a drill format/origin mismatch
+  {
+    const copperFlashes = [top, bottom].filter(Boolean).flatMap((l) => (l as Layer).primitives.filter((p) => p.t === "flash" && !p.clear)) as Extract<Primitive, { t: "flash" }>[];
+    const regions = [top, bottom].filter(Boolean).flatMap((l) => (l as Layer).primitives.filter((p) => p.t === "region" && !p.clear)).map((p) => primitiveBBox(p));
+    let n = 0;
+    if (copperFlashes.length || regions.length) {
+      for (const h of holes) {
+        if (h.d >= R.npthMinDiameter) continue;
+        const onPad = copperFlashes.some((p) => pointInFlash(h.x, h.y, p, 0.02)) || regions.some((b) => pointInBBox(h.x, h.y, b));
+        if (!onPad) {
+          n++;
+          if (n <= 8) fail("HOLE_OUTSIDE_PAD", `Gaură Ø${h.d.toFixed(2)} mm la (${h.x.toFixed(2)}, ${h.y.toFixed(2)}) nu cade pe niciun pad de cupru.`, { x: h.x, y: h.y, layer: "drill" });
+        }
+      }
+    }
+    if (n) failed.set("HOLE_OUTSIDE_PAD", `${n} găuri în afara pad-urilor (din ${holes.length}).`);
+    else note("HOLE_OUTSIDE_PAD", holes.length ? "Toate găurile cad pe pad-uri." : "Nicio gaură.");
+  }
+
+  // Drill-to-drill
+  {
+    let n = 0;
+    for (let i = 0; i < holes.length && n < 50; i++)
+      for (let j = i + 1; j < holes.length; j++) {
+        const a = holes[i]!, b = holes[j]!;
+        const c = Math.hypot(a.x - b.x, a.y - b.y);
+        if (c < 0.01) continue;
+        const gap = c - a.d / 2 - b.d / 2;
+        if (gap < R.drillToDrill) {
+          n++;
+          if (n <= 6) fail("DRILL_TO_DRILL", `Găuri la ${Math.max(0, gap).toFixed(2)} mm una de alta (min ${R.drillToDrill} mm) lângă (${a.x.toFixed(2)}, ${a.y.toFixed(2)}).`, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, layer: "drill" });
+        }
+      }
+    if (n) failed.set("DRILL_TO_DRILL", `${n} perechi de găuri prea apropiate.`);
+    else note("DRILL_TO_DRILL", "Distanțele dintre găuri sunt conforme.");
+  }
+
+  // Silkscreen over pads
+  {
+    const silk = one("top_silk");
+    if (silk && (maskAps.length || topPads.length)) {
+      const pads = (maskAps.length ? maskAps : topPads).map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c);
+      let n = 0;
+      for (const sp of silk.primitives) {
+        const c = toCapsule(sp, 0);
+        if (!c) continue;
+        for (const pc of pads) {
+          if (c.b.maxX < pc.b.minX || c.b.minX > pc.b.maxX || c.b.maxY < pc.b.minY || c.b.minY > pc.b.maxY) continue;
+          if (segSegDist(c, pc) - c.r - pc.r < R.silkPadClearance - 0.001) {
+            n++;
+            if (n <= 8) fail("SILK_OVER_PAD", `Serigrafie peste pad la (${((pc.ax + pc.bx) / 2).toFixed(2)}, ${((pc.ay + pc.by) / 2).toFixed(2)}).`, { x: (pc.ax + pc.bx) / 2, y: (pc.ay + pc.by) / 2, layer: "top_silk" });
+            break;
+          }
+        }
+      }
+      if (n) failed.set("SILK_OVER_PAD", `${n} elemente de serigrafie peste pad-uri.`);
+      else note("SILK_OVER_PAD", "Serigrafia nu atinge pad-urile.");
+    }
+  }
+
   // Min trace width
   let minTrace: number | null = null;
   for (const layer of [top, bottom].filter(Boolean) as Layer[]) {
@@ -408,21 +484,27 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     }
   }
 
-  // Build rule table & score
+  // Build rule table & score: base points + perIssue per extra occurrence, capped per rule; critical rules cap the total score.
   const rules: RuleResult[] = [];
   let penalty = 0;
+  let criticalCount = 0;
   for (const [code, pv] of Object.entries(P)) {
     const { points: pts, severity: sev, smtOnly, enabled } = pv;
     if (!enabled) continue;
     if (smtOnly && !smt) continue;
     const isFailed = failed.has(code);
     if (!isFailed && !details.has(code)) continue;
-    const applied = isFailed ? pts : 0;
+    const count = issues.filter((i) => i.code === code).length || (isFailed ? 1 : 0);
+    const cap = pv.cap ?? Math.max(pts, 15);
+    const applied = isFailed ? Math.min(cap, pts + (pv.perIssue ?? 0) * Math.max(0, count - 1)) : 0;
+    if (isFailed && pv.critical) criticalCount++;
     penalty += applied;
-    rules.push({ code, title: TITLES[code] ?? code, penalty: applied, maxPenalty: pts, passed: !isFailed, severity: isFailed ? sev : "info", detail: failed.get(code) ?? details.get(code) ?? "" });
+    rules.push({ code, title: TITLES[code] ?? code, penalty: applied, maxPenalty: cap, count, critical: !!pv.critical, passed: !isFailed, severity: isFailed ? (pv.critical ? "blocking" : sev) : "info", detail: failed.get(code) ?? details.get(code) ?? "" });
   }
-  const score = Math.max(0, 100 - penalty);
+  let score = Math.max(0, 100 - penalty);
+  if (criticalCount) score = Math.min(score, R.criticalScoreCap);
   const blockingCount = rules.filter((r) => !r.passed && r.severity === "blocking").length;
+  const verdict: DrcReport["verdict"] = blockingCount || criticalCount || score < R.reserveScore ? "respins" : score >= R.passScore ? "admis" : "rezerve";
 
   return {
     version: 1,
@@ -430,7 +512,9 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     score,
     designPoints: +((40 * score) / 100).toFixed(1),
     blockingCount,
-    wouldPass: blockingCount === 0,
+    wouldPass: blockingCount === 0 && criticalCount === 0,
+    verdict,
+    criticalCount,
     manualReview: variant === "THT",
     board: boardInfo,
     stats: {
