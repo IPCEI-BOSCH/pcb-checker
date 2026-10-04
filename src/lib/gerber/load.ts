@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { classifyLayer, layerBBox, parseExcellon, parseGerber } from "./parser";
+import { classifyLayer, layerBBox, outlineBBox, parseExcellon, parseGerber } from "./parser";
 import type { BBox, Layer } from "./types";
 
 const SKIP = /\.(pdf|png|jpg|jpeg|md|html?|csv|xlsx?|kicad_\w+|pos|rpt|zip|log|json|bak|gbrjob|txt)$/i;
@@ -24,8 +24,9 @@ export async function loadGerberZip(data: Blob | ArrayBuffer, opts: { drillForma
     }
   }
   // Drill files are parsed last so an undeclared coordinate format can be fitted to the board outline.
-  const ref = layers.find((l) => l.kind === "outline") ?? layers.find((l) => l.kind === "top_copper");
-  const box: BBox | null = ref ? layerBBox(ref, true) : null;
+  const outl = layers.find((l) => l.kind === "outline");
+  const ref = outl ?? layers.find((l) => l.kind === "top_copper");
+  const box: BBox | null = outl ? outlineBBox(outl) : ref ? layerBBox(ref, true) : null;
   const forced = opts.drillFormat && opts.drillFormat !== "auto"
     ? { int: +opts.drillFormat.split(":")[0]!, dec: +opts.drillFormat.split(":")[1]! }
     : undefined;

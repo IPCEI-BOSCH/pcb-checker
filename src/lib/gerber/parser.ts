@@ -11,6 +11,11 @@ export function classifyLayer(fileName: string, content: string): LayerKind {
     sstop: "top_silk", ssbot: "bottom_silk", sptop: "top_paste", spbot: "bottom_paste", bo: "outline", fab: "fabrication", mech: "fabrication", mechanical: "fabrication", assy: "fabrication",
   };
   if (CETTI[stem]) return CETTI[stem]!;
+  // Prefixed/suffixed student names (431B_SSTOP, Popescu-SPTOP_v2): match whole tokens, longest first.
+  const tokens = stem.split(/[^a-z0-9]+/).filter(Boolean);
+  for (const k of ["sstop", "ssbot", "sptop", "spbot", "smtop", "smbot", "bottom", "top", "bot", "bo", "fab"]) {
+    if (tokens.includes(k)) return CETTI[k]!;
+  }
   const has = (...keys: string[]) => keys.some((k) => n.includes(k));
   if (/drl_map|drill_map|-job\.gbrjob/.test(n)) return "fabrication";
   if (has("fab", "fabrication", "assembly", "dwgs", "user.drawings", "drawing") || /\.(fab|gm2|gm3|gd1|gg1)$/.test(n)) return "fabrication";
@@ -357,6 +362,36 @@ export function primitiveBBox(p: Primitive): BBox {
     maxY = Math.max(maxY, b);
   }
   return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Board outline box: the largest closed loop of line segments in the outline layer,
+ * ignoring dimension text, arrows and alignment marks. Falls back to the full box.
+ */
+export function outlineBBox(layer: Layer): BBox | null {
+  const lines = layer.primitives.filter((p): p is Extract<typeof p, { t: "line" }> => p.t === "line" && !p.clear);
+  if (lines.length < 3) return layerBBox(layer, true);
+  const key = (x: number, y: number) => `${Math.round(x * 50)},${Math.round(y * 50)}`;
+  const parent = new Map<string, string>();
+  const find = (a: string): string => { let r = a; while (parent.get(r)! !== r) r = parent.get(r)!; parent.set(a, r); return r; };
+  const deg = new Map<string, number>();
+  for (const l of lines) {
+    const a = key(l.x1, l.y1), b = key(l.x2, l.y2);
+    for (const k of [a, b]) { if (!parent.has(k)) parent.set(k, k); deg.set(k, (deg.get(k) ?? 0) + 1); }
+    parent.set(find(a), find(b));
+  }
+  const comps = new Map<string, { box: BBox; open: number }>();
+  for (const l of lines) {
+    const r = find(key(l.x1, l.y1));
+    const c = comps.get(r) ?? { box: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }, open: 0 };
+    c.box.minX = Math.min(c.box.minX, l.x1, l.x2); c.box.maxX = Math.max(c.box.maxX, l.x1, l.x2);
+    c.box.minY = Math.min(c.box.minY, l.y1, l.y2); c.box.maxY = Math.max(c.box.maxY, l.y1, l.y2);
+    comps.set(r, c);
+  }
+  for (const [k, d] of deg) if (d % 2) comps.get(find(k))!.open++;
+  const area = (b: BBox) => (b.maxX - b.minX) * (b.maxY - b.minY);
+  const closed = [...comps.values()].filter((c) => c.open === 0 && area(c.box) > 1).sort((a, b) => area(b.box) - area(a.box));
+  return closed[0]?.box ?? layerBBox(layer, true);
 }
 
 export function layerBBox(layer: Layer, centerline = false): BBox | null {

@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS, type Settings } from "./settings";
-import { layerBBox, primitiveBBox } from "../gerber/parser";
+import { layerBBox, outlineBBox, primitiveBBox } from "../gerber/parser";
 import type { BBox, Layer, LayerKind, Primitive } from "../gerber/types";
 
 export type Severity = "blocking" | "warning" | "info";
@@ -244,7 +244,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   else note("DRL_COUNT", `${drills[0]!.fileName} — ${holes.length} găuri.`);
 
   // Board box
-  let board: BBox | null = outline ? layerBBox(outline, true) : null;
+  let board: BBox | null = outline ? outlineBBox(outline) : null;
   if (!board && top) board = layerBBox(top);
   let boardInfo: DrcReport["board"] = null;
   if (board) {
@@ -411,7 +411,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
         if (!c) continue;
         for (const pc of pads) {
           if (c.b.maxX < pc.b.minX || c.b.minX > pc.b.maxX || c.b.maxY < pc.b.minY || c.b.minY > pc.b.maxY) continue;
-          if (segSegDist(c, pc) - c.r - pc.r < R.silkPadClearance - 0.001) {
+          if (segSegDist(c, pc) - c.r - pc.r < R.silkPadClearance - (R.silkOverlapTol ?? 0) - 0.001) {
             n++;
             if (n <= 8) fail("SILK_OVER_PAD", `Serigrafie peste pad la (${((pc.ax + pc.bx) / 2).toFixed(2)}, ${((pc.ay + pc.by) / 2).toFixed(2)}).`, { x: (pc.ax + pc.bx) / 2, y: (pc.ay + pc.by) / 2, layer: "top_silk" });
             break;
