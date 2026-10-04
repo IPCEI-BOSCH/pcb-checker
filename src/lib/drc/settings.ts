@@ -8,6 +8,8 @@ export interface RuleValues {
   npthMinDiameter: number;
   drillToDrill: number;
   silkPadClearance: number;
+  /** Overlap tolerated before silk counts as on a pad (footprint outlines touching pad edges). */
+  silkOverlapTol: number;
   passScore: number;
   reserveScore: number;
   criticalScoreCap: number;
@@ -85,6 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
     npthMinDiameter: 2.5,
     drillToDrill: 0.5,
     silkPadClearance: 0,
+    silkOverlapTol: 0.1,
     passScore: 80,
     reserveScore: 50,
     criticalScoreCap: 30,
@@ -163,6 +166,7 @@ export const RULE_FIELDS: Record<keyof RuleValues, FieldMeta> = {
   npthMinDiameter: { label: "Gaură de montaj (fără pad) de la Ø", unit: "mm", group: "Găurire", step: 0.1, help: "Găurile mai mari sunt considerate găuri de prindere și pot sta în afara pad-urilor" },
   drillToDrill: { label: "Distanță minimă între găuri (margine-margine)", unit: "mm", group: "Găurire", step: 0.05 },
   silkPadClearance: { label: "Gardă serigrafie față de pad", unit: "mm", group: "Fiduciali & mască", step: 0.01 },
+  silkOverlapTol: { label: "Toleranță suprapunere serigrafie (contur carcasă)", unit: "mm", group: "Fiduciali & mască", step: 0.01 },
   passScore: { label: "Scor minim „Admis fabricație”", unit: "pct", group: "Scorare", step: 1 },
   reserveScore: { label: "Scor minim „Admis cu rezerve”", unit: "pct", group: "Scorare", step: 1 },
   criticalScoreCap: { label: "Scor maxim când există o eroare critică", unit: "pct", group: "Scorare", step: 1, help: "Ex.: găuri în afara pad-urilor, placă mai mare decât formatul" },

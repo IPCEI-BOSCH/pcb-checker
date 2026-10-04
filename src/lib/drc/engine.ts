@@ -411,7 +411,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
         if (!c) continue;
         for (const pc of pads) {
           if (c.b.maxX < pc.b.minX || c.b.minX > pc.b.maxX || c.b.maxY < pc.b.minY || c.b.minY > pc.b.maxY) continue;
-          if (segSegDist(c, pc) - c.r - pc.r < R.silkPadClearance - 0.001) {
+          if (segSegDist(c, pc) - c.r - pc.r < R.silkPadClearance - (R.silkOverlapTol ?? 0) - 0.001) {
             n++;
             if (n <= 8) fail("SILK_OVER_PAD", `Serigrafie peste pad la (${((pc.ax + pc.bx) / 2).toFixed(2)}, ${((pc.ay + pc.by) / 2).toFixed(2)}).`, { x: (pc.ax + pc.bx) / 2, y: (pc.ay + pc.by) / 2, layer: "top_silk" });
             break;
