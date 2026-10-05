@@ -92,6 +92,21 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
       return n;
     });
   };
+  // Magnetic ruler: snap to the nearest pad/hole centre within 10 px.
+  const snapPts = useMemo(() => {
+    const out: [number, number][] = [];
+    for (const l of layers) {
+      for (const p of l.primitives) if (p.t === "flash" && !p.clear) out.push([p.x, p.y]);
+      for (const h of l.holes) out.push([h.x, h.y]);
+    }
+    return out;
+  }, [layers]);
+  const snap = (w: { x: number; y: number }) => {
+    let best: [number, number] | null = null;
+    let bd = 10 / view.scale;
+    for (const p of snapPts) { const d = Math.hypot(p[0] - w.x, p[1] - w.y); if (d < bd) { bd = d; best = p; } }
+    return best ? { x: best[0], y: best[1] } : w;
+  };
   const toScreen = useCallback((x: number, y: number) => [view.ox + x * view.scale, view.oy - y * view.scale] as const, [view]);
 
   useEffect(() => {
@@ -280,7 +295,8 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
             const rect = canvasRef.current!.getBoundingClientRect();
             const px = e.clientX - rect.left;
             const py = e.clientY - rect.top;
-            const world = { x: (px - view.ox) / view.scale, y: (view.oy - py) / view.scale };
+            const raw = { x: (px - view.ox) / view.scale, y: (view.oy - py) / view.scale };
+            const world = rulerOn ? snap(raw) : raw;
             cursorRef.current = world;
             setCursor(world);
             if (drag.current) {
@@ -299,7 +315,8 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
             if (d && !d.moved && rulerOn) {
               const rect = canvasRef.current!.getBoundingClientRect();
               const w = { x: (e.clientX - rect.left - view.ox) / view.scale, y: (view.oy - (e.clientY - rect.top)) / view.scale };
-              setRuler((r) => (!r || r.b ? { a: w, b: null } : { ...r, b: w }));
+              const sw = snap(w);
+              setRuler((r) => (!r || r.b ? { a: sw, b: null } : { ...r, b: sw }));
               return;
             }
             if (d && !d.moved) {
@@ -373,7 +390,7 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
           ))}
           <Button size="sm" variant={pair === null ? "default" : "outline"} className="col-span-2 h-7 text-[10px]" onClick={() => applyPair(null)}><Layers className="mr-1 h-3 w-3" /> Toate straturile</Button>
         </div>
-        {rulerOn && <p className="text-[11px] text-muted-foreground">Riglă activă: click pe primul punct, apoi pe al doilea.</p>}
+        {rulerOn && <p className="text-[11px] text-muted-foreground">Riglă magnetică: se lipește de centrul pad-urilor și găurilor. Click pe primul punct, apoi pe al doilea.</p>}
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Straturi</div>
         {sorted.map(({ l, idx }) => {
           const st = state[idx];

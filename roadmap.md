@@ -66,3 +66,9 @@
 - [x] Texte editabile pentru regulile standard, variantă SMT/THT, toleranță, prag apariții, ignorare VIA, referință, exemplu, notă
 - [x] AI creează reguli noi și rescrie regulile existente; testare în aceeași fereastră
 - [x] Istoric: arhivare/ștergere per proiect și în lot, golire/ștergere serie, ștergere an
+
+## Etapa 10 — Statistici, integritate, riglă magnetică
+- [x] Pagină „Statistici & Integritate": verdicte, distribuție scor, top erori pe serie
+- [x] Amprentă layout anti-plagiat (pad-uri relative, scule, densitate cupru), comparație în serie și cu anii anteriori, prag configurabil
+- [x] Riglă magnetică în vizualizatorul Gerber
+- [ ] Restul planului 1–6 (Web Worker DRC, bordură panou, cupoane, backup anual, notă finală automată) — etape următoare

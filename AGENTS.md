@@ -34,3 +34,4 @@
 - `/rules` has one unified DRC window (`src/components/UnifiedRules.tsx`): built-in and custom rules in one table with a side editor (threshold via `RULE_LINKS`, scoring, variant, student texts); sandbox sits below in the same tab — avoids duplicated tabs.
 - Built-in rule texts are edited via `settings.overrides` and travel to reports through `report.customCatalog`, which takes precedence over `CATALOG` — catalog stays the fallback.
 - Deleting projects/series/years goes through `src/lib/purge.ts` (removes DB rows and stored files) — one path for history, demo reset and admin cleanup.
+- Layout similarity (anti-plagiarism) is computed in the browser from parsed primitives (`src/lib/integrity/fingerprint.ts`), translation/rotation invariant — no server storage of fingerprints.

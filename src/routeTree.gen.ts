@@ -19,6 +19,7 @@ import { Route as AuthenticatedEnrollRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedFilesRouteImport } from './routes/_authenticated/files'
 import { Route as AuthenticatedGradebookRouteImport } from './routes/_authenticated/gradebook'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
+import { Route as AuthenticatedInsightsRouteImport } from './routes/_authenticated/insights'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
 import { Route as AuthenticatedRulesRouteImport } from './routes/_authenticated/rules'
 import { Route as AuthenticatedSelfCheckRouteImport } from './routes/_authenticated/self-check'
@@ -72,6 +73,11 @@ const AuthenticatedHistoryRoute = AuthenticatedHistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedInsightsRoute = AuthenticatedInsightsRouteImport.update({
+  id: '/insights',
+  path: '/insights',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
   id: '/review',
   path: '/review',
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/files': typeof AuthenticatedFilesRoute
   '/gradebook': typeof AuthenticatedGradebookRoute
   '/history': typeof AuthenticatedHistoryRoute
+  '/insights': typeof AuthenticatedInsightsRoute
   '/review': typeof AuthenticatedReviewRoute
   '/rules': typeof AuthenticatedRulesRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/files': typeof AuthenticatedFilesRoute
   '/gradebook': typeof AuthenticatedGradebookRoute
   '/history': typeof AuthenticatedHistoryRoute
+  '/insights': typeof AuthenticatedInsightsRoute
   '/review': typeof AuthenticatedReviewRoute
   '/rules': typeof AuthenticatedRulesRoute
   '/self-check': typeof AuthenticatedSelfCheckRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/_authenticated/files': typeof AuthenticatedFilesRoute
   '/_authenticated/gradebook': typeof AuthenticatedGradebookRoute
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
+  '/_authenticated/insights': typeof AuthenticatedInsightsRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/rules': typeof AuthenticatedRulesRoute
   '/_authenticated/self-check': typeof AuthenticatedSelfCheckRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | '/files'
     | '/gradebook'
     | '/history'
+    | '/insights'
     | '/review'
     | '/rules'
     | '/self-check'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/files'
     | '/gradebook'
     | '/history'
+    | '/insights'
     | '/review'
     | '/rules'
     | '/self-check'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/_authenticated/files'
     | '/_authenticated/gradebook'
     | '/_authenticated/history'
+    | '/_authenticated/insights'
     | '/_authenticated/review'
     | '/_authenticated/rules'
     | '/_authenticated/self-check'
@@ -256,6 +268,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHistoryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/insights': {
+      id: '/_authenticated/insights'
+      path: '/insights'
+      fullPath: '/insights'
+      preLoaderRoute: typeof AuthenticatedInsightsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/review': {
       id: '/_authenticated/review'
       path: '/review'
@@ -288,6 +307,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedFilesRoute: typeof AuthenticatedFilesRoute
   AuthenticatedGradebookRoute: typeof AuthenticatedGradebookRoute
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
+  AuthenticatedInsightsRoute: typeof AuthenticatedInsightsRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedRulesRoute: typeof AuthenticatedRulesRoute
   AuthenticatedSelfCheckRoute: typeof AuthenticatedSelfCheckRoute
@@ -301,6 +321,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFilesRoute: AuthenticatedFilesRoute,
   AuthenticatedGradebookRoute: AuthenticatedGradebookRoute,
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
+  AuthenticatedInsightsRoute: AuthenticatedInsightsRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedRulesRoute: AuthenticatedRulesRoute,
   AuthenticatedSelfCheckRoute: AuthenticatedSelfCheckRoute,

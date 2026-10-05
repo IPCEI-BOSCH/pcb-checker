@@ -2,7 +2,7 @@ import { createFileRoute, Link, Outlet, redirect, useNavigate } from "@tanstack/
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { CircuitBoard, History as HistoryIcon, ClipboardCheck, FileCheck2, FolderOpen, Grid3x3, SlidersHorizontal, LayoutDashboard, LogOut, Settings2, Table2, UserPlus } from "lucide-react";
+import { CircuitBoard, History as HistoryIcon, ClipboardCheck, FileCheck2, FolderOpen, Grid3x3, SlidersHorizontal, LayoutDashboard, LogOut, Settings2, Table2, UserPlus, ShieldAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthContext, ROLE_LABELS, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
