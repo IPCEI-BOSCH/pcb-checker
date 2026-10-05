@@ -21,6 +21,12 @@ export interface AiRuleDraft {
   severity: "blocking" | "warning" | "info";
   critical: boolean;
   smtOnly: boolean;
+  appliesTo: "ALL" | "SMT" | "THT";
+  tolerance: number;
+  minOccurrences: number;
+  ignoreHoled: boolean;
+  reference: string;
+  example: string;
   what: string;
   why: string;
   fix: string;
@@ -60,7 +66,7 @@ export const aiCreateRule = createServerFn({ method: "POST" })
     const schema = jsonSchema<AiRuleDraft>({
       type: "object",
       additionalProperties: false,
-      required: ["code", "title", "category", "checkType", "layer", "value", "points", "perIssue", "cap", "severity", "critical", "smtOnly", "what", "why", "fix", "explanation"],
+      required: ["code", "title", "category", "checkType", "layer", "value", "points", "perIssue", "cap", "severity", "critical", "smtOnly", "appliesTo", "tolerance", "minOccurrences", "ignoreHoled", "reference", "example", "what", "why", "fix", "explanation"],
       properties: {
         code: str,
         title: str,
@@ -74,6 +80,12 @@ export const aiCreateRule = createServerFn({ method: "POST" })
         severity: { type: "string", enum: ["blocking", "warning", "info"] },
         critical: { type: "boolean" },
         smtOnly: { type: "boolean" },
+        appliesTo: { type: "string", enum: ["ALL", "SMT", "THT"] },
+        tolerance: num,
+        minOccurrences: num,
+        ignoreHoled: { type: "boolean" },
+        reference: str,
+        example: str,
         what: str,
         why: str,
         fix: str,
@@ -93,6 +105,12 @@ Tipuri de verificare disponibile (checkType) și straturi permise:
 value: pragul în mm (sau bucăți pentru numărători). 1 mil = 0.0254 mm.
 code: identificator unic MAJUSCULE cu prefix CUSTOM_ (ex. CUSTOM_HOLE_EDGE), diferit de: ${data.existingCodes.join(", ") || "(niciunul)"}.
 points = penalizare de bază ca număr POZITIV (0–100), perIssue = puncte per apariție suplimentară, cap = plafon total (≥ points).
+appliesTo: ALL implicit, SMT/THT dacă profesorul precizează varianta (smtOnly = appliesTo==="SMT").
+tolerance: toleranță de rotunjire în mm (0 dacă nu se cere; ~0.005 pentru praguri în mil).
+minOccurrences: de la câte apariții se depunctează (1 implicit).
+ignoreHoled: true pentru verificări de pad când trebuie ignorate VIA-urile / pad-urile cu gaură.
+reference: standardul invocat (IPC-2221, IPC-7525B, CETTI…) sau "" dacă nu e cazul.
+example: un exemplu scurt de proiectare corectă.
 critical=true doar dacă profesorul cere explicit ca eroarea să blocheze fabricația.
 what/why/fix: explicații în română pentru STUDENT — ce a greșit, de ce contează la fabricație, cum repară pas cu pas în OrCAD/Allegro.
 explanation: o frază pentru profesor despre cum ai interpretat cererea. Dacă cererea nu se poate verifica cu tipurile de mai sus, alege cea mai apropiată și spune asta în explanation.`;
@@ -121,6 +139,9 @@ explanation: o frază pentru profesor despre cum ai interpretat cererea. Dacă c
         code: code.startsWith("CUSTOM_") ? code : `CUSTOM_${code}`,
         points: Math.min(100, Math.abs(Number(out.points) || 0)),
         perIssue: Math.abs(Number(out.perIssue) || 0),
+        tolerance: Math.abs(Number(out.tolerance) || 0),
+        minOccurrences: Math.max(1, Math.round(Number(out.minOccurrences) || 1)),
+        smtOnly: out.appliesTo === "SMT",
         cap: Math.max(Math.abs(Number(out.points) || 0), Math.abs(Number(out.cap) || 0)),
       };
     } catch (e) {
