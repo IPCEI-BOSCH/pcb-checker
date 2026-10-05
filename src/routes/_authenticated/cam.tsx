@@ -55,6 +55,7 @@ function Cam() {
   const [active, setActive] = useState<Record<Mode, number>>({ panel: 0, stencil: 0 });
   const [busy, setBusy] = useState<string | null>(null);
   const [onlyApproved, setOnlyApproved] = useState(true);
+  const [selected, setSelected] = useState<number | null>(null);
   const driveData = useRef<Record<string, { series: string; group: string; folder: string; files: { name: string; b64: string }[] }>>({});
   const driveReport = useRef("");
   const listLayouts = useServerFn(listDriveLayouts);
@@ -106,6 +107,17 @@ function Cam() {
   const viewLayers = useMemo(() => (slots.some((s) => s.board) ? (mode === "panel" ? panelLayers(slots, cfg) : stencilLayers(slots, scfg)) : []), [slots, mode, cfg, scfg]);
   const origin = (c: number, r: number) => (mode === "panel" ? slotOrigin(cfg, c, r) : stencilOrigin(scfg).at(c, r));
   const positions = positionTable(slots, dims.cols, origin);
+  const selBoard = selected != null ? slots.find((s) => s.row * dims.cols + s.col === selected)?.board ?? null : null;
+  const exportBorderou = () => {
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines = [["Pagina", "Pozitie", "Cod grila", "Coloana", "Rand", "X (mm)", "Y (mm)", "Proiect", "Gauri"].map(esc).join(",")];
+    for (const r of positions) {
+      const b = slots.find((s) => s.board?.label === r.label)?.board;
+      const holes = b ? b.layers.filter((l) => l.kind === "drill").reduce((n, l) => n + l.holes.length, 0) : 0;
+      lines.push([pageName(mode, pageIdx), r.index, `${String.fromCharCode(64 + r.col)}${r.row}`, r.col, r.row, r.x.toFixed(3), r.y.toFixed(3), r.label, holes].map(esc).join(","));
+    }
+    download(new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv" }), `borderou_${mode}_${pageIdx + 1}.csv`);
+  };
 
   if (!allowed) return <p className="text-sm text-muted-foreground">Acces restricționat.</p>;
 
