@@ -65,7 +65,8 @@ export const TITLES: Record<string, string> = {
   ORIGIN: "Origine coordonate (0,0)",
   BOARD_OVERSIZE: "Placă mai mare decât formatul (CRITIC)",
   HOLE_OUTSIDE_PAD: "Găuri în afara pad-urilor (CRITIC)",
-  SILK_OVER_PAD: "Serigrafie peste pad-uri",
+  SILK_OVER_PAD: "Serigrafie pe cuprul pad-urilor",
+  SILK_EDGE: "Serigrafie la marginea pad-urilor",
   DRILL_TO_DRILL: "Distanță între găuri",
   OUTLINE_WIDTH: "Lățime contur",
   EDGE_CLEARANCE: "Gardă margine cupru",
@@ -400,28 +401,45 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     else note("DRILL_TO_DRILL", "Distanțele dintre găuri sunt conforme.");
   }
 
-  // Silkscreen over pads
+  // Silkscreen over pads: ink that penetrates the copper pad is a real defect (SILK_OVER_PAD);
+  // ink that only touches the mask opening / pad edge is clipped in CAM and is a soft warning (SILK_EDGE).
   {
     const silk = one("top_silk");
     if (silk && (maskAps.length || topPads.length)) {
-      const pads = (maskAps.length ? maskAps : topPads).map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c);
-      let n = 0;
+      const copper = (topPads.length ? topPads : maskAps).map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c);
+      const openings = (maskAps.length ? maskAps : topPads).map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c);
+      const tol = R.silkOverlapTol ?? 0;
+      let n = 0, e = 0;
+      const overlaps = (c: Capsule, pc: Capsule) => !(c.b.maxX < pc.b.minX || c.b.minX > pc.b.maxX || c.b.maxY < pc.b.minY || c.b.minY > pc.b.maxY);
       for (const sp of silk.primitives) {
         const c = toCapsule(sp, 0);
         if (!c) continue;
-        for (const pc of pads) {
-          if (c.b.maxX < pc.b.minX || c.b.minX > pc.b.maxX || c.b.maxY < pc.b.minY || c.b.minY > pc.b.maxY) continue;
-          if (segSegDist(c, pc) - c.r - pc.r < R.silkPadClearance - (R.silkOverlapTol ?? 0) - 0.001) {
-            n++;
-            if (n <= 8) fail("SILK_OVER_PAD", `Serigrafie peste pad la (${((pc.ax + pc.bx) / 2).toFixed(2)}, ${((pc.ay + pc.by) / 2).toFixed(2)}).`, { x: (pc.ax + pc.bx) / 2, y: (pc.ay + pc.by) / 2, layer: "top_silk" });
+        let hit: Capsule | null = null;
+        for (const pc of copper) {
+          if (!overlaps(c, pc)) continue;
+          if (segSegDist(c, pc) - c.r - pc.r < -tol - 0.001) { hit = pc; break; }
+        }
+        if (hit) {
+          n++;
+          if (n <= 8) fail("SILK_OVER_PAD", `Serigrafie pe cuprul pad-ului la (${((hit.ax + hit.bx) / 2).toFixed(2)}, ${((hit.ay + hit.by) / 2).toFixed(2)}).`, { x: (hit.ax + hit.bx) / 2, y: (hit.ay + hit.by) / 2, layer: "top_silk" });
+          continue;
+        }
+        for (const pc of openings) {
+          if (!overlaps(c, pc)) continue;
+          if (segSegDist(c, pc) - c.r - pc.r < R.silkPadClearance - 0.001) {
+            e++;
+            if (e <= 6) fail("SILK_EDGE", `Serigrafie atinge marginea pad-ului/măștii la (${((pc.ax + pc.bx) / 2).toFixed(2)}, ${((pc.ay + pc.by) / 2).toFixed(2)}).`, { x: (pc.ax + pc.bx) / 2, y: (pc.ay + pc.by) / 2, layer: "top_silk" });
             break;
           }
         }
       }
-      if (n) failed.set("SILK_OVER_PAD", `${n} elemente de serigrafie peste pad-uri.`);
-      else note("SILK_OVER_PAD", "Serigrafia nu atinge pad-urile.");
+      if (n) failed.set("SILK_OVER_PAD", `${n} elemente de serigrafie pe cuprul pad-urilor.`);
+      else note("SILK_OVER_PAD", "Serigrafia nu pătrunde pe cuprul pad-urilor.");
+      if (e) failed.set("SILK_EDGE", `${e} elemente ating marginea pad-urilor (se taie automat la mască).`);
+      else note("SILK_EDGE", "Serigrafia păstrează distanța față de deschiderile de mască.");
     }
   }
+
 
   // Min trace width
   let minTrace: number | null = null;

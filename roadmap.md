@@ -47,3 +47,9 @@
 - [x] Serigrafie peste pad (-20p, blocant), distanță între găuri
 - [x] Explicații pe înțelesul studentului pentru fiecare depunctare
 - [ ] Riglă/perechi de straturi în vizualizator, fișă PDF de evaluare (următoarea etapă)
+
+## Etapa 7 — Calibrare acceptare
+- [x] Serigrafie: pe cupru (blocant) separat de atingere margine/mască (info, -2p)
+- [x] Praguri implicite: izolație 0.300 mm, traseu 0.380 mm
+- [x] Diagnostic fișiere în raport (tip, dimensiune, pad-uri, aperturi, unelte găurire)
+- [ ] Harta vizuală a panoului în CAM, borderou CETTI
