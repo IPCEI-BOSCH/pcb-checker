@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Download, RotateCcw, Save, Sparkles, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { fetchStructure, logAudit } from "@/lib/data";
+import { fetchStructure, logAudit , seriesLabel, sortSeriesByYear } from "@/lib/data";
 import { TITLES } from "@/lib/drc/engine";
 import {
   CAM_FIELDS, DEFAULT_SETTINGS, deriveCam, RULE_FIELDS, fetchSettings, flattenSettings, mergeSettings, saveSettings, unflattenSettings,
@@ -88,7 +88,7 @@ function RulesPage() {
   const doCreate = async () => {
     setBusy("Se creează foaia Google Sheets…");
     try {
-      const name = scope === "GLOBAL" ? "Global" : structure.data?.series.find((x) => x.id === scope)?.name ?? "Serie";
+      const name = scope === "GLOBAL" ? "Global" : (() => { const x = structure.data?.series.find((x) => x.id === scope); return x ? seriesLabel(x, structure.data?.years) : "Serie"; })();
       const r = await createSheet({ data: { title: `PCB Checker — Setări ${name}`, tabs: [tab] } });
       rememberSheet(r.spreadsheetId);
       await push({ data: { spreadsheetId: r.spreadsheetId, tab, rows: flattenSettings(draft) } });
@@ -172,7 +172,7 @@ function RulesPage() {
             <SelectTrigger className="w-60"><SelectValue /></SelectTrigger>
             <SelectContent>
               {isAdmin && <SelectItem value="GLOBAL">Setări generale (toate seriile)</SelectItem>}
-              {mySeries.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+              {sortSeriesByYear(mySeries, structure.data?.years).map((s) => <SelectItem key={s.id} value={s.id}>{seriesLabel(s, structure.data?.years)}</SelectItem>)}
             </SelectContent>
           </Select>
           <Button variant="ghost" onClick={() => setDraft(structuredClone(DEFAULT_SETTINGS))}><RotateCcw className="mr-2 h-4 w-4" /> Valori Rev. G</Button>

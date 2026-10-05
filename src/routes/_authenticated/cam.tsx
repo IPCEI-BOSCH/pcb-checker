@@ -8,7 +8,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { fetchDriveLayout, listDriveLayouts } from "@/lib/drive.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { fetchStructure, logAudit } from "@/lib/data";
+import { fetchStructure, logAudit , seriesLabel, sortSeriesByYear } from "@/lib/data";
 import { fetchSettings } from "@/lib/drc/settings";
 import { loadGerberZip } from "@/lib/gerber/load";
 import {
@@ -329,10 +329,10 @@ function Cam() {
 
       <div className="flex flex-wrap items-center gap-2">
         <Select value={seriesId || "ALL"} onValueChange={(v) => setSeriesId(v === "ALL" ? "" : v)}>
-          <SelectTrigger className="w-56"><SelectValue placeholder="Serie" /></SelectTrigger>
+          <SelectTrigger className="w-64"><SelectValue placeholder="Serie" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">Toate seriile</SelectItem>
-            {structure.data?.series.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+            {sortSeriesByYear(structure.data?.series ?? [], structure.data?.years).map((s) => <SelectItem key={s.id} value={s.id}>{seriesLabel(s, structure.data?.years)}</SelectItem>)}
           </SelectContent>
         </Select>
         <Button onClick={pullDrive} disabled={!!busy}><Cloud className="mr-2 h-4 w-4" /> Preia din Google Drive</Button>
