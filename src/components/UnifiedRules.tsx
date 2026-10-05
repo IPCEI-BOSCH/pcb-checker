@@ -30,7 +30,7 @@ const SEV_LABEL = { blocking: "Blocant", warning: "Avertisment", info: "Informat
 const APPLIES_LABEL: Record<AppliesTo, string> = { ALL: "SMT + THT", SMT: "Doar SMT", THT: "Doar THT" };
 const num = (v: string) => Number(v.replace(",", "."));
 
-export function UnifiedRules({ draft, setDraft, baseline, onTest }: { draft: Settings; setDraft: SetDraft; baseline?: Settings; onTest: () => void }) {
+export function UnifiedRules({ draft, setDraft, baseline, onTest }: { draft: Settings; setDraft: SetDraft; baseline?: Settings | undefined; onTest: () => void }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("ALL");
   const [status, setStatus] = useState("ALL");
@@ -193,7 +193,7 @@ function thresholdSummary(r: Row, d: Settings) {
   return keys.slice(0, 2).map((k) => `${d.rules[k]}${RULE_FIELDS[k].unit === "mm" ? " mm" : ""}`).join(" · ") + (keys.length > 2 ? " …" : "");
 }
 
-function Field({ label, children, help }: { label: string; children: React.ReactNode; help?: string }) {
+function Field({ label, children, help }: { label: string; children: React.ReactNode; help?: string | undefined }) {
   return (
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>

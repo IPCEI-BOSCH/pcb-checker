@@ -132,7 +132,7 @@ function RulesPage() {
 
   const applyPatch = () => {
     if (!patch) return;
-    const merged = mergeSettings(draft, { rules: patch.rules as Partial<RuleValues> as RuleValues, cam: patch.cam as Partial<CamValues> as CamValues, penalties: patch.penalties as Settings["penalties"], overrides: patch.overrides });
+    const merged = mergeSettings(draft, { rules: patch.rules as Partial<RuleValues> as RuleValues, cam: patch.cam as Partial<CamValues> as CamValues, penalties: patch.penalties as Settings["penalties"], ...(patch.overrides ? { overrides: patch.overrides } : {}) });
     setDraft(merged);
     setPatch(null);
     goTest();

@@ -47,7 +47,7 @@ export interface PenaltyValue {
   /** Critical: if it fails, the score is capped to rules.criticalScoreCap and fabrication is refused. */
   critical?: boolean;
   /** Which project variant the rule applies to (overrides smtOnly when set). */
-  appliesTo?: AppliesTo;
+  appliesTo?: AppliesTo | undefined;
 }
 
 /** Teacher edits of a built-in rule's texts (title, student explanation, reference). Empty fields fall back to the catalog. */
@@ -160,7 +160,7 @@ export interface CustomRule {
   why: string;
   fix: string;
   /** Variant the rule applies to; overrides smtOnly when set. */
-  appliesTo?: AppliesTo;
+  appliesTo?: AppliesTo | undefined;
   /** Rounding tolerance in the threshold unit — avoids failing on export rounding. */
   tolerance?: number;
   /** Rule fails only when at least this many cases are found. */
