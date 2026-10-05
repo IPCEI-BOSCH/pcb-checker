@@ -319,6 +319,7 @@ function Review() {
                           {st.status === "pending" && (
                             <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => approveStudent(st.id)}>Validează înscrierea</Button>
                           )}
+                          {st.status === "archived" && <Badge variant="outline" className="mt-1 text-[10px]">Arhivat</Badge>}
                         </TableCell>
                         <TableCell className="text-sm">{groupName.get(st.group_id)}</TableCell>
                         <TableCell>{st.variant}</TableCell>
