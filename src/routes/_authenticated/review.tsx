@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Eye, FileSpreadsheet, FolderInput, Play, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, Play, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit } from "@/lib/data";
@@ -54,6 +54,9 @@ function Review() {
   const [reject, setReject] = useState<{ sub: Sub; name: string } | null>(null);
   const [reason, setReason] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [delStudent, setDelStudent] = useState<{ id: string; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const s = structure.data;
   const visibleGroups = useMemo(() => {
@@ -92,6 +95,7 @@ function Review() {
 
   const allRows = (data.data?.students ?? [])
     .filter((st) => variantFilter === "ALL" || st.variant === variantFilter)
+    .filter((st) => showArchived || st.status !== "archived")
     .map((st) => {
       const all = data.data!.subs.filter((x) => x.student_id === st.id);
       return { st, official: all.find((x) => x.kind === "OFFICIAL") ?? null, selfCount: all.filter((x) => x.kind === "SELF_CHECK").length };
@@ -139,6 +143,35 @@ function Review() {
     const { error } = await supabase.from("students").update({ status: "approved" }).eq("id", id);
     if (error) return void toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["review"] });
+  };
+
+  const archiveStudent = async (id: string, name: string, archived: boolean) => {
+    const { error } = await supabase.from("students").update({ status: archived ? "archived" : "approved" }).eq("id", id);
+    if (error) return void toast.error(error.message);
+    await logAudit(user.id, archived ? "PROJECT_ARCHIVE" : "PROJECT_UNARCHIVE", "student", id, { name });
+    qc.invalidateQueries({ queryKey: ["review"] });
+    toast.success(archived ? `Proiectul „${name}” a fost arhivat.` : `Proiectul „${name}” a fost dezarhivat.`);
+  };
+
+  const deleteStudent = async (id: string, name: string) => {
+    setBusy(true);
+    try {
+      const { data: subs } = await supabase.from("submissions").select("id, zip_path").eq("student_id", id);
+      const paths = (subs ?? []).map((x) => x.zip_path).filter((p): p is string => !!p);
+      const { data: slots } = await supabase.from("student_fabrication_slots").select("storage_path").eq("student_id", id);
+      const slotPaths = (slots ?? []).map((x) => x.storage_path).filter((p): p is string => !!p);
+      if (paths.length || slotPaths.length) await supabase.storage.from("gerbers").remove([...paths, ...slotPaths]);
+      await supabase.from("submissions").delete().eq("student_id", id);
+      await supabase.from("student_fabrication_slots").delete().eq("student_id", id);
+      await supabase.from("project_files").delete().eq("student_id", id);
+      const { error } = await supabase.from("students").delete().eq("id", id);
+      if (error) throw error;
+      await logAudit(user.id, "PROJECT_DELETE", "student", id, { name });
+      toast.success(`Proiectul „${name}” a fost șters definitiv.`);
+      setDelStudent(null);
+      qc.invalidateQueries({ queryKey: ["review"] });
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setBusy(false); }
   };
 
   const openReport = async (name: string, sub: Sub, variant: "SMT" | "THT", sid: string | null, st?: { group_id: string; theme_name: string | null; theme_number: number | null; file_prefix: string | null }) => {
@@ -242,6 +275,7 @@ function Review() {
                   <Button size="sm" onClick={runBatch} disabled={!!batch}><Play className="mr-2 h-4 w-4" /> Rulează DRC pe toată selecția</Button>
                   <Button size="sm" variant="secondary" onClick={approveAllClean} disabled={!!batch}><Check className="mr-2 h-4 w-4" /> Aprobă toate fără erori blocante</Button>
                   <Button size="sm" variant="secondary" onClick={exportExcel}><FileSpreadsheet className="mr-2 h-4 w-4" /> Exportă situația Excel</Button>
+                  <Button size="sm" variant={showArchived ? "default" : "outline"} aria-pressed={showArchived} onClick={() => setShowArchived((v) => !v)}><Archive className="mr-2 h-4 w-4" /> {showArchived ? "Ascunde arhivate" : "Arată arhivate"}</Button>
                 </div>
               </div>
               {batch && (
@@ -285,6 +319,7 @@ function Review() {
                           {st.status === "pending" && (
                             <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => approveStudent(st.id)}>Validează înscrierea</Button>
                           )}
+                          {st.status === "archived" && <Badge variant="outline" className="mt-1 text-[10px]">Arhivat</Badge>}
                         </TableCell>
                         <TableCell className="text-sm">{groupName.get(st.group_id)}</TableCell>
                         <TableCell>{st.variant}</TableCell>
@@ -322,6 +357,16 @@ function Review() {
                               ><X className="mr-1 h-4 w-4" />{status === "rejected" ? "Respins" : "Respinge"}</Button>
                             </div>
                           )}
+                          {canManage && (
+                            <div className="mt-1 flex justify-end gap-1">
+                              {st.status === "archived" ? (
+                                <Button size="sm" variant="ghost" aria-label={`Dezarhivează proiectul ${st.full_name}`} onClick={() => archiveStudent(st.id, st.full_name, false)}><ArchiveRestore className="mr-1 h-4 w-4" /> Dezarhivează</Button>
+                              ) : (
+                                <Button size="sm" variant="ghost" aria-label={`Arhivează proiectul ${st.full_name}`} onClick={() => archiveStudent(st.id, st.full_name, true)}><Archive className="mr-1 h-4 w-4" /> Arhivează</Button>
+                              )}
+                              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" aria-label={`Șterge definitiv proiectul ${st.full_name}`} onClick={() => setDelStudent({ id: st.id, name: st.full_name })}><Trash2 className="mr-1 h-4 w-4" /> Șterge</Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -342,6 +387,19 @@ function Review() {
           <Textarea placeholder="Motivul respingerii (vizibil studentului)" value={reason} onChange={(e) => setReason(e.target.value)} />
           <DialogFooter>
             <Button variant="destructive" disabled={!reason.trim()} onClick={async () => { await setStatus(reject!.sub, "rejected", reason.trim()); setReject(null); }}>Respinge</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!delStudent} onOpenChange={(o) => !o && setDelStudent(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Șterge definitiv proiectul — {delStudent?.name}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Se șterg definitiv toate predările, fișierele Gerber din arhivă, sloturile de fabricație și dosarul de proiect ale acestui student. Acțiunea nu poate fi anulată. Dacă vrei doar să îl ascunzi din listă, folosește „Arhivează”.
+          </p>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setDelStudent(null)}>Anulează</Button>
+            <Button variant="destructive" disabled={busy} onClick={() => delStudent && deleteStudent(delStudent.id, delStudent.name)}><Trash2 className="mr-1 h-4 w-4" /> Șterge definitiv</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
