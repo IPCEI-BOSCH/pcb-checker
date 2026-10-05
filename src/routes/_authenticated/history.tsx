@@ -7,6 +7,8 @@ import { deleteSeries, deleteStudents, deleteYear, emptySeries, setArchived } fr
 import { logAudit } from "@/lib/data";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure } from "@/lib/data";
@@ -48,6 +50,8 @@ function History() {
   const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(true);
+  const [ask, setAsk] = useState<{ text: string; action: () => void } | null>(null);
+  const [typed, setTyped] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const canManage = has("admin") || has("series_manager");
   const s = structure.data;
@@ -156,11 +160,10 @@ function History() {
   };
 
   const yearName = years.find((y) => y.id === yearId)?.name ?? "";
-  const confirmText = (what: string) => window.prompt(`${what}\nAcțiunea este definitivă și șterge și fișierele. Scrieți ȘTERGE pentru confirmare.`)?.trim().toUpperCase() === "ȘTERGE";
+  const confirmText = (what: string, action?: () => void) => { if (action) setAsk({ text: what, action }); return false; };
   const delRows = (ids: string[], label: string) => {
-    if (!ids.length || !confirmText(`Ștergeți ${label}?`)) return;
-    setBusy("…");
-    void run(async () => { await deleteStudents(ids, setBusy); await logAudit(user.id, "PROJECT_DELETE", "student", ids.length === 1 ? ids[0]! : null, { count: ids.length }); setSel(new Set()); }, `${ids.length} proiecte șterse.`);
+    if (!ids.length) return;
+    confirmText(`Ștergeți ${label}?`, () => { setBusy("…"); void run(async () => { await deleteStudents(ids, setBusy); await logAudit(user.id, "PROJECT_DELETE", "student", ids.length === 1 ? ids[0]! : null, { count: ids.length }); setSel(new Set()); }, `${ids.length} proiecte șterse.`); });
   };
   const archRows = (ids: string[], archived: boolean) => { if (ids.length) void run(async () => { await setArchived(ids, archived, user.id); setSel(new Set()); }, archived ? `${ids.length} proiecte arhivate.` : `${ids.length} proiecte dezarhivate.`); };
   const targetSeries = seriesId === ALL ? series : series.filter((x) => x.id === seriesId);
@@ -298,6 +301,19 @@ function History() {
           </CardContent>
         </Card>
       )}
+      <AlertDialog open={!!ask} onOpenChange={(o) => { if (!o) { setAsk(null); setTyped(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmare ștergere</AlertDialogTitle>
+            <AlertDialogDescription>{ask?.text} Acțiunea este definitivă și șterge și fișierele. Scrieți ȘTERGE pentru confirmare.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="ȘTERGE" aria-label="Confirmare" autoFocus />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Renunță</AlertDialogCancel>
+            <AlertDialogAction disabled={!["ȘTERGE", "STERGE"].includes(typed.trim().toUpperCase())} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { const a = ask?.action; setAsk(null); setTyped(""); a?.(); }}>Șterge definitiv</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => qc.invalidateQueries()} />
     </div>
   );
