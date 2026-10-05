@@ -7,6 +7,7 @@ import { ShieldAlert, BarChart3, Play, Download, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchStructure, seriesLabel, sortSeriesByYear } from "@/lib/data";
 import { FP_VERSION, VERDICT_LABEL, transformPts, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { createIntegrityPool } from "@/lib/integrity/pool";
 import type { DrcReport } from "@/lib/drc/engine";
 import type { Json } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
