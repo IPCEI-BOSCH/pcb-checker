@@ -4,7 +4,7 @@ import { createSpreadsheet } from "@/lib/sheets.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CloudDownload, CloudUpload, Download, Link2, Lock, Upload } from "lucide-react";
+import { Calculator, CloudDownload, CloudUpload, Download, Link2, Lock, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit, seriesLabel } from "@/lib/data";
@@ -22,6 +22,9 @@ import {
   extractSpreadsheetId,
   fetchGradeRows,
   readSpreadsheetFile,
+  proposeFinalGrades,
+  DEFAULT_WEIGHTS,
+  type FinalWeights,
   rowToArray,
   type ManualChange,
 } from "@/lib/gradebook";
@@ -32,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -65,6 +69,15 @@ function Gradebook() {
   const pull = useServerFn(pullGradebook);
   const createSheet = useServerFn(createSpreadsheet);
   const [manualLink, setManualLink] = useState(false);
+  const [weightsOpen, setWeightsOpen] = useState(false);
+  const [weights, setWeights] = useState<FinalWeights>(DEFAULT_WEIGHTS);
+  const runFinal = () => {
+    const diff = proposeFinalGrades(data, weights);
+    setWeightsOpen(false);
+    setSourceLabel(`calculul notei finale (DRC ${weights.drc}% · schemă ${weights.schema}% · documentație ${weights.doc}%)`);
+    setChanges(diff);
+    if (!diff.length) toast.info("Nicio notă de calculat — lipsesc componente sau notele există deja.");
+  };
 
   const structure = useQuery({ queryKey: ["structure"], queryFn: fetchStructure });
   const rows = useQuery({ queryKey: ["gradebook", seriesId], queryFn: () => fetchGradeRows(seriesId || null) });
@@ -224,6 +237,11 @@ function Gradebook() {
         <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={!!busy || !data.length}>
           <Upload className="mr-2 h-4 w-4" /> Import note (Excel/CSV)
         </Button>
+        {canManage && (
+          <Button variant="secondary" onClick={() => setWeightsOpen(true)} disabled={!data.length}>
+            <Calculator className="mr-2 h-4 w-4" /> Calculează nota finală
+          </Button>
+        )}
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ""; }} />
         {busy && <span className="text-sm text-muted-foreground">{busy}</span>}
       </div>
@@ -299,10 +317,27 @@ function Gradebook() {
         </CardContent>
       </Card>
 
+      <Dialog open={weightsOpen} onOpenChange={setWeightsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Calcul notă finală</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Nota (1–10) = medie ponderată: punctele DRC (0–40 transformate în 1–10), nota schemă și nota documentație. Se calculează doar unde există toate componentele cu pondere. Vei vedea lista înainte de aplicare.</p>
+          {([["drc", "Puncte DRC"], ["schema", "Nota schemă"], ["doc", "Nota documentație"]] as const).map(([k, l]) => (
+            <label key={k} className="flex items-center justify-between gap-2 text-sm">{l}
+              <span className="flex items-center gap-1"><Input type="number" min={0} max={100} className="w-20" value={weights[k]} onChange={(e) => setWeights({ ...weights, [k]: Math.max(0, +e.target.value || 0) })} /> %</span>
+            </label>
+          ))}
+          <label className="flex items-center gap-2 text-sm"><Switch checked={weights.overwrite} onCheckedChange={(v) => setWeights({ ...weights, overwrite: v })} aria-label="Recalculează și notele existente" /> Recalculează și notele finale deja trecute</label>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setWeightsOpen(false)}>Renunță</Button>
+            <Button onClick={runFinal}>Previzualizează</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!changes} onOpenChange={(o) => !o && setChanges(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Modificări din {sourceLabel}</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Se preiau doar coloanele de notare manuală. Coloanele generate de platformă sunt ignorate la import.</p>
+          <p className="text-sm text-muted-foreground">Se modifică doar coloanele de notare manuală, numai după ce apeși „Aplică”.</p>
           <div className="max-h-80 overflow-y-auto">
             {!changes?.length && <p className="text-sm">Nicio diferență.</p>}
             {changes?.map((c, i) => (
