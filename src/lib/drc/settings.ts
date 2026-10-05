@@ -31,6 +31,10 @@ export interface RuleValues {
   fiducialMaskExtra: number;
   minFiducials: number;
   maskDuplicateRatio: number;
+  /** Minimum silkscreen character height (mm). */
+  silkMinTextHeight: number;
+  /** Minimum silkscreen text stroke width (mm). */
+  silkMinStroke: number;
 }
 
 export type AppliesTo = "ALL" | "SMT" | "THT";
@@ -75,6 +79,7 @@ export const RULE_LINKS: Record<string, (keyof RuleValues)[]> = {
   SILK_OVER_PAD: ["silkPadClearance", "silkOverlapTol"],
   SILK_EDGE: ["silkOverlapTol"],
   MASK_DUPLICATE: ["maskDuplicateRatio"],
+  SILK_TEXT_SIZE: ["silkMinTextHeight", "silkMinStroke"],
   FIDUCIALS: ["fiducialMin", "fiducialMax", "fiducialMaskExtra", "minFiducials"],
   MIN_TRACE: ["minTrace"],
   CLEARANCE: ["minClearance"],
@@ -258,6 +263,8 @@ export const DEFAULT_SETTINGS: Settings = {
     fiducialMaskExtra: 0.3,
     minFiducials: 2,
     maskDuplicateRatio: 0.5,
+    silkMinTextHeight: 1.0,
+    silkMinStroke: 0.15,
   },
   penalties: {
     MISSING_LAYER: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 20 },
@@ -282,6 +289,7 @@ export const DEFAULT_SETTINGS: Settings = {
     MISSING_PASTE: { points: 10, severity: "blocking", enabled: true, smtOnly: true, perIssue: 0, cap: 10 },
     STENCIL_RATIO: { points: 5, severity: "warning", enabled: true, smtOnly: true, perIssue: 1, cap: 15 },
     STENCIL_WINDOWPANE: { points: 0, severity: "info", enabled: true, smtOnly: true, perIssue: 0, cap: 0 },
+    SILK_TEXT_SIZE: { points: 2, severity: "warning", enabled: false, smtOnly: false, perIssue: 0, cap: 2 },
   },
   cam: {
     panelCols: 7,
@@ -334,6 +342,8 @@ export const RULE_FIELDS: Record<keyof RuleValues, FieldMeta> = {
   fiducialMaskExtra: { label: "Deschidere mască fiducial (+)", unit: "mm", group: "Fiduciali & mască", step: 0.05 },
   minFiducials: { label: "Număr minim fiduciali", unit: "buc", group: "Fiduciali & mască", step: 1 },
   maskDuplicateRatio: { label: "Prag capcană SMTOP=TOP", unit: "raport", group: "Fiduciali & mască", step: 0.05 },
+  silkMinTextHeight: { label: "Înălțime minimă text serigrafie", unit: "mm", group: "Fiduciali & mască", step: 0.05 },
+  silkMinStroke: { label: "Grosime minimă linie text serigrafie", unit: "mm", group: "Fiduciali & mască", step: 0.01 },
   stencilT: { label: "Grosime stencil", unit: "mm", group: "Stencil IPC-7525B", step: 0.01 },
   stencilMinAR: { label: "Aspect Ratio minim", unit: "", group: "Stencil IPC-7525B", step: 0.05 },
   stencilMinAreaRatio: { label: "Area Ratio minim", unit: "", group: "Stencil IPC-7525B", step: 0.01 },
