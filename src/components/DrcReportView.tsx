@@ -5,6 +5,7 @@ import { openEvaluationSheet, type EvaluationMeta } from "@/lib/drc/evaluationSh
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GerberViewer } from "@/components/GerberViewer";
+import { FileDiagnostics } from "@/components/FileDiagnostics";
 import type { DrcReport } from "@/lib/drc/engine";
 import { CAD_LABELS, REMEDIES, type CadTool } from "@/lib/drc/remedies";
 import { CATALOG, CATEGORY_LABELS } from "@/lib/drc/catalog";
@@ -144,6 +145,8 @@ export function DrcReportView({ report, layers, meta }: { report: DrcReport; lay
           </CardContent>
         </Card>
       </div>
+
+      {layers && <FileDiagnostics layers={layers} />}
 
       <Card>
         <CardHeader className="pb-3"><CardTitle className="text-base">Fișiere detectate</CardTitle></CardHeader>
