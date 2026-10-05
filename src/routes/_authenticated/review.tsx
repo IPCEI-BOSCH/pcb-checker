@@ -275,6 +275,7 @@ function Review() {
                   <Button size="sm" onClick={runBatch} disabled={!!batch}><Play className="mr-2 h-4 w-4" /> Rulează DRC pe toată selecția</Button>
                   <Button size="sm" variant="secondary" onClick={approveAllClean} disabled={!!batch}><Check className="mr-2 h-4 w-4" /> Aprobă toate fără erori blocante</Button>
                   <Button size="sm" variant="secondary" onClick={exportExcel}><FileSpreadsheet className="mr-2 h-4 w-4" /> Exportă situația Excel</Button>
+                  <Button size="sm" variant={showArchived ? "default" : "outline"} aria-pressed={showArchived} onClick={() => setShowArchived((v) => !v)}><Archive className="mr-2 h-4 w-4" /> {showArchived ? "Ascunde arhivate" : "Arată arhivate"}</Button>
                 </div>
               </div>
               {batch && (
