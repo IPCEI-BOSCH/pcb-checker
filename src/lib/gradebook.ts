@@ -24,6 +24,7 @@ export const ALL_COLUMNS = [...AUTO_COLUMNS, ...MANUAL_COLUMNS];
 
 export interface GradeRow {
   studentId: string;
+  seriesId: string;
   seriesName: string;
   groupName: string;
   themeNumber: number | null;
@@ -109,6 +110,7 @@ export async function fetchGradeRows(seriesId: string | null): Promise<GradeRow[
       const report = sub?.report as { designPoints?: number } | null;
       return {
         studentId: st.id,
+        seriesId: g.series_id,
         seriesName: ser?.name ?? "",
         groupName: g.name,
         themeNumber: st.theme_number,
@@ -140,6 +142,19 @@ export function exportWorkbook(rows: GradeRow[], fileName: string, format: "xlsx
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "CEF2-Proiect_Situatie");
   XLSX.writeFile(wb, `${fileName}.${format}`, { bookType: format });
+}
+
+/** One workbook per academic year: one tab per series plus a combined tab. */
+export function exportYearWorkbook(rows: GradeRow[], yearName: string, seriesTabs: { id: string; name: string }[]) {
+  const wb = XLSX.utils.book_new();
+  const add = (list: GradeRow[], tab: string) => {
+    const ws = XLSX.utils.aoa_to_sheet(buildSheetMatrix(list));
+    ws["!cols"] = ALL_COLUMNS.map((c) => ({ wch: Math.max(12, c.length + 2) }));
+    XLSX.utils.book_append_sheet(wb, ws, tab.replace(/[\\/?*[\]:]/g, "-").slice(0, 31));
+  };
+  add(rows, "CEF2-Proiect_Situatie");
+  for (const s of seriesTabs) add(rows.filter((r) => r.seriesId === s.id), `Seria ${s.name}`);
+  XLSX.writeFile(wb, `CEF2-Proiect_Situatie-${yearName.replace(/[^\w-]+/g, "_")}.xlsx`);
 }
 
 export interface ManualChange {
