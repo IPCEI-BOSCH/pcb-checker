@@ -192,10 +192,33 @@ function clearanceScan(layer: Layer, limit: number) {
       }
     if (seen.size > 400000) break;
   }
+  // Copper pours: a gap whose midpoint lies inside solid (non-cut-out) pour copper is not isolation.
+  const dark = layer.primitives.filter((p) => p.t === "region" && !p.clear) as Extract<Primitive, { t: "region" }>[];
+  const clearR = layer.primitives.filter((p) => p.t === "region" && p.clear) as Extract<Primitive, { t: "region" }>[];
+  const clearF = layer.primitives.filter((p) => p.t === "flash" && p.clear) as Extract<Primitive, { t: "flash" }>[];
+  const inPoly = (x: number, y: number, pts: [number, number][]) => {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i]!;
+      const [xj, yj] = pts[j]!;
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yj)) / (yi - yj) + xj) inside = !inside;
+    }
+    return inside;
+  };
+  const inSolid = (x: number, y: number) =>
+    dark.length > 0 &&
+    !clearF.some((f) => pointInFlash(x, y, f)) &&
+    !clearR.some((r) => inPoly(x, y, r.pts)) &&
+    dark.some((r) => inPoly(x, y, r.pts));
   let min: number | null = null;
   const hits: { x: number; y: number; gap: number }[] = [];
   for (const [a, b, gap] of pairs) {
     if (find(a) === find(b)) continue;
+    {
+      const ca = caps[a]!;
+      const cb = caps[b]!;
+      if (inSolid(((ca.ax + ca.bx) / 2 + (cb.ax + cb.bx) / 2) / 2, ((ca.ay + ca.by) / 2 + (cb.ay + cb.by) / 2) / 2)) continue;
+    }
     if (min === null || gap < min) min = gap;
     if (gap < limit) {
       const ca = caps[a]!;
@@ -357,14 +380,17 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
 
   // Fiducials
   if (smt && top) {
-    // Fiducial: round/square copper pad 0.8–2 mm, no hole, not a trace end, with a mask opening at least as large.
-    // Paste on a fiducial is tolerated (common in OrCAD footprints) and only reported as info.
+    // Fiducial: isolated copper target 0.8–2 mm, no hole, no trace attached, mask opening larger than copper.
+    // Square pads count only without paste (square pads with paste are SMD component pads).
+    const fidLines = top.primitives.filter((p) => p.t === "line" && !p.clear) as Extract<Primitive, { t: "line" }>[];
+    const hasPaste = (p: { x: number; y: number }) => pasteAps.some((a) => Math.hypot(a.x - p.x, a.y - p.y) < 0.15);
     const fids = topPads.filter(
       (p) =>
-        (p.shape === "C" || (p.shape === "R" && Math.abs(p.w - p.h) < 0.01)) &&
+        (p.shape === "C" || (p.shape === "R" && Math.abs(p.w - p.h) < 0.01 && !hasPaste(p))) &&
         p.w >= R.fiducialMin - 0.01 &&
         p.w <= R.fiducialMax + 0.01 &&
         !holes.some((h) => Math.hypot(h.x - p.x, h.y - p.y) < p.w / 2 + h.d / 2) &&
+        !fidLines.some((l) => Math.hypot(l.x1 - p.x, l.y1 - p.y) < p.w / 2 + 0.05 || Math.hypot(l.x2 - p.x, l.y2 - p.y) < p.w / 2 + 0.05) &&
         (maskAps.some((m) => Math.hypot(m.x - p.x, m.y - p.y) < 0.15 && Math.min(m.w, m.h) >= p.w + Math.min(R.fiducialMaskExtra, 0.1) - 0.01) ||
           mask?.primitives.some((m) => m.t === "region" && pointInBBox(p.x, p.y, primitiveBBox(m)))),
     );
