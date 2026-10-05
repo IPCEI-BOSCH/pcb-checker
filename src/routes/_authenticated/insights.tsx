@@ -6,8 +6,7 @@ import * as XLSX from "xlsx";
 import { ShieldAlert, BarChart3, Play, Download, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchStructure, seriesLabel, sortSeriesByYear } from "@/lib/data";
-import { loadGerberZip } from "@/lib/gerber/load";
-import { FP_VERSION, VERDICT_LABEL, fingerprint, similarityDetail, transformPts, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { FP_VERSION, VERDICT_LABEL, transformPts, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
 import type { DrcReport } from "@/lib/drc/engine";
 import type { Json } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -316,6 +315,7 @@ function Insights() {
                 <span className="text-sm text-muted-foreground">{fps.size} amprente salvate · media similarității în serie {baseline.toFixed(1)}%</span>
               </div>
               {prog && <Progress value={(prog.done / Math.max(1, prog.total)) * 100} />}
+              {pairsBusy && <p className="text-xs text-muted-foreground">Se compară proiectele în fundal…</p>}
 
               {!!clusters.length && (
                 <div className="rounded-md border border-destructive p-3 text-sm">
