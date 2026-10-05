@@ -207,7 +207,7 @@ function Insights() {
     } else {
       const { data: u } = await supabase.auth.getUser();
       const { error } = await supabase.from("integrity_reviews").upsert({ student_a: a, student_b: b, status, note: note ?? null, similarity: p.d.total, reviewed_by: u.user!.id, updated_at: new Date().toISOString() }, { onConflict: "student_a,student_b" });
-      if (error) return toast.error(error.message);
+      if (error) { toast.error(error.message); return; }
       await supabase.from("audit_log").insert({ actor_id: u.user!.id, action: "INTEGRITY_REVIEW", target_entity: "student", target_id: a, details: { other: b, status, similarity: p.d.total } });
     }
     qc.invalidateQueries({ queryKey: ["integrity_reviews"] });

@@ -23,7 +23,7 @@
 - [ ] Restricționare login la tenantul Microsoft UPB (credențiale proprii Entra ID)
 - [ ] Import listă studenți CSV/XLSX
 - [x] Anti-plagiat (amprentă layout)
-- [ ] OCR serigrafie
+- [x] OCR serigrafie (măsurare automată + citire AI la cerere)
 
 ## Etapa 4 — Arhivare, evaluare pe loturi, stencil X/Y, light (livrat)
 - [x] Excellon 2:5 / 2:4 (inch/mm, fără antet OrCAD) — găurile cad pe placă la toate cele 46 de proiecte demo
@@ -76,3 +76,9 @@
 - [x] Copie de siguranță an (date + toate fișierele, ZIP)
 - [x] DRC în lot pe fire de lucru paralele (pagina nu mai îngheață)
 - [x] Panou: găuri de prindere 3 mm asimetrice în rame, cupoane vizibile și în inspector
+
+## Etapa 11 — Text serigrafie & anti-plagiat v2
+- [x] Detectare blocuri text, regulă „Lizibilitate text serigrafie” (dezactivată implicit)
+- [x] Citire AI la cerere: nume student, designatoare duplicate, text în oglindă
+- [x] Amprente salvate, aliniere rotire/oglindire, scor explicat, decizii, Excel, grupuri, comparație vizuală
+- [ ] Alertă automată la predarea oficială (amprenta se calculează când un cadru deschide pagina)

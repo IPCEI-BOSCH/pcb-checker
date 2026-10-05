@@ -38,7 +38,7 @@ export function SilkTextCard({ report, layers, student, onLocate }: { report: Dr
   if (!blocks.length) return null;
 
   const runAi = async () => {
-    if (!layers) return toast.error("Fișierele nu sunt încărcate în pagină.");
+    if (!layers) { toast.error("Fișierele nu sunt încărcate în pagină."); return; }
     const img = renderBlocksSheet(layers, blocks);
     if (!img) return;
     setBusy(true);
