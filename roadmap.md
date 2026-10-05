@@ -73,4 +73,5 @@
 - [x] Riglă magnetică în vizualizatorul Gerber
 - [x] Notă finală automată (ponderi, previzualizare înainte de aplicare)
 - [x] Copie de siguranță an (date + toate fișierele, ZIP)
-- [ ] Web Worker DRC, bordură panou, cupoane test — etape următoare
+- [x] DRC în lot pe fire de lucru paralele (pagina nu mai îngheață)
+- [x] Panou: găuri de prindere 3 mm asimetrice în rame, cupoane vizibile și în inspector
