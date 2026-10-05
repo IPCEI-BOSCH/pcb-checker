@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Eye, FileSpreadsheet, FolderInput, Play, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, Play, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit } from "@/lib/data";
@@ -54,6 +54,9 @@ function Review() {
   const [reject, setReject] = useState<{ sub: Sub; name: string } | null>(null);
   const [reason, setReason] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [delStudent, setDelStudent] = useState<{ id: string; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const s = structure.data;
   const visibleGroups = useMemo(() => {
