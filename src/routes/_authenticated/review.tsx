@@ -95,6 +95,7 @@ function Review() {
 
   const allRows = (data.data?.students ?? [])
     .filter((st) => variantFilter === "ALL" || st.variant === variantFilter)
+    .filter((st) => showArchived || st.status !== "archived")
     .map((st) => {
       const all = data.data!.subs.filter((x) => x.student_id === st.id);
       return { st, official: all.find((x) => x.kind === "OFFICIAL") ?? null, selfCount: all.filter((x) => x.kind === "SELF_CHECK").length };
@@ -142,6 +143,35 @@ function Review() {
     const { error } = await supabase.from("students").update({ status: "approved" }).eq("id", id);
     if (error) return void toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["review"] });
+  };
+
+  const archiveStudent = async (id: string, name: string, archived: boolean) => {
+    const { error } = await supabase.from("students").update({ status: archived ? "archived" : "approved" }).eq("id", id);
+    if (error) return void toast.error(error.message);
+    await logAudit(user.id, archived ? "PROJECT_ARCHIVE" : "PROJECT_UNARCHIVE", "student", id, { name });
+    qc.invalidateQueries({ queryKey: ["review"] });
+    toast.success(archived ? `Proiectul „${name}” a fost arhivat.` : `Proiectul „${name}” a fost dezarhivat.`);
+  };
+
+  const deleteStudent = async (id: string, name: string) => {
+    setBusy(true);
+    try {
+      const { data: subs } = await supabase.from("submissions").select("id, zip_path").eq("student_id", id);
+      const paths = (subs ?? []).map((x) => x.zip_path).filter((p): p is string => !!p);
+      const { data: slots } = await supabase.from("student_fabrication_slots").select("storage_path").eq("student_id", id);
+      const slotPaths = (slots ?? []).map((x) => x.storage_path).filter((p): p is string => !!p);
+      if (paths.length || slotPaths.length) await supabase.storage.from("gerbers").remove([...paths, ...slotPaths]);
+      await supabase.from("submissions").delete().eq("student_id", id);
+      await supabase.from("student_fabrication_slots").delete().eq("student_id", id);
+      await supabase.from("project_files").delete().eq("student_id", id);
+      const { error } = await supabase.from("students").delete().eq("id", id);
+      if (error) throw error;
+      await logAudit(user.id, "PROJECT_DELETE", "student", id, { name });
+      toast.success(`Proiectul „${name}” a fost șters definitiv.`);
+      setDelStudent(null);
+      qc.invalidateQueries({ queryKey: ["review"] });
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setBusy(false); }
   };
 
   const openReport = async (name: string, sub: Sub, variant: "SMT" | "THT", sid: string | null, st?: { group_id: string; theme_name: string | null; theme_number: number | null; file_prefix: string | null }) => {
