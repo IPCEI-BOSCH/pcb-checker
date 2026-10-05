@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { CustomRulesEditor } from "@/components/CustomRulesEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -192,6 +193,7 @@ function RulesPage() {
           <TabsTrigger value="rules">Reguli DRC</TabsTrigger>
           <TabsTrigger value="score">Punctaj & severitate</TabsTrigger>
           <TabsTrigger value="cam">Panou & Stencil</TabsTrigger>
+          <TabsTrigger value="custom">Reguli noi{draft.customRules?.length ? ` (${draft.customRules.length})` : ""}</TabsTrigger>
           <TabsTrigger value="ai">Asistent AI</TabsTrigger>
           <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
           <TabsTrigger value="test">Testare reguli{current.data && settingsDiff(current.data, draft).length ? ` (${settingsDiff(current.data, draft).length})` : ""}</TabsTrigger>
@@ -268,6 +270,10 @@ function RulesPage() {
               </CardContent>
             </Card>
           ))}
+        </TabsContent>
+
+        <TabsContent value="custom">
+          <CustomRulesEditor draft={draft} setDraft={setDraft} onTest={() => setActiveTab("test")} />
         </TabsContent>
 
         <TabsContent value="ai">
