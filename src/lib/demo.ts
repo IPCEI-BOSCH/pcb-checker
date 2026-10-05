@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { loadGerberZip } from "@/lib/gerber/load";
 import { runDrc } from "@/lib/drc/engine";
 import { fetchSettings } from "@/lib/drc/settings";
+import { deleteYear } from "@/lib/purge";
 
 export const DEMO_YEAR = "2025-2026 (DEMO Seria B)";
 const SLOT_FILES: Record<string, string> = {
@@ -111,38 +112,7 @@ export async function importDemo(userId: string, log: (m: string) => void) {
   return projects.size;
 }
 
-export async function deleteDemo(userId: string, log: (m: string) => void) {
+export async function deleteDemo(_userId: string, log: (m: string) => void) {
   const { data: years } = await supabase.from("academic_years").select("id").eq("is_demo", true);
-  for (const y of years ?? []) {
-    const { data: series } = await supabase.from("series").select("id").eq("academic_year_id", y.id);
-    for (const s of series ?? []) {
-      const { data: groups } = await supabase.from("groups").select("id").eq("series_id", s.id);
-      for (const g of groups ?? []) {
-        const { data: sts } = await supabase.from("students").select("id").eq("group_id", g.id);
-        const ids = (sts ?? []).map((x) => x.id);
-        if (ids.length) {
-          log(`Grupa: ${ids.length} studenți…`);
-          for (const id of ids) {
-            const { data: files } = await supabase.storage.from("gerbers").list(`${userId}/demo/${id}`);
-            if (files?.length) await supabase.storage.from("gerbers").remove(files.map((f) => `${userId}/demo/${id}/${f.name}`));
-          }
-          await supabase.from("submissions").delete().in("student_id", ids);
-          await supabase.from("project_files").delete().in("student_id", ids);
-          await supabase.from("student_fabrication_slots").delete().in("student_id", ids);
-          const r = await supabase.from("students").delete().in("id", ids);
-          if (r.error) throw r.error;
-        }
-        await supabase.from("group_instructors").delete().eq("group_id", g.id);
-        await supabase.from("groups").delete().eq("id", g.id);
-      }
-      await supabase.from("cam_panels").delete().eq("series_id", s.id);
-      await supabase.from("drc_settings").delete().eq("series_id", s.id);
-      await supabase.from("sheet_links").delete().eq("series_id", s.id);
-      await supabase.from("series_managers").delete().eq("series_id", s.id);
-      const r = await supabase.from("series").delete().eq("id", s.id);
-      if (r.error) throw r.error;
-    }
-    const r = await supabase.from("academic_years").delete().eq("id", y.id);
-    if (r.error) throw r.error;
-  }
+  for (const y of years ?? []) await deleteYear(y.id, log);
 }

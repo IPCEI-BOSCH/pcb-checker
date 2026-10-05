@@ -31,3 +31,6 @@
 - AI rule creation uses the Responses API via `src/lib/ai/rule-ai.functions.ts` (strict JSON schema, returns a draft only) — nothing is saved until tested in the sandbox.
 - Google Sheets link columns (`LINK_COLUMNS`) are written after the teacher's manual columns, so existing sheets keep their layout.
 - Folder points on `project_files` are guarded by a DB trigger (staff only); managers can upload into a student's folders via `can_manage_group` policies.
+- `/rules` has one unified DRC window (`src/components/UnifiedRules.tsx`): built-in and custom rules in one table with a side editor (threshold via `RULE_LINKS`, scoring, variant, student texts); sandbox sits below in the same tab — avoids duplicated tabs.
+- Built-in rule texts are edited via `settings.overrides` and travel to reports through `report.customCatalog`, which takes precedence over `CATALOG` — catalog stays the fallback.
+- Deleting projects/series/years goes through `src/lib/purge.ts` (removes DB rows and stored files) — one path for history, demo reset and admin cleanup.

@@ -2,7 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Database, Eye, FileSpreadsheet, FolderInput, Play, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Database, Eye, FileSpreadsheet, FolderInput, Play, Trash2 } from "lucide-react";
+import { deleteSeries, deleteStudents, deleteYear, emptySeries, setArchived } from "@/lib/purge";
+import { logAudit } from "@/lib/data";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure } from "@/lib/data";
@@ -43,6 +47,9 @@ function History() {
   const [autoCheck, setAutoCheck] = useState(false);
   const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(true);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const canManage = has("admin") || has("series_manager");
   const s = structure.data;
   const years = s?.years ?? [];
   const series = s?.series.filter((x) => x.academic_year_id === yearId) ?? [];
@@ -100,8 +107,10 @@ function History() {
     },
   });
 
+  const visible = useMemo(() => (rows.data ?? []).filter((r) => showArchived || r.status !== "archived"), [rows.data, showArchived]);
+  useEffect(() => setSel(new Set()), [seriesId, yearId]);
   const stats = useMemo(() => {
-    const d = rows.data ?? [];
+    const d = visible;
     const scored = d.map((r) => r.sub?.drc_score).filter((x): x is number => x !== null && x !== undefined);
     return {
       total: d.length,
@@ -109,7 +118,7 @@ function History() {
       blocking: d.filter((r) => (r.sub?.blocking_count ?? 0) > 0).length,
       avg: scored.length ? scored.reduce((a, b) => a + Number(b), 0) / scored.length : null,
     };
-  }, [rows.data]);
+  }, [visible]);
 
 
 
@@ -146,6 +155,16 @@ function History() {
     finally { setBusy(null); qc.invalidateQueries(); }
   };
 
+  const yearName = years.find((y) => y.id === yearId)?.name ?? "";
+  const confirmText = (what: string) => window.prompt(`${what}\nAcțiunea este definitivă și șterge și fișierele. Scrieți ȘTERGE pentru confirmare.`)?.trim().toUpperCase() === "ȘTERGE";
+  const delRows = (ids: string[], label: string) => {
+    if (!ids.length || !confirmText(`Ștergeți ${label}?`)) return;
+    setBusy("…");
+    void run(async () => { await deleteStudents(ids, setBusy); await logAudit(user.id, "PROJECT_DELETE", "student", ids.length === 1 ? ids[0]! : null, { count: ids.length }); setSel(new Set()); }, `${ids.length} proiecte șterse.`);
+  };
+  const archRows = (ids: string[], archived: boolean) => { if (ids.length) void run(async () => { await setArchived(ids, archived, user.id); setSel(new Set()); }, archived ? `${ids.length} proiecte arhivate.` : `${ids.length} proiecte dezarhivate.`); };
+  const targetSeries = seriesId === ALL ? series : series.filter((x) => x.id === seriesId);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -179,6 +198,13 @@ function History() {
             {series.map((x) => <SelectItem key={x.id} value={x.id}>Seria {x.name} · {counts.data?.get(x.id) ?? 0} proiecte</SelectItem>)}
           </SelectContent>
         </Select>
+        {canManage && yearId && (
+          <div className="flex flex-wrap gap-2">
+            {seriesId && <Button variant="outline" disabled={!!busy || !rows.data?.length} onClick={() => { if (!confirmText(`Goliți ${seriesId === ALL ? `toate seriile din ${yearName}` : `seria ${seriesName.get(seriesId)} (${yearName})`} — se șterg toate proiectele, seria rămâne?`)) return; setBusy("…"); void run(async () => { for (const x of targetSeries) await emptySeries(x.id, setBusy); await logAudit(user.id, "SERIES_EMPTY", "series", seriesId === ALL ? null : seriesId, { year: yearName }); }, "Proiectele au fost șterse."); }}><Trash2 className="mr-2 h-4 w-4" /> Golește {seriesId === ALL ? "seriile" : "seria"}</Button>}
+            {seriesId && seriesId !== ALL && <Button variant="destructive" disabled={!!busy} onClick={() => { if (!confirmText(`Ștergeți seria ${seriesName.get(seriesId)} (${yearName}) cu grupe, proiecte, setări și panouri CAM?`)) return; setBusy("…"); void run(async () => { await deleteSeries(seriesId, setBusy); await logAudit(user.id, "SERIES_DELETE", "series", seriesId, { year: yearName }); setSeriesId(""); }, "Seria a fost ștearsă."); }}><Trash2 className="mr-2 h-4 w-4" /> Șterge seria</Button>}
+            {has("admin") && <Button variant="destructive" disabled={!!busy} onClick={() => { if (!confirmText(`Ștergeți anul universitar ${yearName} cu toate seriile și proiectele?`)) return; setBusy("…"); void run(async () => { await deleteYear(yearId, setBusy); await logAudit(user.id, "YEAR_DELETE", "academic_year", yearId, { year: yearName }); setYearId(""); setSeriesId(""); }, "Anul universitar a fost șters."); }}><Trash2 className="mr-2 h-4 w-4" /> Șterge anul</Button>}
+          </div>
+        )}
         {!!rows.data?.length && (
           <>
             <Button onClick={runAll} disabled={!!batch}><Play className="mr-2 h-4 w-4" /> Rulează DRC pentru toți ({rows.data.length})</Button>
@@ -187,6 +213,20 @@ function History() {
           </>
         )}
       </div>
+      {!!rows.data?.length && (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2"><Switch checked={showArchived} onCheckedChange={setShowArchived} aria-label="Arată proiectele arhivate" /> Arată arhivate</label>
+          {canManage && sel.size > 0 && (
+            <>
+              <span className="text-muted-foreground">{sel.size} selectate</span>
+              <Button size="sm" variant="outline" onClick={() => archRows([...sel], true)}><Archive className="mr-1 h-4 w-4" /> Arhivează</Button>
+              <Button size="sm" variant="outline" onClick={() => archRows([...sel], false)}><ArchiveRestore className="mr-1 h-4 w-4" /> Dezarhivează</Button>
+              <Button size="sm" variant="destructive" onClick={() => delRows([...sel], `${sel.size} proiecte selectate`)}><Trash2 className="mr-1 h-4 w-4" /> Șterge</Button>
+            </>
+          )}
+          {busy && <span className="text-muted-foreground">{busy}</span>}
+        </div>
+      )}
       {batch && (
         <div className="space-y-1">
           <Progress value={(batch.done / Math.max(1, batch.total)) * 100} />
@@ -216,19 +256,22 @@ function History() {
           <CardContent className="p-0">
             <Table>
               <TableHeader><TableRow>
+                {canManage && <TableHead className="w-8"><Checkbox aria-label="Selectează toate" checked={visible.length > 0 && sel.size === visible.length} onCheckedChange={(v) => setSel(v ? new Set(visible.map((r) => r.id)) : new Set())} /></TableHead>}
                 <TableHead>Grupa</TableHead><TableHead>Student / Folder</TableHead><TableHead>Tema · N</TableHead>
                 <TableHead>DRC</TableHead><TableHead>FAB</TableHead><TableHead>Notă</TableHead><TableHead />
               </TableRow></TableHeader>
               <TableBody>
-                {rows.isLoading && <TableRow><TableCell colSpan={7} className="text-muted-foreground">Se încarcă…</TableCell></TableRow>}
-                {rows.data?.length === 0 && <TableRow><TableCell colSpan={7} className="text-muted-foreground">Niciun student în această serie.</TableCell></TableRow>}
-                {rows.data?.map((r) => (
+                {rows.isLoading && <TableRow><TableCell colSpan={8} className="text-muted-foreground">Se încarcă…</TableCell></TableRow>}
+                {rows.data?.length === 0 && <TableRow><TableCell colSpan={8} className="text-muted-foreground">Niciun student în această serie.</TableCell></TableRow>}
+                {visible.map((r) => (
                   <Fragment key={r.id}>
                     <TableRow key={r.id}>
+                      {canManage && <TableCell><Checkbox aria-label={`Selectează ${r.full_name}`} checked={sel.has(r.id)} onCheckedChange={(v) => setSel((p) => { const n = new Set(p); if (v) n.add(r.id); else n.delete(r.id); return n; })} /></TableCell>}
                       <TableCell>{groupName.get(r.group_id)}</TableCell>
                       <TableCell>
                         <button type="button" className="text-left font-medium underline-offset-2 hover:underline" onClick={() => { setAutoCheck(true); setOpen(r.id); }}>{r.full_name}</button>
                         <div className="font-mono text-xs text-muted-foreground">{r.file_prefix}</div>
+                        {r.status === "archived" && <Badge variant="outline" className="mt-1 text-[10px]">Arhivat</Badge>}
                       </TableCell>
                       <TableCell>{r.theme_name ?? "—"} · N{r.theme_number ?? "?"}</TableCell>
                       <TableCell>{r.sub ? <span>{Number(r.sub.drc_score).toFixed(0)} · <span className="text-muted-foreground">{r.sub.blocking_count} blocante</span></span> : "—"}</TableCell>
@@ -237,10 +280,14 @@ function History() {
                       <TableCell className="whitespace-nowrap text-right">
                         <Button size="sm" variant="secondary" onClick={() => { setAutoCheck(true); setOpen(r.id); }}><Eye className="mr-1 h-4 w-4" /> Gerber</Button>
                         <Button size="sm" variant="ghost" onClick={() => { setAutoCheck(false); setOpen(open === r.id ? null : r.id); }}>{open === r.id ? "Închide" : "Fișiere"}</Button>
+                        {canManage && (r.status === "archived"
+                          ? <Button size="sm" variant="ghost" aria-label={`Dezarhivează ${r.full_name}`} onClick={() => archRows([r.id], false)}><ArchiveRestore className="h-4 w-4" /></Button>
+                          : <Button size="sm" variant="ghost" aria-label={`Arhivează ${r.full_name}`} onClick={() => archRows([r.id], true)}><Archive className="h-4 w-4" /></Button>)}
+                        {canManage && <Button size="sm" variant="ghost" aria-label={`Șterge ${r.full_name}`} onClick={() => delRows([r.id], `proiectul „${r.full_name}”`)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
                       </TableCell>
                     </TableRow>
                     {open === r.id && (
-                      <TableRow key={r.id + "-d"}><TableCell colSpan={7}>
+                      <TableRow key={r.id + "-d"}><TableCell colSpan={8}>
                         <FabricationSlots key={`${r.id}-${autoCheck}`} studentId={r.id} userId={user.id} canUpload={false} seriesId={seriesOfGroup.get(r.group_id) ?? null} variant={r.variant} autoCheck={autoCheck} />
                       </TableCell></TableRow>
                     )}

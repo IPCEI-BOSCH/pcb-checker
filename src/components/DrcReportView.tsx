@@ -51,7 +51,7 @@ export function DrcReportView({ report, layers, meta }: { report: DrcReport; lay
           <CardHeader className="pb-3"><CardTitle className="text-base">De ce ai pierdut puncte și ce trebuie să repari</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {report.rules.filter((r) => !r.passed).sort((a, b) => Number(!!b.critical) - Number(!!a.critical) || b.penalty - a.penalty).map((r) => {
-              const c = (CATALOG[r.code] ?? report.customCatalog?.[r.code]) as (typeof CATALOG)[string] | undefined;
+              const c = (report.customCatalog?.[r.code] ?? CATALOG[r.code]) as (typeof CATALOG)[string] | undefined;
               return (
                 <div key={r.code} className={cn("rounded-md border p-3 text-sm", r.critical ? "border-destructive" : "border-border")}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -137,7 +137,7 @@ export function DrcReportView({ report, layers, meta }: { report: DrcReport; lay
                 {focus === i && (
                   <div className="mt-2 rounded bg-muted p-2 text-xs text-foreground">
                     <span className="font-semibold">Remediere ({CAD_LABELS[cad]}): </span>
-                    {REMEDIES[iss.code]?.[cad] ?? REMEDIES[iss.code]?.general ?? CATALOG[iss.code]?.fix ?? report.customCatalog?.[iss.code]?.fix}
+                    {report.customCatalog?.[iss.code]?.fix ?? REMEDIES[iss.code]?.[cad] ?? REMEDIES[iss.code]?.general ?? CATALOG[iss.code]?.fix}
                   </div>
                 )}
               </button>

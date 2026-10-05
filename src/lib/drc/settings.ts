@@ -33,6 +33,8 @@ export interface RuleValues {
   maskDuplicateRatio: number;
 }
 
+export type AppliesTo = "ALL" | "SMT" | "THT";
+
 export interface PenaltyValue {
   points: number;
   severity: Severity;
@@ -44,6 +46,55 @@ export interface PenaltyValue {
   cap?: number;
   /** Critical: if it fails, the score is capped to rules.criticalScoreCap and fabrication is refused. */
   critical?: boolean;
+  /** Which project variant the rule applies to (overrides smtOnly when set). */
+  appliesTo?: AppliesTo | undefined;
+}
+
+/** Teacher edits of a built-in rule's texts (title, student explanation, reference). Empty fields fall back to the catalog. */
+export interface RuleOverride {
+  title?: string;
+  what?: string;
+  why?: string;
+  fix?: string;
+  reference?: string;
+  teacherNote?: string;
+}
+
+/** Thresholds that drive each built-in rule — shown together in the rule editor. */
+export const RULE_LINKS: Record<string, (keyof RuleValues)[]> = {
+  MISSING_LAYER: [],
+  DRL_COUNT: [],
+  BOARD_OVERSIZE: ["boardSize", "boardHeight", "boardTol"],
+  BOARD_SIZE: ["boardSize", "boardHeight", "boardTol"],
+  HOLE_OUTSIDE_PAD: ["npthMinDiameter"],
+  ORIGIN: ["originTol"],
+  OUTLINE_WIDTH: ["outlineMaxWidth"],
+  EDGE_CLEARANCE: ["edgeClearance"],
+  VIA_IN_PAD: [],
+  SSTOP_OVER_PAD: [],
+  SILK_OVER_PAD: ["silkPadClearance", "silkOverlapTol"],
+  SILK_EDGE: ["silkOverlapTol"],
+  MASK_DUPLICATE: ["maskDuplicateRatio"],
+  FIDUCIALS: ["fiducialMin", "fiducialMax", "fiducialMaskExtra", "minFiducials"],
+  MIN_TRACE: ["minTrace"],
+  CLEARANCE: ["minClearance"],
+  DRILL_TO_DRILL: ["drillToDrill"],
+  ANNULAR_RING: ["annularRing"],
+  HOLE_SIZE: ["minHole", "maxHole"],
+  MISSING_PASTE: [],
+  STENCIL_RATIO: ["stencilT", "stencilMinAR", "stencilMinAreaRatio"],
+  STENCIL_WINDOWPANE: ["windowpaneArea"],
+};
+
+export const GENERAL_FIELDS: (keyof RuleValues)[] = ["passScore", "reserveScore", "criticalScoreCap"];
+
+export function appliesToOf(p: { smtOnly: boolean; appliesTo?: AppliesTo | undefined }): AppliesTo {
+  return p.appliesTo ?? (p.smtOnly ? "SMT" : "ALL");
+}
+
+export function ruleApplies(p: { smtOnly: boolean; appliesTo?: AppliesTo | undefined }, smt: boolean) {
+  const a = appliesToOf(p);
+  return a === "ALL" || (a === "SMT" ? smt : !smt);
 }
 
 export interface CamValues {
@@ -108,6 +159,20 @@ export interface CustomRule {
   what: string;
   why: string;
   fix: string;
+  /** Variant the rule applies to; overrides smtOnly when set. */
+  appliesTo?: AppliesTo | undefined;
+  /** Rounding tolerance in the threshold unit — avoids failing on export rounding. */
+  tolerance?: number;
+  /** Rule fails only when at least this many cases are found. */
+  minOccurrences?: number;
+  /** Pad checks: ignore pads with a drill hole (vias / THT). */
+  ignoreHoled?: boolean;
+  /** Standard / source the rule comes from (IPC, CETTI, curs). */
+  reference?: string;
+  /** Internal note for teachers (not shown to students). */
+  teacherNote?: string;
+  /** Example of a correct design, shown to the student. */
+  example?: string;
 }
 
 export const CHECK_TYPES: Record<CustomCheckType, { label: string; unit: string; layers: CustomLayer[]; help: string }> = {
@@ -143,6 +208,13 @@ export function blankCustomRule(): CustomRule {
     what: "",
     why: "",
     fix: "",
+    appliesTo: "ALL",
+    tolerance: 0,
+    minOccurrences: 1,
+    ignoreHoled: false,
+    reference: "",
+    teacherNote: "",
+    example: "",
   };
 }
 
@@ -150,6 +222,7 @@ export interface Settings {
   rules: RuleValues;
   penalties: Record<string, PenaltyValue>;
   customRules?: CustomRule[];
+  overrides?: Record<string, RuleOverride>;
   cam: CamValues;
   notes?: string;
 }
@@ -303,6 +376,7 @@ export function mergeSettings(...parts: (Partial<Settings> | null | undefined)[]
       for (const r of p.customRules) map.set(r.code, { ...blankCustomRule(), ...r });
       out.customRules = [...map.values()];
     }
+    if (p.overrides) out.overrides = { ...(out.overrides ?? {}), ...p.overrides };
     if (p.notes !== undefined) out.notes = p.notes;
   }
   return deriveCam(out);
@@ -351,9 +425,11 @@ export function flattenSettings(s: Settings): [string, string, string][] {
     rows.push([`penalties.${k}.perIssue`, String(v.perIssue ?? 0), `Puncte per apariție suplimentară ${k}`]);
     rows.push([`penalties.${k}.cap`, String(v.cap ?? v.points), `Plafon penalizare ${k}`]);
     rows.push([`penalties.${k}.critical`, String(!!v.critical), `Eroare critică ${k}`]);
+    rows.push([`penalties.${k}.appliesTo`, appliesToOf(v), `Se aplică la ${k} (ALL/SMT/THT)`]);
   }
   for (const [k, v] of Object.entries(s.cam)) rows.push([`cam.${k}`, String(v), CAM_FIELDS[k as keyof CamValues]?.label ?? ""]);
   rows.push(["customRules", JSON.stringify(s.customRules ?? []), "Reguli noi definite de profesor (JSON)"]);
+  rows.push(["overrides", JSON.stringify(s.overrides ?? {}), "Texte personalizate pentru regulile standard (JSON)"]);
   rows.push(["notes", s.notes ?? "", "Note"]);
   return rows;
 }
@@ -378,12 +454,20 @@ export function unflattenSettings(rows: string[][], base: Settings): Settings {
       else if (parts[2] === "enabled") p.enabled = /^(true|1|da|yes)$/i.test(value.trim());
       else if (parts[2] === "perIssue") p.perIssue = Number(value) || 0;
       else if (parts[2] === "cap") p.cap = Number(value) || 0;
+      else if (parts[2] === "appliesTo" && ["ALL", "SMT", "THT"].includes(value.trim())) { p.appliesTo = value.trim() as AppliesTo; p.smtOnly = p.appliesTo === "SMT"; }
       else if (parts[2] === "critical") p.critical = /^(true|1|da|yes)$/i.test(value.trim());
       out.penalties[parts[1]] = p;
     } else if (parts[0] === "customRules") {
       try {
         const arr = JSON.parse(value || "[]");
         if (Array.isArray(arr)) out.customRules = arr.map((r) => ({ ...blankCustomRule(), ...r }));
+      } catch {
+        /* ignore malformed JSON */
+      }
+    } else if (parts[0] === "overrides") {
+      try {
+        const o = JSON.parse(value || "{}");
+        if (o && typeof o === "object") out.overrides = o;
       } catch {
         /* ignore malformed JSON */
       }

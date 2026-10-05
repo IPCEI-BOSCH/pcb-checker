@@ -79,6 +79,7 @@ export const aiSuggestSettings = createServerFn({ method: "POST" })
     if (!key) throw new Error("Asistentul AI nu este configurat.");
     const system = `Ești expert în proiectare PCB și DFM pentru disciplina P1-DCE (Facultatea de Electronică UPB).
 Primești setările curente ale verificatorului (JSON cu secțiunile rules [mm], penalties {points,severity:"blocking"|"warning"|"info",enabled,smtOnly}, cam [mm]).
+Poți rescrie și textele regulilor standard (overrides: {COD: {title, what, why, fix, reference}}) — what/why/fix sunt pentru student, fix cu pași OrCAD/Allegro.
 Propune modificări conform cererii profesorului. 1 mil = 0.0254 mm. Returnează DOAR câmpurile modificate prin funcția propose_settings, plus o explicație scurtă în română.`;
     const res = await fetch(AI, {
       method: "POST",
@@ -101,6 +102,13 @@ Propune modificări conform cererii profesorului. 1 mil = 0.0254 mm. Returnează
                   explanation: { type: "string" },
                   rules: { type: "object", additionalProperties: { type: "number" } },
                   cam: { type: "object", additionalProperties: true },
+                  overrides: {
+                    type: "object",
+                    additionalProperties: {
+                      type: "object",
+                      properties: { title: { type: "string" }, what: { type: "string" }, why: { type: "string" }, fix: { type: "string" }, reference: { type: "string" } },
+                    },
+                  },
                   penalties: {
                     type: "object",
                     additionalProperties: {
@@ -109,6 +117,10 @@ Propune modificări conform cererii profesorului. 1 mil = 0.0254 mm. Returnează
                         points: { type: "number" },
                         severity: { type: "string", enum: ["blocking", "warning", "info"] },
                         enabled: { type: "boolean" },
+                        perIssue: { type: "number" },
+                        cap: { type: "number" },
+                        critical: { type: "boolean" },
+                        appliesTo: { type: "string", enum: ["ALL", "SMT", "THT"] },
                       },
                     },
                   },
@@ -128,5 +140,5 @@ Propune modificări conform cererii profesorului. 1 mil = 0.0254 mm. Returnează
     const json = JSON.parse(text);
     const args = json.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
     if (!args) throw new Error("AI nu a returnat o propunere.");
-    return JSON.parse(args) as { explanation: string; rules?: Record<string, number>; cam?: Record<string, number | boolean>; penalties?: Record<string, { points?: number; severity?: string; enabled?: boolean }> };
+    return JSON.parse(args) as { explanation: string; rules?: Record<string, number>; cam?: Record<string, number | boolean>; penalties?: Record<string, { points?: number; severity?: string; enabled?: boolean; perIssue?: number; cap?: number; critical?: boolean; appliesTo?: string }>; overrides?: Record<string, { title?: string; what?: string; why?: string; fix?: string; reference?: string }> };
   });
