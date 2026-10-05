@@ -88,11 +88,11 @@ export const RULE_LINKS: Record<string, (keyof RuleValues)[]> = {
 
 export const GENERAL_FIELDS: (keyof RuleValues)[] = ["passScore", "reserveScore", "criticalScoreCap"];
 
-export function appliesToOf(p: { smtOnly: boolean; appliesTo?: AppliesTo }): AppliesTo {
+export function appliesToOf(p: { smtOnly: boolean; appliesTo?: AppliesTo | undefined }): AppliesTo {
   return p.appliesTo ?? (p.smtOnly ? "SMT" : "ALL");
 }
 
-export function ruleApplies(p: { smtOnly: boolean; appliesTo?: AppliesTo }, smt: boolean) {
+export function ruleApplies(p: { smtOnly: boolean; appliesTo?: AppliesTo | undefined }, smt: boolean) {
   const a = appliesToOf(p);
   return a === "ALL" || (a === "SMT" ? smt : !smt);
 }
