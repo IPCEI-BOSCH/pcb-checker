@@ -215,7 +215,7 @@ export const ensureDriveFolders = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: { studentIds: string[] }) => z.object({ studentIds: z.array(z.string().uuid()).max(500) }).parse(i))
   .handler(async ({ data, context }) => {
-    const { data: staff } = await context.supabase.rpc("is_staff" as never, { _uid: context.userId } as never);
+    const { data: staff } = await context.supabase.rpc("is_staff", { _uid: context.userId });
     if (!staff) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const done: { id: string; folderId: string | null }[] = [];
