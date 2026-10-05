@@ -280,7 +280,7 @@ function Gradebook() {
             <TableHeader>
               <TableRow>
                 {ALL_COLUMNS.map((c, i) => (
-                  <TableHead key={c} className={i >= AUTO_COLUMNS.length ? "text-primary" : ""}>{c}</TableHead>
+                  <TableHead key={c} className={i >= AUTO_COLUMNS.length && i < AUTO_COLUMNS.length + MANUAL_COLUMNS.length ? "text-primary" : ""}>{c}</TableHead>
                 ))}
               </TableRow>
             </TableHeader>
@@ -288,7 +288,9 @@ function Gradebook() {
               {data.map((r) => (
                 <TableRow key={r.studentId}>
                   {rowToArray(r).map((v, i) => (
-                    <TableCell key={i} className={i >= AUTO_COLUMNS.length ? "text-primary" : ""}>{v ?? "—"}</TableCell>
+                    <TableCell key={i} className={i >= AUTO_COLUMNS.length && i < AUTO_COLUMNS.length + MANUAL_COLUMNS.length ? "text-primary" : ""}>
+                      {typeof v === "string" && v.startsWith("https://drive.google.com") ? <a href={v} target="_blank" rel="noreferrer" className="text-primary underline">Deschide folder</a> : (v ?? "—")}
+                    </TableCell>
                   ))}
                 </TableRow>
               ))}
