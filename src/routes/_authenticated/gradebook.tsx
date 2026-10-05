@@ -11,6 +11,8 @@ import { fetchStructure, logAudit, seriesLabel } from "@/lib/data";
 import {
   ALL_COLUMNS,
   AUTO_COLUMNS,
+  LINK_COLUMNS,
+  linkCells,
   MANUAL_COLUMNS,
   applyManualChanges,
   autoCells,
@@ -23,6 +25,7 @@ import {
   rowToArray,
   type ManualChange,
 } from "@/lib/gradebook";
+import { GoogleWorkspaceCard } from "@/components/GoogleWorkspaceCard";
 import { pullGradebook, pushGradebook } from "@/lib/sheets.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -106,7 +109,7 @@ function Gradebook() {
       const r = await createSheet({ data: { title: `P1DCE — Situație Seria ${name} — ${yearName}`, tabs: [sheetName] } });
       const { error } = await supabase.from("sheet_links").upsert({ series_id: seriesId, spreadsheet_id: r.spreadsheetId, sheet_name: sheetName, updated_by: user.id }, { onConflict: "series_id" });
       if (error) throw error;
-      await push({ data: { spreadsheetId: r.spreadsheetId, sheetName, header: [...AUTO_COLUMNS], manualHeader: [...MANUAL_COLUMNS], values: data.map(autoCells) } });
+      await push({ data: { spreadsheetId: r.spreadsheetId, sheetName, header: [...AUTO_COLUMNS], manualHeader: [...MANUAL_COLUMNS], values: data.map(autoCells), linkHeader: [...LINK_COLUMNS], links: data.map(linkCells) } });
       toast.success("Foaia a fost creată, asociată seriei și completată.");
       window.open(r.url, "_blank", "noreferrer");
       qc.invalidateQueries({ queryKey: ["sheet-links"] });
@@ -124,6 +127,8 @@ function Gradebook() {
           header: [...AUTO_COLUMNS],
           manualHeader: [...MANUAL_COLUMNS],
           values: data.map(autoCells),
+          linkHeader: [...LINK_COLUMNS],
+          links: data.map(linkCells),
         },
       });
       await supabase.from("sheet_links").update({ last_synced_at: new Date().toISOString(), last_direction: "push" }).eq("id", link.id);
@@ -223,6 +228,8 @@ function Gradebook() {
         {busy && <span className="text-sm text-muted-foreground">{busy}</span>}
       </div>
 
+      {canManage && <GoogleWorkspaceCard studentIds={data.map((r) => r.studentId)} onFoldersCreated={() => qc.invalidateQueries({ queryKey: ["gradebook"] })} />}
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-4 w-4" /> Google Sheets</CardTitle>
@@ -261,7 +268,7 @@ function Gradebook() {
             </div>
           )}
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Lock className="h-3 w-3" /> La trimitere se scriu doar coloanele {AUTO_COLUMNS.length} generate de platformă; {MANUAL_COLUMNS.join(", ")} rămân ale profesorului.
+            <Lock className="h-3 w-3" /> La trimitere se scriu doar coloanele {AUTO_COLUMNS.length} generate de platformă; {MANUAL_COLUMNS.join(", ")} rămân ale profesorului. Linkurile către folderele Drive și punctele din dosare se scriu după coloanele profesorului.
           </p>
         </CardContent>
       </Card>
