@@ -29,8 +29,9 @@ export async function deleteStudents(ids: string[], log: Log = () => {}) {
     await supabase.from("submissions").delete().in("student_id", part);
     await supabase.from("project_files").delete().in("student_id", part);
     await supabase.from("student_fabrication_slots").delete().in("student_id", part);
-    const r = await supabase.from("students").delete().in("id", part);
+    const r = await supabase.from("students").delete().in("id", part).select("id");
     if (r.error) throw r.error;
+    if ((r.data?.length ?? 0) < part.length) throw new Error(`Doar ${r.data?.length ?? 0} din ${part.length} proiecte au putut fi șterse — nu aveți drept de administrare pe grupa respectivă.`);
   }
 }
 
