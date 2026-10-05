@@ -1,3 +1,4 @@
+import { createDrcPool } from "@/lib/drc/pool";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { loadGerberZip } from "@/lib/gerber/load";
@@ -96,24 +97,30 @@ export interface BatchTarget { submissionId: string; zipPath: string; variant: "
 
 /** Re-runs DRC on many official submissions with the right per-series settings. */
 export async function runBatchDrc(targets: BatchTarget[], onProgress: (done: number, total: number, label: string) => void) {
-  const cache = new Map<string, Awaited<ReturnType<typeof fetchSettings>>>();
+  const cache = new Map<string, Promise<Awaited<ReturnType<typeof fetchSettings>>>>();
   const errors: string[] = [];
+  const pool = createDrcPool();
   let done = 0;
-  for (const t of targets) {
-    onProgress(done, targets.length, t.label);
-    try {
-      const key = t.seriesId ?? "";
-      if (!cache.has(key)) cache.set(key, await fetchSettings(t.seriesId));
-      const dl = await supabase.storage.from("gerbers").download(t.zipPath);
-      if (dl.error) throw dl.error;
-      const report = runDrc(await loadGerberZip(dl.data), t.variant, cache.get(key)!);
-      const { error } = await supabase.from("submissions").update({ report: report as never, drc_score: report.score, blocking_count: report.blockingCount }).eq("id", t.submissionId);
-      if (error) throw error;
-    } catch (e) {
-      errors.push(`${t.label}: ${(e as Error).message}`);
+  let cursor = 0;
+  const lane = async () => {
+    while (cursor < targets.length) {
+      const t = targets[cursor++]!;
+      onProgress(done, targets.length, t.label);
+      try {
+        const key = t.seriesId ?? "";
+        if (!cache.has(key)) cache.set(key, fetchSettings(t.seriesId));
+        const dl = await supabase.storage.from("gerbers").download(t.zipPath);
+        if (dl.error) throw dl.error;
+        const report = await pool.run(dl.data, t.variant, await cache.get(key)!);
+        const { error } = await supabase.from("submissions").update({ report: report as never, drc_score: report.score, blocking_count: report.blockingCount }).eq("id", t.submissionId);
+        if (error) throw error;
+      } catch (e) {
+        errors.push(`${t.label}: ${(e as Error).message}`);
+      }
+      done++;
     }
-    done++;
-  }
+  };
+  try { await Promise.all(Array.from({ length: pool.size }, lane)); } finally { pool.close(); }
   onProgress(done, targets.length, "");
   return errors;
 }
