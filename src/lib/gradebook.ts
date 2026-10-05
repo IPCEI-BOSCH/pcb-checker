@@ -292,3 +292,25 @@ export function extractSpreadsheetId(input: string): string {
   const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m?.[1] ?? input.trim();
 }
+
+export interface FinalWeights { drc: number; schema: number; doc: number; overwrite: boolean }
+export const DEFAULT_WEIGHTS: FinalWeights = { drc: 40, schema: 30, doc: 30, overwrite: false };
+
+/** Proposes "Nota finala" (1–10) from DRC points (0–40) and teacher grades (1–10); returned as a diff for preview, never written directly. */
+export function proposeFinalGrades(rows: GradeRow[], w: FinalWeights): ManualChange[] {
+  const out: ManualChange[] = [];
+  for (const r of rows) {
+    if (!w.overwrite && r.gradeFinal != null) continue;
+    const parts: [number, number][] = [];
+    if (w.drc > 0 && r.designPoints != null) parts.push([(r.designPoints / 40) * 10, w.drc]);
+    if (w.schema > 0 && r.gradeSchema != null) parts.push([r.gradeSchema, w.schema]);
+    if (w.doc > 0 && r.gradeDoc != null) parts.push([r.gradeDoc, w.doc]);
+    const total = w.drc + w.schema + w.doc;
+    const have = parts.reduce((a, p) => a + p[1], 0);
+    if (!total || have < total) continue; // only when every weighted component exists
+    const g = Math.max(1, Math.min(10, Math.round((parts.reduce((a, p) => a + p[0] * p[1], 0) / have) * 100) / 100));
+    if (g === r.gradeFinal) continue;
+    out.push({ studentId: r.studentId, fullName: r.fullName, field: "gradeFinal", label: "Nota finala", from: r.gradeFinal == null ? "—" : String(r.gradeFinal), to: String(g), value: g });
+  }
+  return out;
+}
