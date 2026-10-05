@@ -71,4 +71,6 @@
 - [x] Pagină „Statistici & Integritate": verdicte, distribuție scor, top erori pe serie
 - [x] Amprentă layout anti-plagiat (pad-uri relative, scule, densitate cupru), comparație în serie și cu anii anteriori, prag configurabil
 - [x] Riglă magnetică în vizualizatorul Gerber
-- [ ] Restul planului 1–6 (Web Worker DRC, bordură panou, cupoane, backup anual, notă finală automată) — etape următoare
+- [x] Notă finală automată (ponderi, previzualizare înainte de aplicare)
+- [x] Copie de siguranță an (date + toate fișierele, ZIP)
+- [ ] Web Worker DRC, bordură panou, cupoane test — etape următoare
