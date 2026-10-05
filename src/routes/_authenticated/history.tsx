@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Database, Eye, FileSpreadsheet, FolderInput, Play, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Database, HardDriveDownload, Eye, FileSpreadsheet, FolderInput, Play, Trash2 } from "lucide-react";
+import { backupYear } from "@/lib/backup";
 import { deleteSeries, deleteStudents, deleteYear, emptySeries, setArchived } from "@/lib/purge";
 import { logAudit } from "@/lib/data";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -203,6 +204,7 @@ function History() {
         </Select>
         {canManage && yearId && (
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={!!busy} onClick={() => { setBusy("Se pregătește copia…"); void run(async () => { const r = await backupYear(yearId, yearName, setBusy); await logAudit(user.id, "YEAR_BACKUP", "academic_year", yearId, r); }, "Copia de siguranță a fost descărcată."); }}><HardDriveDownload className="mr-2 h-4 w-4" /> Copie de siguranță an</Button>
             {seriesId && <Button variant="outline" disabled={!!busy || !rows.data?.length} onClick={() => confirmText(`Goliți ${seriesId === ALL ? `toate seriile din ${yearName}` : `seria ${seriesName.get(seriesId)} (${yearName})`} — se șterg toate proiectele, seria rămâne?`, () => { setBusy("…"); void run(async () => { for (const x of targetSeries) await emptySeries(x.id, setBusy); await logAudit(user.id, "SERIES_EMPTY", "series", seriesId === ALL ? null : seriesId, { year: yearName }); }, "Proiectele au fost șterse.");  })}><Trash2 className="mr-2 h-4 w-4" /> Golește {seriesId === ALL ? "seriile" : "seria"}</Button>}
             {seriesId && seriesId !== ALL && <Button variant="destructive" disabled={!!busy} onClick={() => confirmText(`Ștergeți seria ${seriesName.get(seriesId)} (${yearName}) cu grupe, proiecte, setări și panouri CAM?`, () => { setBusy("…"); void run(async () => { await deleteSeries(seriesId, setBusy); await logAudit(user.id, "SERIES_DELETE", "series", seriesId, { year: yearName }); setSeriesId(""); }, "Seria a fost ștearsă."); })}><Trash2 className="mr-2 h-4 w-4" /> Șterge seria</Button>}
             {has("admin") && <Button variant="destructive" disabled={!!busy} onClick={() => confirmText(`Ștergeți anul universitar ${yearName} cu toate seriile și proiectele?`, () => { setBusy("…"); void run(async () => { await deleteYear(yearId, setBusy); await logAudit(user.id, "YEAR_DELETE", "academic_year", yearId, { year: yearName }); setYearId(""); setSeriesId(""); }, "Anul universitar a fost șters."); })}><Trash2 className="mr-2 h-4 w-4" /> Șterge anul</Button>}
