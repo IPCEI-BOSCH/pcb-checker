@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GerberViewer } from "@/components/GerberViewer";
 import { FileDiagnostics } from "@/components/FileDiagnostics";
+import { SilkTextCard } from "@/components/SilkTextCard";
 import type { DrcReport } from "@/lib/drc/engine";
 import { CAD_LABELS, REMEDIES, type CadTool } from "@/lib/drc/remedies";
 import { CATALOG, CATEGORY_LABELS } from "@/lib/drc/catalog";
@@ -146,6 +147,7 @@ export function DrcReportView({ report, layers, meta }: { report: DrcReport; lay
         </Card>
       </div>
 
+      <SilkTextCard report={report} layers={layers} student={meta?.student} />
       {layers && <FileDiagnostics layers={layers} />}
 
       <Card>
