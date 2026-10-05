@@ -20,7 +20,12 @@ export const AUTO_COLUMNS = [
 /** Columns owned by the teacher — never written by the platform. */
 export const MANUAL_COLUMNS = ["Nota schema", "Nota documentatie", "Nota finala", "Observatii"] as const;
 
-export const ALL_COLUMNS = [...AUTO_COLUMNS, ...MANUAL_COLUMNS];
+/** Platform-owned link columns, placed after the manual block so existing sheets keep their column layout. */
+export const LINK_COLUMNS = ["Folder Google Drive", "Fisiere dosar proiect", "Puncte dosare (Proiect+Fabricatie)"] as const;
+
+export const ALL_COLUMNS = [...AUTO_COLUMNS, ...MANUAL_COLUMNS, ...LINK_COLUMNS];
+
+export const driveFolderUrl = (id: string | null) => (id ? `https://drive.google.com/drive/folders/${id}` : "");
 
 export interface GradeRow {
   studentId: string;
@@ -41,6 +46,9 @@ export interface GradeRow {
   gradeDoc: number | null;
   gradeFinal: number | null;
   notes: string;
+  driveFolderId: string | null;
+  projectFileCount: number;
+  folderPoints: number | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -68,6 +76,18 @@ export function rowToArray(r: GradeRow): (string | number | null)[] {
     r.gradeDoc,
     r.gradeFinal,
     r.notes,
+    driveFolderUrl(r.driveFolderId),
+    r.projectFileCount,
+    r.folderPoints,
+  ];
+}
+
+/** Link cells for Google Sheets: clickable HYPERLINK formulas. */
+export function linkCells(r: GradeRow): (string | number | null)[] {
+  return [
+    r.driveFolderId ? `=HYPERLINK("${driveFolderUrl(r.driveFolderId)}";"Deschide folder")` : "Fără folder",
+    r.projectFileCount,
+    r.folderPoints,
   ];
 }
 
@@ -92,6 +112,14 @@ export async function fetchGradeRows(seriesId: string | null): Promise<GradeRow[
     const g = groupsById.get(s.group_id);
     return g && (!seriesId || g.series_id === seriesId);
   });
+
+  const { data: pf } = await supabase.from("project_files").select("student_id, points");
+  const pfCount = new Map<string, number>();
+  const pfPts = new Map<string, number>();
+  for (const f of pf ?? []) {
+    pfCount.set(f.student_id, (pfCount.get(f.student_id) ?? 0) + 1);
+    if (f.points != null) pfPts.set(f.student_id, (pfPts.get(f.student_id) ?? 0) + Number(f.points));
+  }
 
   const { data: subs, error: subErr } = await supabase
     .from("submissions")
@@ -127,6 +155,9 @@ export async function fetchGradeRows(seriesId: string | null): Promise<GradeRow[
         gradeDoc: st.grade_doc != null ? Number(st.grade_doc) : null,
         gradeFinal: st.grade_final != null ? Number(st.grade_final) : null,
         notes: st.teacher_notes ?? "",
+        driveFolderId: st.drive_folder_id ?? null,
+        projectFileCount: pfCount.get(st.id) ?? 0,
+        folderPoints: pfPts.has(st.id) ? +pfPts.get(st.id)!.toFixed(2) : null,
       } satisfies GradeRow;
     })
     .sort((a, b) => a.groupName.localeCompare(b.groupName) || (a.themeNumber ?? 0) - (b.themeNumber ?? 0) || a.fullName.localeCompare(b.fullName));

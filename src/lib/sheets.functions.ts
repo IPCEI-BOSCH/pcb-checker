@@ -33,7 +33,7 @@ async function gateway(path: string, init: RequestInit) {
 /** Write only the platform-owned columns (A..L) plus the header row; manual columns stay untouched. */
 export const pushGradebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { spreadsheetId: string; sheetName: string; header: string[]; manualHeader: string[]; values: Cell[][] }) => input)
+  .inputValidator((input: { spreadsheetId: string; sheetName: string; header: string[]; manualHeader: string[]; values: Cell[][]; linkHeader?: string[]; links?: Cell[][] }) => input)
   .handler(async ({ data, context }) => {
     await assertStaff(context as never);
     const autoCols = data.header.length;
@@ -49,6 +49,11 @@ export const pushGradebook = createServerFn({ method: "POST" })
         { range: `${sheet}!${manualStart}1:${manualEnd}1`, values: [data.manualHeader] },
       ],
     };
+    if (data.linkHeader?.length && data.links) {
+      const col = (n: number) => String.fromCharCode(64 + n);
+      const start = autoCols + data.manualHeader.length + 1;
+      body.data.push({ range: `${sheet}!${col(start)}1:${col(start + data.linkHeader.length - 1)}${data.links.length + 1}`, values: [data.linkHeader, ...data.links] });
+    }
     await gateway(`/spreadsheets/${data.spreadsheetId}/values:batchUpdate`, { method: "POST", body: JSON.stringify(body) });
     return { rows: data.values.length };
   });

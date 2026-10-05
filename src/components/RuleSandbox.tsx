@@ -34,6 +34,14 @@ export function settingsDiff(a: Settings, b: Settings): string[] {
     const x = a.penalties[k], y = b.penalties[k];
     if (JSON.stringify(x) !== JSON.stringify(y)) out.push(`punctaj ${TITLES[k] ?? k}: ${JSON.stringify(x)} → ${JSON.stringify(y)}`);
   }
+  const ca = new Map((a.customRules ?? []).map((r) => [r.code, r]));
+  const cb = new Map((b.customRules ?? []).map((r) => [r.code, r]));
+  for (const [k, r] of cb) {
+    const o = ca.get(k);
+    if (!o) out.push(`regulă nouă ${k} — ${r.title}`);
+    else if (JSON.stringify(o) !== JSON.stringify(r)) out.push(`regulă modificată ${k} — ${r.title}`);
+  }
+  for (const [k, r] of ca) if (!cb.has(k)) out.push(`regulă ștearsă ${k} — ${r.title}`);
   return out;
 }
 
