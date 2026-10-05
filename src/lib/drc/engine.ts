@@ -237,6 +237,11 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   const P: Record<string, import("./settings").PenaltyValue> = { ...settings.penalties };
   const titleOf: Record<string, string> = { ...TITLES };
   const customCatalog: NonNullable<DrcReport["customCatalog"]> = {};
+  for (const [code, o] of Object.entries(settings.overrides ?? {})) {
+    if (o.title) titleOf[code] = o.title;
+    const base = CATALOG[code];
+    if (base && (o.what || o.why || o.fix)) customCatalog[code] = { err: base.err, category: base.category, what: o.what || base.what, why: o.why || base.why, fix: o.fix || base.fix };
+  }
   const byKind = (k: LayerKind) => layers.filter((l) => l.kind === k);
   const one = (k: LayerKind) => byKind(k)[0];
   const issues: DrcIssue[] = [];
@@ -569,10 +574,10 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   // Teacher-defined rules: generic geometric checks, scored like built-in rules.
   for (const cr of settings.customRules ?? []) {
     if (!cr.enabled || !cr.code) continue;
-    P[cr.code] = { points: cr.points, severity: cr.severity, enabled: true, smtOnly: cr.smtOnly, perIssue: cr.perIssue, cap: cr.cap, critical: cr.critical };
+    P[cr.code] = { points: cr.points, severity: cr.severity, enabled: true, smtOnly: cr.smtOnly, appliesTo: cr.appliesTo, perIssue: cr.perIssue, cap: cr.cap, critical: cr.critical };
     titleOf[cr.code] = cr.title || cr.code;
-    customCatalog[cr.code] = { err: cr.code, category: cr.category, what: cr.what, why: cr.why, fix: cr.fix };
-    if (cr.smtOnly && !smt) continue;
+    customCatalog[cr.code] = { err: cr.code, category: cr.category, what: cr.what, why: cr.why, fix: cr.example ? `${cr.fix}\nExemplu corect: ${cr.example}` : cr.fix };
+    if (!ruleApplies(cr, smt)) continue;
     try {
       evalCustomRule(cr, layers, board, fail, note);
     } catch (e) {
@@ -585,9 +590,9 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   let penalty = 0;
   let criticalCount = 0;
   for (const [code, pv] of Object.entries(P)) {
-    const { points: pts, severity: sev, smtOnly, enabled } = pv;
+    const { points: pts, severity: sev, enabled } = pv;
     if (!enabled) continue;
-    if (smtOnly && !smt) continue;
+    if (!ruleApplies(pv, smt)) continue;
     const isFailed = failed.has(code);
     if (!isFailed && !details.has(code)) continue;
     const count = issues.filter((i) => i.code === code).length || (isFailed ? 1 : 0);
@@ -639,10 +644,13 @@ function evalCustomRule(
   const lays = layers.filter((l) => l.kind === kind);
   const prims = lays.flatMap((l) => l.primitives).filter((p) => !p.clear);
   const holes = layers.filter((l) => l.kind === "drill").flatMap((l) => l.holes);
-  const v = cr.value;
+  const tol = Math.abs(cr.tolerance ?? 0);
+  const v = cr.checkType.startsWith("max") && !["max_holes", "max_primitives"].includes(cr.checkType) ? cr.value + tol : cr.checkType.startsWith("min") && !["min_holes"].includes(cr.checkType) || cr.checkType.endsWith("_edge") ? cr.value - tol : cr.value;
   const f = (n: number) => n.toFixed(3);
+  const holedAt = (x: number, y: number) => holes.some((h) => Math.hypot(h.x - x, h.y - y) < Math.max(0.05, h.d / 2));
   const report = (hits: { x: number; y: number; msg: string }[], okMsg: string) => {
     if (!hits.length) return note(cr.code, okMsg);
+    if (hits.length < Math.max(1, cr.minOccurrences ?? 1)) return note(cr.code, `${hits.length} cazuri, sub pragul de ${cr.minOccurrences} apariții — nu se depunctează.`);
     hits.slice(0, MAX_MARKS).forEach((h, i) => fail(cr.code, i === 0 && hits.length > 1 ? `${h.msg} (${hits.length} cazuri)` : h.msg, { x: h.x, y: h.y, layer: kind }));
   };
   const edgeDist = (x: number, y: number) => (board ? Math.min(x - board.minX, board.maxX - x, y - board.minY, board.maxY - y) : Infinity);
@@ -660,7 +668,7 @@ function evalCustomRule(
     case "min_pad":
     case "max_pad": {
       const min = cr.checkType === "min_pad";
-      const bad = prims.filter((p): p is Extract<Primitive, { t: "flash" }> => p.t === "flash" && (min ? Math.min(p.w, p.h) < v - 1e-6 : Math.max(p.w, p.h) > v + 1e-6));
+      const bad = prims.filter((p): p is Extract<Primitive, { t: "flash" }> => p.t === "flash" && !(cr.ignoreHoled && holedAt(p.x, p.y)) && (min ? Math.min(p.w, p.h) < v - 1e-6 : Math.max(p.w, p.h) > v + 1e-6));
       return report(bad.map((p) => ({ x: p.x, y: p.y, msg: `Pad ${f(p.w)}×${f(p.h)} mm (${min ? "min" : "max"} ${v} mm).` })), `Pad-urile respectă limita de ${v} mm.`);
     }
     case "layer_required": {

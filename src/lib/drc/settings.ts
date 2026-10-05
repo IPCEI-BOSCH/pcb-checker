@@ -376,6 +376,7 @@ export function mergeSettings(...parts: (Partial<Settings> | null | undefined)[]
       for (const r of p.customRules) map.set(r.code, { ...blankCustomRule(), ...r });
       out.customRules = [...map.values()];
     }
+    if (p.overrides) out.overrides = { ...(out.overrides ?? {}), ...p.overrides };
     if (p.notes !== undefined) out.notes = p.notes;
   }
   return deriveCam(out);
@@ -424,9 +425,11 @@ export function flattenSettings(s: Settings): [string, string, string][] {
     rows.push([`penalties.${k}.perIssue`, String(v.perIssue ?? 0), `Puncte per apariție suplimentară ${k}`]);
     rows.push([`penalties.${k}.cap`, String(v.cap ?? v.points), `Plafon penalizare ${k}`]);
     rows.push([`penalties.${k}.critical`, String(!!v.critical), `Eroare critică ${k}`]);
+    rows.push([`penalties.${k}.appliesTo`, appliesToOf(v), `Se aplică la ${k} (ALL/SMT/THT)`]);
   }
   for (const [k, v] of Object.entries(s.cam)) rows.push([`cam.${k}`, String(v), CAM_FIELDS[k as keyof CamValues]?.label ?? ""]);
   rows.push(["customRules", JSON.stringify(s.customRules ?? []), "Reguli noi definite de profesor (JSON)"]);
+  rows.push(["overrides", JSON.stringify(s.overrides ?? {}), "Texte personalizate pentru regulile standard (JSON)"]);
   rows.push(["notes", s.notes ?? "", "Note"]);
   return rows;
 }
@@ -451,12 +454,20 @@ export function unflattenSettings(rows: string[][], base: Settings): Settings {
       else if (parts[2] === "enabled") p.enabled = /^(true|1|da|yes)$/i.test(value.trim());
       else if (parts[2] === "perIssue") p.perIssue = Number(value) || 0;
       else if (parts[2] === "cap") p.cap = Number(value) || 0;
+      else if (parts[2] === "appliesTo" && ["ALL", "SMT", "THT"].includes(value.trim())) { p.appliesTo = value.trim() as AppliesTo; p.smtOnly = p.appliesTo === "SMT"; }
       else if (parts[2] === "critical") p.critical = /^(true|1|da|yes)$/i.test(value.trim());
       out.penalties[parts[1]] = p;
     } else if (parts[0] === "customRules") {
       try {
         const arr = JSON.parse(value || "[]");
         if (Array.isArray(arr)) out.customRules = arr.map((r) => ({ ...blankCustomRule(), ...r }));
+      } catch {
+        /* ignore malformed JSON */
+      }
+    } else if (parts[0] === "overrides") {
+      try {
+        const o = JSON.parse(value || "{}");
+        if (o && typeof o === "object") out.overrides = o;
       } catch {
         /* ignore malformed JSON */
       }
