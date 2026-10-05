@@ -36,6 +36,17 @@ const FOLDERS: Record<Folder, { title: string; hint: string }> = {
   project: { title: "Proiect (sincronizat în Google Drive)", hint: "Schemă & breviar PDF, simulări PSpice, BOM, prezentare PPT, sursele CAD… Un fișier cu același nume îl înlocuiește pe cel vechi." },
 };
 
+/** Small example documents so a demo student's project folder can be opened and graded. */
+function demoDocs(): File[] {
+  const mk = (name: string, mime: string, body: string) => new File([body], name, { type: mime });
+  return [
+    mk("Breviar_de_calcul.txt", "text/plain", "Breviar de calcul (demonstrativ)\n\n1. Tema proiectului\n2. Schema bloc\n3. Calculul componentelor\n4. Concluzii\n"),
+    mk("Simulare_PSpice.txt", "text/plain", "Rezultate simulare PSpice (demonstrativ)\nAnaliza DC, AC si tranzitorie.\n"),
+    mk("BOM.csv", "text/csv", "Designator,Valoare,Capsula,Cantitate\nR1,10k,0805,1\nC1,100n,0805,1\nU1,LM358,SOIC-8,1\n"),
+    mk("Prezentare.txt", "text/plain", "Prezentare proiect (demonstrativ)\nSlide 1: Tema\nSlide 2: Schema\nSlide 3: Layout PCB\n"),
+  ];
+}
+
 function FilesPage() {
   const { user, isStaff } = useAuth();
   const me = useQuery({ queryKey: ["my-student", user.id], queryFn: () => fetchMyStudent(user.id) });
@@ -43,9 +54,12 @@ function FilesPage() {
   const list = useQuery({
     queryKey: ["file-students"],
     enabled: isStaff,
-    queryFn: async () => (await supabase.from("students").select("id, full_name, theme_number, groups(name)").order("full_name")).data ?? [],
+    queryFn: async () => (await supabase.from("students").select("id, full_name, theme_number, user_id, drive_folder_id, groups(name)").order("full_name")).data ?? [],
   });
   const studentId = isStaff ? picked : me.data?.id ?? "";
+  const sel = list.data?.find((s) => s.id === picked);
+  const ownerFolder = isStaff ? sel?.user_id ?? user.id : user.id;
+  const driveId = isStaff ? sel?.drive_folder_id ?? null : null;
 
   return (
     <div className="space-y-6">
@@ -61,19 +75,23 @@ function FilesPage() {
           </SelectContent>
         </Select>
       )}
+      {isStaff && <GoogleWorkspaceCard studentIds={picked ? [picked] : undefined} onFoldersCreated={() => list.refetch()} />}
+      {isStaff && driveId && (
+        <Button asChild size="sm" variant="outline"><a href={`https://drive.google.com/drive/folders/${driveId}`} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" /> Deschide folderul studentului în Google Drive</a></Button>
+      )}
       {!isStaff && !me.isLoading && !me.data && <p className="text-sm text-muted-foreground">Înscrieți-vă mai întâi într-o grupă.</p>}
       {studentId && (
         <div className="grid gap-6 lg:grid-cols-2">
           <FabricationSlots studentId={studentId} userId={user.id} canUpload={!isStaff} seriesId={isStaff ? null : me.data?.groups?.series_id ?? null} variant={(isStaff ? "SMT" : me.data?.variant) ?? "SMT"} />
-          <FolderCard folder="project" studentId={studentId} canUpload={!isStaff} canGrade={isStaff} userId={user.id} />
-          <FolderCard folder="fabrication" studentId={studentId} canUpload={!isStaff} canGrade={isStaff} userId={user.id} />
+          <FolderCard folder="project" studentId={studentId} canUpload canGrade={isStaff} userId={user.id} ownerFolder={ownerFolder} demo={isStaff} />
+          <FolderCard folder="fabrication" studentId={studentId} canUpload canGrade={isStaff} userId={user.id} ownerFolder={ownerFolder} demo={false} />
         </div>
       )}
     </div>
   );
 }
 
-function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder: Folder; studentId: string; canUpload: boolean; canGrade: boolean; userId: string }) {
+function FolderCard({ folder, studentId, canUpload, canGrade, userId, ownerFolder, demo }: { folder: Folder; studentId: string; canUpload: boolean; canGrade: boolean; userId: string; ownerFolder: string; demo: boolean }) {
   const qc = useQueryClient();
   const sync = useServerFn(syncToDrive);
   const delDrive = useServerFn(deleteFromDrive);
@@ -91,11 +109,11 @@ function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder
     },
   });
 
-  const upload = async (list: FileList) => {
+  const upload = async (list: FileList | File[]) => {
     setBusy(true);
     try {
       for (const file of Array.from(list)) {
-        const path = `${userId}/files/${folder}/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`;
+        const path = `${ownerFolder}/files/${folder}/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`;
         const up = await supabase.storage.from("gerbers").upload(path, file, { contentType: file.type || "application/octet-stream" });
         if (up.error) throw up.error;
         // same name in the same folder => replace the old file (no duplicates in Drive)
@@ -109,7 +127,7 @@ function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder
         }
       }
       setDesc("");
-      toast.success("Fișiere încărcate.");
+      toast.success("Fișiere salvate.");
       qc.invalidateQueries({ queryKey: key });
     } catch (e) { toast.error((e as Error).message); }
     finally { setBusy(false); }
@@ -154,7 +172,12 @@ function FolderCard({ folder, studentId, canUpload, canGrade, userId }: { folder
             <input ref={ref} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) upload(e.target.files); e.target.value = ""; }} />
           </div>
         )}
-        {!files.data?.length && <p className="text-sm text-muted-foreground">Niciun fișier.</p>}
+        {!files.data?.length && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            Niciun fișier.
+            {demo && canUpload && <Button size="sm" variant="ghost" disabled={busy} onClick={() => upload(demoDocs())}>Adaugă documente demonstrative</Button>}
+          </div>
+        )}
         {files.data?.map((f) => (
           <div key={f.id} className="space-y-1.5 rounded-md border border-border p-2 text-sm">
             <div className="flex items-center justify-between gap-2">
