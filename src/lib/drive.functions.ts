@@ -194,3 +194,40 @@ export const fetchDriveLayout = createServerFn({ method: "POST" })
 export const driveStatus = createServerFn({ method: "GET" }).handler(async () => ({
   connected: !!process.env["LOVABLE_API_KEY"] && !!process.env["GOOGLE_DRIVE_API_KEY"],
 }));
+
+/** Live check of the Google connections (Drive ping + Sheets credentials). */
+export const googleWorkspaceStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const out = { drive: false, sheets: !!process.env["LOVABLE_API_KEY"] && !!process.env["GOOGLE_SHEETS_API_KEY"], account: null as string | null, error: null as string | null };
+    try {
+      const r = (await (await drive(`/drive/v3/about?fields=user(emailAddress)`)).json()) as { user?: { emailAddress?: string } };
+      out.drive = true;
+      out.account = r.user?.emailAddress ?? null;
+    } catch (e) {
+      out.error = (e as Error).message.slice(0, 200);
+    }
+    return out;
+  });
+
+/** Creates (or reuses) the Drive folder tree for the given students; staff only. */
+export const ensureDriveFolders = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: { studentIds: string[] }) => z.object({ studentIds: z.array(z.string().uuid()).max(500) }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { data: staff } = await context.supabase.rpc("is_staff" as never, { _uid: context.userId } as never);
+    if (!staff) throw new Error("Forbidden");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const done: { id: string; folderId: string | null }[] = [];
+    const failed: string[] = [];
+    for (const id of data.studentIds) {
+      try {
+        const st = await ensureStudentTree(supabaseAdmin, id);
+        done.push({ id, folderId: st.drive_folder_id });
+      } catch (e) {
+        console.error("ensureDriveFolders", id, e);
+        failed.push(id);
+      }
+    }
+    return { done, failed };
+  });
