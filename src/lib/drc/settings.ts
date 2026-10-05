@@ -159,6 +159,20 @@ export interface CustomRule {
   what: string;
   why: string;
   fix: string;
+  /** Variant the rule applies to; overrides smtOnly when set. */
+  appliesTo?: AppliesTo;
+  /** Rounding tolerance in the threshold unit — avoids failing on export rounding. */
+  tolerance?: number;
+  /** Rule fails only when at least this many cases are found. */
+  minOccurrences?: number;
+  /** Pad checks: ignore pads with a drill hole (vias / THT). */
+  ignoreHoled?: boolean;
+  /** Standard / source the rule comes from (IPC, CETTI, curs). */
+  reference?: string;
+  /** Internal note for teachers (not shown to students). */
+  teacherNote?: string;
+  /** Example of a correct design, shown to the student. */
+  example?: string;
 }
 
 export const CHECK_TYPES: Record<CustomCheckType, { label: string; unit: string; layers: CustomLayer[]; help: string }> = {
@@ -194,6 +208,13 @@ export function blankCustomRule(): CustomRule {
     what: "",
     why: "",
     fix: "",
+    appliesTo: "ALL",
+    tolerance: 0,
+    minOccurrences: 1,
+    ignoreHoled: false,
+    reference: "",
+    teacherNote: "",
+    example: "",
   };
 }
 
@@ -201,6 +222,7 @@ export interface Settings {
   rules: RuleValues;
   penalties: Record<string, PenaltyValue>;
   customRules?: CustomRule[];
+  overrides?: Record<string, RuleOverride>;
   cam: CamValues;
   notes?: string;
 }
