@@ -60,3 +60,9 @@
 - [x] Card stare Google Drive/Sheets, creare foldere Drive pentru toată selecția
 - [x] Dosare: încărcare și de către profesor, documente demonstrative, buton Drive, puncte doar de către cadre
 - [x] Verificare: 46 proiecte demo neschimbate (37/9), regulă nouă testată
+
+## Etapa 9 — Fereastră DRC unificată & curățare istoric
+- [x] Toate regulile standard + regulile noi într-un singur tabel, cu filtre și editor complet
+- [x] Texte editabile pentru regulile standard, variantă SMT/THT, toleranță, prag apariții, ignorare VIA, referință, exemplu, notă
+- [x] AI creează reguli noi și rescrie regulile existente; testare în aceeași fereastră
+- [x] Istoric: arhivare/ștergere per proiect și în lot, golire/ștergere serie, ștergere an
