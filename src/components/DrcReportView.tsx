@@ -137,7 +137,7 @@ export function DrcReportView({ report, layers, meta }: { report: DrcReport; lay
                 {focus === i && (
                   <div className="mt-2 rounded bg-muted p-2 text-xs text-foreground">
                     <span className="font-semibold">Remediere ({CAD_LABELS[cad]}): </span>
-                    {REMEDIES[iss.code]?.[cad] ?? REMEDIES[iss.code]?.general ?? report.customCatalog?.[iss.code]?.fix ?? CATALOG[iss.code]?.fix}
+                    {report.customCatalog?.[iss.code]?.fix ?? REMEDIES[iss.code]?.[cad] ?? REMEDIES[iss.code]?.general ?? CATALOG[iss.code]?.fix}
                   </div>
                 )}
               </button>
