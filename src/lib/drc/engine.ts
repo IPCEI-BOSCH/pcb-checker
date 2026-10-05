@@ -41,6 +41,8 @@ export interface DrcReport {
   stats: { holes: number; drillDiameters: number[]; layers: { file: string; kind: LayerKind; count: number }[]; minTrace: number | null; minClearance: number | null };
   rules: RuleResult[];
   issues: DrcIssue[];
+  /** Explanations for teacher-defined rules used in this report. */
+  customCatalog?: Record<string, { err: string; category: string; what: string; why: string; fix: string }>;
 }
 
 export const RULES = {
@@ -232,7 +234,9 @@ function clearanceScan(layer: Layer, limit: number) {
 
 export function runDrc(layers: Layer[], variant: Variant, settings: Settings = DEFAULT_SETTINGS): DrcReport {
   const R = settings.rules;
-  const P = settings.penalties;
+  const P: Record<string, import("./settings").PenaltyValue> = { ...settings.penalties };
+  const titleOf: Record<string, string> = { ...TITLES };
+  const customCatalog: NonNullable<DrcReport["customCatalog"]> = {};
   const byKind = (k: LayerKind) => layers.filter((l) => l.kind === k);
   const one = (k: LayerKind) => byKind(k)[0];
   const issues: DrcIssue[] = [];
@@ -243,7 +247,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   const fail = (code: string, message: string, pos?: { x?: number; y?: number; layer?: LayerKind }) => {
     if (!failed.has(code)) failed.set(code, message);
     const sev = P[code]?.severity ?? "warning";
-    issues.push({ code, title: TITLES[code] ?? code, severity: sev, message, ...pos });
+    issues.push({ code, title: titleOf[code] ?? code, severity: sev, message, ...pos });
   };
   const note = (code: string, d: string) => details.set(code, d);
 
@@ -562,6 +566,20 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     }
   }
 
+  // Teacher-defined rules: generic geometric checks, scored like built-in rules.
+  for (const cr of settings.customRules ?? []) {
+    if (!cr.enabled || !cr.code) continue;
+    P[cr.code] = { points: cr.points, severity: cr.severity, enabled: true, smtOnly: cr.smtOnly, perIssue: cr.perIssue, cap: cr.cap, critical: cr.critical };
+    titleOf[cr.code] = cr.title || cr.code;
+    customCatalog[cr.code] = { err: cr.code, category: cr.category, what: cr.what, why: cr.why, fix: cr.fix };
+    if (cr.smtOnly && !smt) continue;
+    try {
+      evalCustomRule(cr, layers, board, fail, note);
+    } catch (e) {
+      note(cr.code, `Regula nu a putut fi evaluată: ${(e as Error).message}`);
+    }
+  }
+
   // Build rule table & score: base points + perIssue per extra occurrence, capped per rule; critical rules cap the total score.
   const rules: RuleResult[] = [];
   let penalty = 0;
@@ -577,7 +595,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     const applied = isFailed ? Math.min(cap, pts + (pv.perIssue ?? 0) * Math.max(0, count - 1)) : 0;
     if (isFailed && pv.critical) criticalCount++;
     penalty += applied;
-    rules.push({ code, title: TITLES[code] ?? code, penalty: applied, maxPenalty: cap, count, critical: !!pv.critical, passed: !isFailed, severity: isFailed ? (pv.critical ? "blocking" : sev) : "info", detail: failed.get(code) ?? details.get(code) ?? "" });
+    rules.push({ code, title: titleOf[code] ?? code, penalty: applied, maxPenalty: cap, count, critical: !!pv.critical, passed: !isFailed, severity: isFailed ? (pv.critical ? "blocking" : sev) : "info", detail: failed.get(code) ?? details.get(code) ?? "" });
   }
   let score = Math.max(0, 100 - penalty);
   if (criticalCount) score = Math.min(score, R.criticalScoreCap);
@@ -604,7 +622,85 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     },
     rules,
     issues: issues.sort((a, b) => sevRank(a.severity) - sevRank(b.severity)),
+    customCatalog: Object.keys(customCatalog).length ? customCatalog : undefined,
   };
+}
+
+const MAX_MARKS = 8;
+
+function evalCustomRule(
+  cr: import("./settings").CustomRule,
+  layers: Layer[],
+  board: BBox | null,
+  fail: (code: string, message: string, pos?: { x?: number; y?: number; layer?: LayerKind }) => void,
+  note: (code: string, d: string) => void,
+) {
+  const kind = cr.layer as LayerKind;
+  const lays = layers.filter((l) => l.kind === kind);
+  const prims = lays.flatMap((l) => l.primitives).filter((p) => !p.clear);
+  const holes = layers.filter((l) => l.kind === "drill").flatMap((l) => l.holes);
+  const v = cr.value;
+  const f = (n: number) => n.toFixed(3);
+  const report = (hits: { x: number; y: number; msg: string }[], okMsg: string) => {
+    if (!hits.length) return note(cr.code, okMsg);
+    hits.slice(0, MAX_MARKS).forEach((h, i) => fail(cr.code, i === 0 && hits.length > 1 ? `${h.msg} (${hits.length} cazuri)` : h.msg, { x: h.x, y: h.y, layer: kind }));
+  };
+  const edgeDist = (x: number, y: number) => (board ? Math.min(x - board.minX, board.maxX - x, y - board.minY, board.maxY - y) : Infinity);
+  switch (cr.checkType) {
+    case "min_hole":
+      return report(holes.filter((h) => h.d < v - 1e-6).map((h) => ({ x: h.x, y: h.y, msg: `Gaură Ø${f(h.d)} mm sub minimul de ${v} mm.` })), `Toate găurile ≥ ${v} mm.`);
+    case "max_hole":
+      return report(holes.filter((h) => h.d > v + 1e-6).map((h) => ({ x: h.x, y: h.y, msg: `Gaură Ø${f(h.d)} mm peste maximul de ${v} mm.` })), `Toate găurile ≤ ${v} mm.`);
+    case "min_line_width":
+    case "max_line_width": {
+      const min = cr.checkType === "min_line_width";
+      const bad = prims.filter((p): p is Extract<Primitive, { t: "line" }> => p.t === "line" && (min ? p.w < v - 1e-6 : p.w > v + 1e-6));
+      return report(bad.map((p) => ({ x: (p.x1 + p.x2) / 2, y: (p.y1 + p.y2) / 2, msg: `Linie de ${f(p.w)} mm (${min ? "min" : "max"} ${v} mm).` })), `Liniile respectă ${min ? "minimul" : "maximul"} de ${v} mm.`);
+    }
+    case "min_pad":
+    case "max_pad": {
+      const min = cr.checkType === "min_pad";
+      const bad = prims.filter((p): p is Extract<Primitive, { t: "flash" }> => p.t === "flash" && (min ? Math.min(p.w, p.h) < v - 1e-6 : Math.max(p.w, p.h) > v + 1e-6));
+      return report(bad.map((p) => ({ x: p.x, y: p.y, msg: `Pad ${f(p.w)}×${f(p.h)} mm (${min ? "min" : "max"} ${v} mm).` })), `Pad-urile respectă limita de ${v} mm.`);
+    }
+    case "layer_required": {
+      const n = kind === "drill" ? holes.length : prims.length;
+      if (!lays.length || n === 0) fail(cr.code, `Stratul ${kind} lipsește sau este gol.`, { layer: kind });
+      else note(cr.code, `Stratul există (${n} elemente).`);
+      return;
+    }
+    case "max_holes":
+      if (holes.length > v) fail(cr.code, `Placa are ${holes.length} găuri (maxim ${v}).`, { layer: "drill" });
+      else note(cr.code, `${holes.length} găuri (maxim ${v}).`);
+      return;
+    case "min_holes":
+      if (holes.length < v) fail(cr.code, `Placa are ${holes.length} găuri (minim ${v}).`, { layer: "drill" });
+      else note(cr.code, `${holes.length} găuri (minim ${v}).`);
+      return;
+    case "max_primitives":
+      if (prims.length > v) fail(cr.code, `Stratul are ${prims.length} elemente (maxim ${v}).`, { layer: kind });
+      else note(cr.code, `${prims.length} elemente (maxim ${v}).`);
+      return;
+    case "hole_to_edge": {
+      if (!board) return note(cr.code, "Conturul plăcii nu a fost găsit.");
+      const bad = holes.filter((h) => edgeDist(h.x, h.y) - h.d / 2 < v - 1e-6);
+      return report(bad.map((h) => ({ x: h.x, y: h.y, msg: `Gaură Ø${f(h.d)} la ${f(edgeDist(h.x, h.y) - h.d / 2)} mm de margine (min ${v} mm).` })), `Toate găurile la ≥ ${v} mm de margine.`);
+    }
+    case "copper_to_edge": {
+      if (!board) return note(cr.code, "Conturul plăcii nu a fost găsit.");
+      const hits: { x: number; y: number; msg: string }[] = [];
+      for (const p of prims) {
+        if (p.t === "flash") {
+          const d = edgeDist(p.x, p.y) - Math.max(p.w, p.h) / 2;
+          if (d < v - 1e-6) hits.push({ x: p.x, y: p.y, msg: `Pad la ${f(d)} mm de margine (min ${v} mm).` });
+        } else if (p.t === "line") {
+          const d = Math.min(edgeDist(p.x1, p.y1), edgeDist(p.x2, p.y2)) - p.w / 2;
+          if (d < v - 1e-6) hits.push({ x: p.x1, y: p.y1, msg: `Linie la ${f(d)} mm de margine (min ${v} mm).` });
+        }
+      }
+      return report(hits, `Toate elementele la ≥ ${v} mm de margine.`);
+    }
+  }
 }
 
 function sevRank(s: Severity) {
