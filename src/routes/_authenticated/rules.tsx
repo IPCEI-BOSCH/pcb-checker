@@ -7,9 +7,8 @@ import { Download, RotateCcw, Save, Sparkles, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit , seriesLabel, sortSeriesByYear } from "@/lib/data";
-import { TITLES } from "@/lib/drc/engine";
 import {
-  CAM_FIELDS, DEFAULT_SETTINGS, deriveCam, RULE_FIELDS, fetchSettings, flattenSettings, mergeSettings, saveSettings, unflattenSettings,
+  CAM_FIELDS, DEFAULT_SETTINGS, deriveCam, fetchSettings, flattenSettings, mergeSettings, saveSettings, unflattenSettings,
   type CamValues, type RuleValues, type Settings,
 } from "@/lib/drc/settings";
 import { aiSuggestSettings, pullSettingsSheet, pushSettingsSheet } from "@/lib/rules.functions";
@@ -21,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { CustomRulesEditor } from "@/components/CustomRulesEditor";
+import { UnifiedRules } from "@/components/UnifiedRules";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +68,7 @@ function RulesPage() {
   const [manualLink, setManualLink] = useState(false);
   const [activeTab, setActiveTab] = useState("rules");
 
+  const goTest = () => { setActiveTab("rules"); setTimeout(() => document.getElementById("rule-sandbox")?.scrollIntoView({ behavior: "smooth" }), 50); };
   const isAdmin = has("admin");
   const allowed = has("admin", "series_manager");
   const structure = useQuery({ queryKey: ["structure"], queryFn: fetchStructure });
@@ -108,7 +108,6 @@ function RulesPage() {
 
   if (!allowed) return <p className="text-sm text-muted-foreground">Doar Administratorul și Managerii de serie pot modifica regulile.</p>;
 
-  const setRule = (k: keyof RuleValues, v: number) => setDraft((d) => deriveCam({ ...d, rules: { ...d.rules, [k]: v }, cam: { ...d.cam } }));
   const setCam = (k: keyof CamValues, v: number | boolean) => setDraft((d) => deriveCam({ ...d, cam: { ...d.cam, [k]: v } }));
 
   const save = async (s: Settings = draft) => {
@@ -133,10 +132,10 @@ function RulesPage() {
 
   const applyPatch = () => {
     if (!patch) return;
-    const merged = mergeSettings(draft, { rules: patch.rules as Partial<RuleValues> as RuleValues, cam: patch.cam as Partial<CamValues> as CamValues, penalties: patch.penalties as Settings["penalties"] });
+    const merged = mergeSettings(draft, { rules: patch.rules as Partial<RuleValues> as RuleValues, cam: patch.cam as Partial<CamValues> as CamValues, penalties: patch.penalties as Settings["penalties"], overrides: patch.overrides });
     setDraft(merged);
     setPatch(null);
-    setActiveTab("test");
+    goTest();
     toast.success("Propunerea a fost aplicată. Testați-o pe proiecte înainte de activare.");
   };
 
@@ -178,7 +177,7 @@ function RulesPage() {
           </Select>
           <Button variant="ghost" onClick={() => setDraft(structuredClone(DEFAULT_SETTINGS))}><RotateCcw className="mr-2 h-4 w-4" /> Valori Rev. G</Button>
           <Button onClick={() => {
-            if (current.data && settingsDiff(current.data, draft).length) { setActiveTab("test"); toast.info("Regulile modificate trebuie testate pe proiecte și confirmate înainte de activare."); return; }
+            if (current.data && settingsDiff(current.data, draft).length) { goTest(); toast.info("Regulile modificate trebuie testate pe proiecte și confirmate înainte de activare."); return; }
             void save();
           }} disabled={!!busy}><Save className="mr-2 h-4 w-4" /> Salvează</Button>
           {isAdmin && current.data && settingsDiff(current.data, draft).length > 0 && (
@@ -190,62 +189,36 @@ function RulesPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap">
-          <TabsTrigger value="rules">Reguli DRC</TabsTrigger>
-          <TabsTrigger value="score">Punctaj & severitate</TabsTrigger>
+          <TabsTrigger value="rules">Reguli DRC{current.data && settingsDiff(current.data, draft).length ? ` · ${settingsDiff(current.data, draft).length} de testat` : ""}</TabsTrigger>
           <TabsTrigger value="cam">Panou & Stencil</TabsTrigger>
-          <TabsTrigger value="custom">Reguli noi{draft.customRules?.length ? ` (${draft.customRules.length})` : ""}</TabsTrigger>
-          <TabsTrigger value="ai">Asistent AI</TabsTrigger>
           <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
-          <TabsTrigger value="test">Testare reguli{current.data && settingsDiff(current.data, draft).length ? ` (${settingsDiff(current.data, draft).length})` : ""}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="rules" className="grid gap-4 md:grid-cols-2">
-          {groupBy(RULE_FIELDS).map(([g, keys]) => (
-            <Card key={g}>
-              <CardHeader className="pb-3"><CardTitle className="text-base">{g}</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {keys.map((k) => (
-                  <div key={k} className="grid grid-cols-[1fr_8rem] items-center gap-3">
-                    <Label className="text-sm">{RULE_FIELDS[k].label}{RULE_FIELDS[k].unit && <span className="text-muted-foreground"> ({RULE_FIELDS[k].unit})</span>}
-                      {RULE_FIELDS[k].help && <span className="block text-xs text-muted-foreground">{RULE_FIELDS[k].help}</span>}
-                      {RULE_FIELDS[k].unit === "mm" && <span className="block text-xs text-muted-foreground">{(draft.rules[k] / 0.0254).toFixed(1)} mil</span>}
-                    </Label>
-                    <Input type="number" step={RULE_FIELDS[k].step} value={draft.rules[k]} onChange={(e) => setRule(k, num(e.target.value))} className="font-mono" />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-
-        <TabsContent value="score">
+        <TabsContent value="rules" className="space-y-4">
+          <UnifiedRules draft={draft} setDraft={setDraft} baseline={current.data} onTest={goTest} />
           <Card>
-            <CardContent className="pt-6">
-              <div className="grid grid-cols-[1fr_5rem_5rem_5rem_8rem_4rem_4rem_4rem] items-center gap-2 border-b border-border pb-2 text-xs font-medium text-muted-foreground">
-                <span>Regulă</span><span>Puncte</span><span>+/apariție</span><span>Plafon</span><span>Severitate</span><span>Critică</span><span>Activă</span><span>Doar SMT</span>
-              </div>
-              {Object.entries(draft.penalties).map(([code, p]) => (
-                <div key={code} className="grid grid-cols-[1fr_5rem_5rem_5rem_8rem_4rem_4rem_4rem] items-center gap-2 border-b border-border/50 py-1.5 text-sm">
-                  <span>{TITLES[code] ?? code} <span className="font-mono text-xs text-muted-foreground">{code}</span></span>
-                  <Input type="number" value={p.points} onChange={(e) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, points: num(e.target.value) } } }))} className="h-8 font-mono" aria-label={`Puncte: ${TITLES[code] ?? code}`} />
-                  <Input type="number" value={p.perIssue ?? 0} aria-label={`Puncte per apariție: ${TITLES[code] ?? code}`} onChange={(e) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, perIssue: num(e.target.value) } } }))} className="h-8 font-mono" />
-                  <Input type="number" value={p.cap ?? p.points} aria-label={`Plafon: ${TITLES[code] ?? code}`} onChange={(e) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, cap: num(e.target.value) } } }))} className="h-8 font-mono" />
-                  <Select value={p.severity} onValueChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, severity: v as typeof p.severity } } }))}>
-                    <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="blocking">Blocant</SelectItem>
-                      <SelectItem value="warning">Avertisment</SelectItem>
-                      <SelectItem value="info">Informativ</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Switch checked={!!p.critical} aria-label={`Critică: ${TITLES[code] ?? code}`} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, critical: v } } }))} />
-                  <Switch checked={p.enabled} aria-label={`Regulă activă: ${TITLES[code] ?? code}`} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, enabled: v } } }))} />
-                  <Switch checked={p.smtOnly} aria-label={`Doar SMT: ${TITLES[code] ?? code}`} onCheckedChange={(v) => setDraft((d) => ({ ...d, penalties: { ...d.penalties, [code]: { ...p, smtOnly: v } } }))} />
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4" /> Asistent AI — modifică regulile existente</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ex.: Aplică revizia G: izolație 14 mil, trasee 16 mil; rescrie explicația la serigrafie mai simplu; găurile sub 0.6 mm doar avertisment." aria-label="Cerere pentru asistentul AI" />
+              <Button onClick={askAi} disabled={!!busy || !prompt.trim()}><Sparkles className="mr-2 h-4 w-4" /> Propune modificări</Button>
+              {patch && (
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <p className="text-sm">{patch.explanation}</p>
+                  <ul className="space-y-1 font-mono text-xs">
+                    {Object.entries(patch.rules ?? {}).map(([k, v]) => <li key={k}>rules.{k}: {String(draft.rules[k as keyof RuleValues])} → <b>{v}</b></li>)}
+                    {Object.entries(patch.cam ?? {}).map(([k, v]) => <li key={k}>cam.{k}: {String(draft.cam[k as keyof CamValues])} → <b>{String(v)}</b></li>)}
+                    {Object.entries(patch.penalties ?? {}).map(([k, v]) => <li key={k}>penalties.{k}: {JSON.stringify(v)}</li>)}
+                    {Object.entries(patch.overrides ?? {}).map(([k, v]) => <li key={k}>texte.{k}: {JSON.stringify(v)}</li>)}
+                  </ul>
+                  <div className="flex gap-2"><Button size="sm" onClick={applyPatch}>Aplică în formular</Button><Button size="sm" variant="ghost" onClick={() => setPatch(null)}>Renunță</Button></div>
                 </div>
-              ))}
-              <p className="mt-3 text-xs text-muted-foreground">Penalizare regulă = puncte + (+/apariție × apariții suplimentare), limitată la plafon. Scorul = 100 − suma penalizărilor. O regulă „Critică” picată limitează scorul la „Scor maxim când există o eroare critică” (tab Reguli DRC → Scorare) și respinge automat fabricația. Regulile blocante împiedică aprobarea.</p>
+              )}
             </CardContent>
           </Card>
+          <div id="rule-sandbox" className="scroll-mt-4">
+            <h2 className="mb-2 text-lg font-semibold text-foreground">Testare pe proiecte înainte de activare</h2>
+            {current.data && <RuleSandbox seriesId={seriesId} baseline={current.data} candidate={draft} userId={user.id} onActivate={(x) => save(x)} />}
+          </div>
         </TabsContent>
 
         <TabsContent value="cam" className="grid gap-4 md:grid-cols-2">
@@ -270,31 +243,6 @@ function RulesPage() {
               </CardContent>
             </Card>
           ))}
-        </TabsContent>
-
-        <TabsContent value="custom">
-          <CustomRulesEditor draft={draft} setDraft={setDraft} onTest={() => setActiveTab("test")} />
-        </TabsContent>
-
-        <TabsContent value="ai">
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4" /> Asistent Gemini</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <Textarea rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ex.: Aplică revizia G: izolație 14 mil, trasee de semnal 16 mil, iar găurile sub 0.6 mm să fie doar avertisment." />
-              <Button onClick={askAi} disabled={!!busy || !prompt.trim()}><Sparkles className="mr-2 h-4 w-4" /> Propune modificări</Button>
-              {patch && (
-                <div className="space-y-3 rounded-md border border-border p-3">
-                  <p className="text-sm">{patch.explanation}</p>
-                  <ul className="space-y-1 font-mono text-xs">
-                    {Object.entries(patch.rules ?? {}).map(([k, v]) => <li key={k}>rules.{k}: {String(draft.rules[k as keyof RuleValues])} → <b>{v}</b></li>)}
-                    {Object.entries(patch.cam ?? {}).map(([k, v]) => <li key={k}>cam.{k}: {String(draft.cam[k as keyof CamValues])} → <b>{String(v)}</b></li>)}
-                    {Object.entries(patch.penalties ?? {}).map(([k, v]) => <li key={k}>penalties.{k}: {JSON.stringify(v)}</li>)}
-                  </ul>
-                  <div className="flex gap-2"><Button size="sm" onClick={applyPatch}>Aplică în formular</Button><Button size="sm" variant="ghost" onClick={() => setPatch(null)}>Renunță</Button></div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="sheets">
@@ -330,9 +278,6 @@ function RulesPage() {
               <Badge variant="secondary">{flattenSettings(draft).length} setări</Badge>
             </CardContent>
           </Card>
-        </TabsContent>
-        <TabsContent value="test">
-          {current.data && <RuleSandbox seriesId={seriesId} baseline={current.data} candidate={draft} userId={user.id} onActivate={(x) => save(x)} />}
         </TabsContent>
       </Tabs>
     </div>
