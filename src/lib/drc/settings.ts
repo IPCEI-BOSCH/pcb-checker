@@ -33,6 +33,8 @@ export interface RuleValues {
   maskDuplicateRatio: number;
 }
 
+export type AppliesTo = "ALL" | "SMT" | "THT";
+
 export interface PenaltyValue {
   points: number;
   severity: Severity;
@@ -44,6 +46,55 @@ export interface PenaltyValue {
   cap?: number;
   /** Critical: if it fails, the score is capped to rules.criticalScoreCap and fabrication is refused. */
   critical?: boolean;
+  /** Which project variant the rule applies to (overrides smtOnly when set). */
+  appliesTo?: AppliesTo;
+}
+
+/** Teacher edits of a built-in rule's texts (title, student explanation, reference). Empty fields fall back to the catalog. */
+export interface RuleOverride {
+  title?: string;
+  what?: string;
+  why?: string;
+  fix?: string;
+  reference?: string;
+  teacherNote?: string;
+}
+
+/** Thresholds that drive each built-in rule — shown together in the rule editor. */
+export const RULE_LINKS: Record<string, (keyof RuleValues)[]> = {
+  MISSING_LAYER: [],
+  DRL_COUNT: [],
+  BOARD_OVERSIZE: ["boardSize", "boardHeight", "boardTol"],
+  BOARD_SIZE: ["boardSize", "boardHeight", "boardTol"],
+  HOLE_OUTSIDE_PAD: ["npthMinDiameter"],
+  ORIGIN: ["originTol"],
+  OUTLINE_WIDTH: ["outlineMaxWidth"],
+  EDGE_CLEARANCE: ["edgeClearance"],
+  VIA_IN_PAD: [],
+  SSTOP_OVER_PAD: [],
+  SILK_OVER_PAD: ["silkPadClearance", "silkOverlapTol"],
+  SILK_EDGE: ["silkOverlapTol"],
+  MASK_DUPLICATE: ["maskDuplicateRatio"],
+  FIDUCIALS: ["fiducialMin", "fiducialMax", "fiducialMaskExtra", "minFiducials"],
+  MIN_TRACE: ["minTrace"],
+  CLEARANCE: ["minClearance"],
+  DRILL_TO_DRILL: ["drillToDrill"],
+  ANNULAR_RING: ["annularRing"],
+  HOLE_SIZE: ["minHole", "maxHole"],
+  MISSING_PASTE: [],
+  STENCIL_RATIO: ["stencilT", "stencilMinAR", "stencilMinAreaRatio"],
+  STENCIL_WINDOWPANE: ["windowpaneArea"],
+};
+
+export const GENERAL_FIELDS: (keyof RuleValues)[] = ["passScore", "reserveScore", "criticalScoreCap"];
+
+export function appliesToOf(p: { smtOnly: boolean; appliesTo?: AppliesTo }): AppliesTo {
+  return p.appliesTo ?? (p.smtOnly ? "SMT" : "ALL");
+}
+
+export function ruleApplies(p: { smtOnly: boolean; appliesTo?: AppliesTo }, smt: boolean) {
+  const a = appliesToOf(p);
+  return a === "ALL" || (a === "SMT" ? smt : !smt);
 }
 
 export interface CamValues {
