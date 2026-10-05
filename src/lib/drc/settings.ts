@@ -71,9 +71,85 @@ export interface CamValues {
   stencilGapY: number;
 }
 
+/** Generic geometric checks a teacher-defined rule can use. */
+export type CustomCheckType =
+  | "min_hole"
+  | "max_hole"
+  | "min_line_width"
+  | "max_line_width"
+  | "min_pad"
+  | "max_pad"
+  | "layer_required"
+  | "max_holes"
+  | "min_holes"
+  | "hole_to_edge"
+  | "copper_to_edge"
+  | "max_primitives";
+
+export type CustomLayer = "top_copper" | "bottom_copper" | "top_mask" | "top_silk" | "top_paste" | "outline" | "drill" | "fabrication";
+
+export type CustomCategory = "STRUCT" | "MECH" | "DRILL" | "COPPER" | "SOLDERMASK" | "STENCIL" | "SILKSCREEN";
+
+/** A rule added by a teacher (manually or with AI). Scored exactly like built-in rules. */
+export interface CustomRule {
+  code: string;
+  title: string;
+  category: CustomCategory;
+  checkType: CustomCheckType;
+  layer: CustomLayer;
+  value: number;
+  points: number;
+  perIssue: number;
+  cap: number;
+  severity: Severity;
+  critical: boolean;
+  enabled: boolean;
+  smtOnly: boolean;
+  what: string;
+  why: string;
+  fix: string;
+}
+
+export const CHECK_TYPES: Record<CustomCheckType, { label: string; unit: string; layers: CustomLayer[]; help: string }> = {
+  min_hole: { label: "Diametru gaură minim", unit: "mm", layers: ["drill"], help: "Eroare pentru fiecare gaură mai mică decât valoarea" },
+  max_hole: { label: "Diametru gaură maxim", unit: "mm", layers: ["drill"], help: "Eroare pentru fiecare gaură mai mare decât valoarea" },
+  min_line_width: { label: "Lățime linie minimă", unit: "mm", layers: ["top_copper", "bottom_copper", "top_silk", "outline", "fabrication"], help: "Linii mai subțiri decât valoarea pe stratul ales" },
+  max_line_width: { label: "Lățime linie maximă", unit: "mm", layers: ["top_copper", "bottom_copper", "top_silk", "outline", "fabrication"], help: "Linii mai groase decât valoarea pe stratul ales" },
+  min_pad: { label: "Pad / deschidere minimă", unit: "mm", layers: ["top_copper", "bottom_copper", "top_mask", "top_paste"], help: "Latura mică a pad-ului sub valoare" },
+  max_pad: { label: "Pad / deschidere maximă", unit: "mm", layers: ["top_copper", "bottom_copper", "top_mask", "top_paste"], help: "Latura mare a pad-ului peste valoare" },
+  layer_required: { label: "Strat obligatoriu (nevid)", unit: "", layers: ["top_copper", "bottom_copper", "top_mask", "top_silk", "top_paste", "outline", "drill", "fabrication"], help: "Eroare dacă stratul lipsește sau e gol" },
+  max_holes: { label: "Număr maxim de găuri", unit: "buc", layers: ["drill"], help: "Eroare dacă placa are mai multe găuri" },
+  min_holes: { label: "Număr minim de găuri", unit: "buc", layers: ["drill"], help: "Eroare dacă placa are mai puține găuri" },
+  hole_to_edge: { label: "Distanță gaură – margine placă", unit: "mm", layers: ["drill"], help: "Marginea găurii prea aproape de contur" },
+  copper_to_edge: { label: "Distanță element – margine placă", unit: "mm", layers: ["top_copper", "bottom_copper", "top_silk", "top_paste"], help: "Pad-uri/linii de pe strat prea aproape de contur" },
+  max_primitives: { label: "Număr maxim de elemente pe strat", unit: "buc", layers: ["top_copper", "bottom_copper", "top_silk", "top_mask", "top_paste", "fabrication"], help: "Ex.: limită de elemente pe serigrafie" },
+};
+
+export function blankCustomRule(): CustomRule {
+  return {
+    code: `CUSTOM_${Date.now().toString(36).toUpperCase()}`,
+    title: "Regulă nouă",
+    category: "DRILL",
+    checkType: "min_hole",
+    layer: "drill",
+    value: 0.4,
+    points: 5,
+    perIssue: 1,
+    cap: 15,
+    severity: "warning",
+    critical: false,
+    enabled: true,
+    smtOnly: false,
+    what: "",
+    why: "",
+    fix: "",
+  };
+}
+
 export interface Settings {
   rules: RuleValues;
   penalties: Record<string, PenaltyValue>;
+  customRules?: CustomRule[];
   cam: CamValues;
   notes?: string;
 }
