@@ -232,27 +232,8 @@ export async function buildPanel(slots: PanelSlot[], cfg: PanelConfig): Promise<
     }
   }
 
-  // Process control coupons on the bottom rail: trace/space ladders.
-  if (cfg.coupons) {
-    const widths = [0.15, 0.2, 0.25, 0.3];
-    let cx = cfg.rail;
-    const cy = cfg.rail / 2 - 3;
-    for (const w of widths) {
-      for (let i = 0; i < 4; i++) {
-        push("top_copper", { t: "line", x1: cx, y1: cy, x2: cx, y2: cy + 5, w }, 0, 0);
-        push("top_mask", { t: "line", x1: cx, y1: cy, x2: cx, y2: cy + 5, w: w + 0.1 }, 0, 0);
-        cx += w * 2;
-      }
-      cx += 2;
-    }
-    // Solder-paste release coupon squares for stencil qualification.
-    let px = cx + 3;
-    for (const s of [0.3, 0.4, 0.5, 0.6]) {
-      push("top_paste", { t: "flash", x: px, y: cy + 2.5, shape: "R", w: s, h: s }, 0, 0);
-      push("top_copper", { t: "flash", x: px, y: cy + 2.5, shape: "R", w: s, h: s }, 0, 0);
-      px += 2;
-    }
-  }
+  if (cfg.coupons) for (const [k2, p] of couponPrims(cfg)) push(k2, p, 0, 0);
+  holes.push(...toolingHoles(width, height, cfg.rail));
 
   const zip = new JSZip();
   const files: { name: string; bytes: number }[] = [];
@@ -308,10 +289,42 @@ export function panelLayers(slots: PanelSlot[], cfg: PanelConfig): Layer[] {
     }
   }
   rect(0, 0, width, height, 0.2).forEach((p) => add("outline", p));
+  if (cfg.coupons) for (const [k2, p] of couponPrims(cfg)) add(k2, p);
+  holes.push(...toolingHoles(width, height, cfg.rail));
   if (cfg.fiducials) for (const [fx, fy] of panelFiducials(cfg, width, height)) add("top_copper", { t: "flash", x: fx, y: fy, shape: "C", w: PANEL_DEFAULT.fiducial, h: PANEL_DEFAULT.fiducial });
   const out: Layer[] = [...byKind.entries()].map(([kind, primitives]) => ({ fileName: FILE_NAME[kind] ?? kind, kind, primitives, holes: [], warnings: [] }));
   if (holes.length) out.push({ fileName: "PANEL-Unified.drl", kind: "drill", primitives: [], holes, warnings: [] });
   return out;
+}
+
+/** Process-control coupons on the bottom rail: trace ladders 0.15–0.30 mm and paste-release squares. */
+function couponPrims(cfg: PanelConfig): [LayerKind, Primitive][] {
+  const out: [LayerKind, Primitive][] = [];
+  let cx = cfg.rail + 4;
+  const cy = Math.max(0.5, cfg.rail / 2 - 2.5);
+  const len = Math.min(5, cfg.rail - 1);
+  for (const w of [0.15, 0.2, 0.25, 0.3]) {
+    for (let i = 0; i < 4; i++) {
+      out.push(["top_copper", { t: "line", x1: cx, y1: cy, x2: cx, y2: cy + len, w }]);
+      out.push(["top_mask", { t: "line", x1: cx, y1: cy, x2: cx, y2: cy + len, w: w + 0.1 }]);
+      cx += w * 2;
+    }
+    cx += 2;
+  }
+  let px = cx + 3;
+  for (const s of [0.3, 0.4, 0.5, 0.6]) {
+    out.push(["top_paste", { t: "flash", x: px, y: cy + len / 2, shape: "R", w: s, h: s }]);
+    out.push(["top_copper", { t: "flash", x: px, y: cy + len / 2, shape: "R", w: s, h: s }]);
+    px += 2;
+  }
+  return out;
+}
+
+/** 3.0 mm NPTH tooling holes in the rails; the 4th is offset so the panel cannot be loaded rotated. */
+function toolingHoles(width: number, height: number, rail: number) {
+  if (rail < 5) return [];
+  const m = rail / 2;
+  return [[m, height - m - 10], [width - m, height - m], [width - m, m + 10], [m + 15, m]].map(([x, y]) => ({ x: x!, y: y!, d: 3.0 }));
 }
 
 function panelFiducials(cfg: PanelConfig, width: number, height: number): [number, number][] {

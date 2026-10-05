@@ -22,7 +22,8 @@
 ## Etapa următoare
 - [ ] Restricționare login la tenantul Microsoft UPB (credențiale proprii Entra ID)
 - [ ] Import listă studenți CSV/XLSX
-- [ ] Anti-plagiat (amprentă layout), OCR serigrafie
+- [x] Anti-plagiat (amprentă layout)
+- [ ] OCR serigrafie
 
 ## Etapa 4 — Arhivare, evaluare pe loturi, stencil X/Y, light (livrat)
 - [x] Excellon 2:5 / 2:4 (inch/mm, fără antet OrCAD) — găurile cad pe placă la toate cele 46 de proiecte demo
@@ -46,13 +47,13 @@
 - [x] Penalizări editabile: puncte, +/apariție, plafon, critică; verdict tri-stare
 - [x] Serigrafie peste pad (-20p, blocant), distanță între găuri
 - [x] Explicații pe înțelesul studentului pentru fiecare depunctare
-- [ ] Riglă/perechi de straturi în vizualizator, fișă PDF de evaluare (următoarea etapă)
+- [x] Riglă/perechi de straturi în vizualizator, fișă PDF de evaluare (următoarea etapă)
 
 ## Etapa 7 — Calibrare acceptare
 - [x] Serigrafie: pe cupru (blocant) separat de atingere margine/mască (info, -2p)
 - [x] Praguri implicite: izolație 0.300 mm, traseu 0.380 mm
 - [x] Diagnostic fișiere în raport (tip, dimensiune, pad-uri, aperturi, unelte găurire)
-- [ ] Harta vizuală a panoului în CAM, borderou CETTI
+- [x] Harta vizuală a panoului în CAM, borderou CETTI
 
 ## Etapa 8 — Reguli noi, Google Workspace, dosare
 - [x] Reguli noi DRC (manual sau AI) care intră în punctaj, raport și fișă
@@ -73,4 +74,5 @@
 - [x] Riglă magnetică în vizualizatorul Gerber
 - [x] Notă finală automată (ponderi, previzualizare înainte de aplicare)
 - [x] Copie de siguranță an (date + toate fișierele, ZIP)
-- [ ] Web Worker DRC, bordură panou, cupoane test — etape următoare
+- [x] DRC în lot pe fire de lucru paralele (pagina nu mai îngheață)
+- [x] Panou: găuri de prindere 3 mm asimetrice în rame, cupoane vizibile și în inspector
