@@ -7,6 +7,8 @@ import { deleteSeries, deleteStudents, deleteYear, emptySeries, setArchived } fr
 import { logAudit } from "@/lib/data";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure } from "@/lib/data";
@@ -48,6 +50,8 @@ function History() {
   const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(true);
+  const [ask, setAsk] = useState<{ text: string; action: () => void } | null>(null);
+  const [typed, setTyped] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const canManage = has("admin") || has("series_manager");
   const s = structure.data;
@@ -156,11 +160,10 @@ function History() {
   };
 
   const yearName = years.find((y) => y.id === yearId)?.name ?? "";
-  const confirmText = (what: string) => window.prompt(`${what}\nAcțiunea este definitivă și șterge și fișierele. Scrieți ȘTERGE pentru confirmare.`)?.trim().toUpperCase() === "ȘTERGE";
+  const confirmText = (what: string, action?: () => void) => { if (action) setAsk({ text: what, action }); return false; };
   const delRows = (ids: string[], label: string) => {
-    if (!ids.length || !confirmText(`Ștergeți ${label}?`)) return;
-    setBusy("…");
-    void run(async () => { await deleteStudents(ids, setBusy); await logAudit(user.id, "PROJECT_DELETE", "student", ids.length === 1 ? ids[0]! : null, { count: ids.length }); setSel(new Set()); }, `${ids.length} proiecte șterse.`);
+    if (!ids.length) return;
+    confirmText(`Ștergeți ${label}?`, () => { setBusy("…"); void run(async () => { await deleteStudents(ids, setBusy); await logAudit(user.id, "PROJECT_DELETE", "student", ids.length === 1 ? ids[0]! : null, { count: ids.length }); setSel(new Set()); }, `${ids.length} proiecte șterse.`); });
   };
   const archRows = (ids: string[], archived: boolean) => { if (ids.length) void run(async () => { await setArchived(ids, archived, user.id); setSel(new Set()); }, archived ? `${ids.length} proiecte arhivate.` : `${ids.length} proiecte dezarhivate.`); };
   const targetSeries = seriesId === ALL ? series : series.filter((x) => x.id === seriesId);
@@ -180,7 +183,7 @@ function History() {
           <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Database className="h-4 w-4" /> Date demo — Seria B (46 proiecte reale)</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap items-center gap-2">
             <Button disabled={!!busy} onClick={() => { setBusy("…"); run(async () => { const n = await importDemo(user.id, setBusy); toast.message(`${n} proiecte importate`); }, "Seria B demo a fost importată."); }}>Importă Seria B demo</Button>
-            <Button variant="destructive" disabled={!!busy} onClick={() => { if (!confirm("Ștergeți toate datele demo?")) return; setBusy("…"); run(() => deleteDemo(user.id, setBusy), "Datele demo au fost șterse."); }}><Trash2 className="mr-2 h-4 w-4" /> Șterge datele demo</Button>
+            <Button variant="destructive" disabled={!!busy} onClick={() => confirmText("Ștergeți toate datele demo?", () => { setBusy("…"); void run(() => deleteDemo(user.id, setBusy), "Datele demo au fost șterse."); })}><Trash2 className="mr-2 h-4 w-4" /> Șterge datele demo</Button>
             {busy && <span className="text-sm text-muted-foreground">{busy}</span>}
           </CardContent>
         </Card>
@@ -200,9 +203,9 @@ function History() {
         </Select>
         {canManage && yearId && (
           <div className="flex flex-wrap gap-2">
-            {seriesId && <Button variant="outline" disabled={!!busy || !rows.data?.length} onClick={() => { if (!confirmText(`Goliți ${seriesId === ALL ? `toate seriile din ${yearName}` : `seria ${seriesName.get(seriesId)} (${yearName})`} — se șterg toate proiectele, seria rămâne?`)) return; setBusy("…"); void run(async () => { for (const x of targetSeries) await emptySeries(x.id, setBusy); await logAudit(user.id, "SERIES_EMPTY", "series", seriesId === ALL ? null : seriesId, { year: yearName }); }, "Proiectele au fost șterse."); }}><Trash2 className="mr-2 h-4 w-4" /> Golește {seriesId === ALL ? "seriile" : "seria"}</Button>}
-            {seriesId && seriesId !== ALL && <Button variant="destructive" disabled={!!busy} onClick={() => { if (!confirmText(`Ștergeți seria ${seriesName.get(seriesId)} (${yearName}) cu grupe, proiecte, setări și panouri CAM?`)) return; setBusy("…"); void run(async () => { await deleteSeries(seriesId, setBusy); await logAudit(user.id, "SERIES_DELETE", "series", seriesId, { year: yearName }); setSeriesId(""); }, "Seria a fost ștearsă."); }}><Trash2 className="mr-2 h-4 w-4" /> Șterge seria</Button>}
-            {has("admin") && <Button variant="destructive" disabled={!!busy} onClick={() => { if (!confirmText(`Ștergeți anul universitar ${yearName} cu toate seriile și proiectele?`)) return; setBusy("…"); void run(async () => { await deleteYear(yearId, setBusy); await logAudit(user.id, "YEAR_DELETE", "academic_year", yearId, { year: yearName }); setYearId(""); setSeriesId(""); }, "Anul universitar a fost șters."); }}><Trash2 className="mr-2 h-4 w-4" /> Șterge anul</Button>}
+            {seriesId && <Button variant="outline" disabled={!!busy || !rows.data?.length} onClick={() => confirmText(`Goliți ${seriesId === ALL ? `toate seriile din ${yearName}` : `seria ${seriesName.get(seriesId)} (${yearName})`} — se șterg toate proiectele, seria rămâne?`, () => { setBusy("…"); void run(async () => { for (const x of targetSeries) await emptySeries(x.id, setBusy); await logAudit(user.id, "SERIES_EMPTY", "series", seriesId === ALL ? null : seriesId, { year: yearName }); }, "Proiectele au fost șterse.");  })}><Trash2 className="mr-2 h-4 w-4" /> Golește {seriesId === ALL ? "seriile" : "seria"}</Button>}
+            {seriesId && seriesId !== ALL && <Button variant="destructive" disabled={!!busy} onClick={() => confirmText(`Ștergeți seria ${seriesName.get(seriesId)} (${yearName}) cu grupe, proiecte, setări și panouri CAM?`, () => { setBusy("…"); void run(async () => { await deleteSeries(seriesId, setBusy); await logAudit(user.id, "SERIES_DELETE", "series", seriesId, { year: yearName }); setSeriesId(""); }, "Seria a fost ștearsă."); })}><Trash2 className="mr-2 h-4 w-4" /> Șterge seria</Button>}
+            {has("admin") && <Button variant="destructive" disabled={!!busy} onClick={() => confirmText(`Ștergeți anul universitar ${yearName} cu toate seriile și proiectele?`, () => { setBusy("…"); void run(async () => { await deleteYear(yearId, setBusy); await logAudit(user.id, "YEAR_DELETE", "academic_year", yearId, { year: yearName }); setYearId(""); setSeriesId(""); }, "Anul universitar a fost șters."); })}><Trash2 className="mr-2 h-4 w-4" /> Șterge anul</Button>}
           </div>
         )}
         {!!rows.data?.length && (
@@ -298,6 +301,19 @@ function History() {
           </CardContent>
         </Card>
       )}
+      <AlertDialog open={!!ask} onOpenChange={(o) => { if (!o) { setAsk(null); setTyped(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmare ștergere</AlertDialogTitle>
+            <AlertDialogDescription>{ask?.text} Acțiunea este definitivă și șterge și fișierele. Scrieți ȘTERGE pentru confirmare.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="ȘTERGE" aria-label="Confirmare" autoFocus />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Renunță</AlertDialogCancel>
+            <AlertDialogAction disabled={!["ȘTERGE", "STERGE"].includes(typed.trim().toUpperCase())} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { const a = ask?.action; setAsk(null); setTyped(""); a?.(); }}>Șterge definitiv</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => qc.invalidateQueries()} />
     </div>
   );
