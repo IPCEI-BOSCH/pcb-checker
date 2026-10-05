@@ -417,12 +417,6 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   {
     const silk = one("top_silk");
     if (silk && (maskAps.length || topPads.length)) {
-      const pasteFl = (paste?.primitives.filter((p) => p.t === "flash" && !p.clear) ?? []) as Extract<Primitive, { t: "flash" }>[];
-      const isVia = (p: Extract<Primitive, { t: "flash" }>) => {
-        const h = holes.find((h) => Math.hypot(h.x - p.x, h.y - p.y) < 0.2);
-        if (!h || h.d > 0.5 || Math.max(p.w, p.h) > 1.05) return false;
-        return !pasteFl.some((a) => Math.hypot(a.x - p.x, a.y - p.y) < 0.2);
-      };
       const compPads = (topPads.length ? topPads : maskAps).filter((p) => !isVia(p));
       const compOpen = (maskAps.length ? maskAps : topPads).filter((p) => !isVia(p));
       const copper = compPads.map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c);
