@@ -27,3 +27,7 @@
 - DRC scoring: per rule `points + perIssue × extra occurrences`, capped by `cap`; rules flagged `critical` cap the total score at `rules.criticalScoreCap` and force "respins" — all values live in `drc_settings`, student explanations in `src/lib/drc/catalog.ts`.
 - CAM board/pitch are derived from DRC board width/height via `deriveCam` when `cam.autoFromBoard` is on — one board size drives DRC, panel and stencil.
 - Board size comes from the largest closed loop in the outline layer (`outlineBBox`), and layer names are matched on whole tokens so prefixed student files classify correctly — dimension text and name prefixes caused false rejections.
+- Teacher-defined DRC rules live in `settings.customRules` (generic check types in `CHECK_TYPES`, evaluated by `evalCustomRule` in `engine.ts`) and are scored like built-in penalties; their student explanations travel in `report.customCatalog` — rules can be added without code changes.
+- AI rule creation uses the Responses API via `src/lib/ai/rule-ai.functions.ts` (strict JSON schema, returns a draft only) — nothing is saved until tested in the sandbox.
+- Google Sheets link columns (`LINK_COLUMNS`) are written after the teacher's manual columns, so existing sheets keep their layout.
+- Folder points on `project_files` are guarded by a DB trigger (staff only); managers can upload into a student's folders via `can_manage_group` policies.

@@ -53,3 +53,10 @@
 - [x] Praguri implicite: izolație 0.300 mm, traseu 0.380 mm
 - [x] Diagnostic fișiere în raport (tip, dimensiune, pad-uri, aperturi, unelte găurire)
 - [ ] Harta vizuală a panoului în CAM, borderou CETTI
+
+## Etapa 8 — Reguli noi, Google Workspace, dosare
+- [x] Reguli noi DRC (manual sau AI) care intră în punctaj, raport și fișă
+- [x] Catalog: linkuri foldere Drive + puncte dosare în Excel și Google Sheets
+- [x] Card stare Google Drive/Sheets, creare foldere Drive pentru toată selecția
+- [x] Dosare: încărcare și de către profesor, documente demonstrative, buton Drive, puncte doar de către cadre
+- [x] Verificare: 46 proiecte demo neschimbate (37/9), regulă nouă testată

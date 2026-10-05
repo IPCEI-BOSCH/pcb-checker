@@ -92,7 +92,7 @@ Tipuri de verificare disponibile (checkType) și straturi permise:
 - max_primitives: top_copper, bottom_copper, top_silk, top_mask, top_paste, fabrication
 value: pragul în mm (sau bucăți pentru numărători). 1 mil = 0.0254 mm.
 code: identificator unic MAJUSCULE cu prefix CUSTOM_ (ex. CUSTOM_HOLE_EDGE), diferit de: ${data.existingCodes.join(", ") || "(niciunul)"}.
-points = penalizare de bază (0–100), perIssue = puncte per apariție suplimentară, cap = plafon total (≥ points).
+points = penalizare de bază ca număr POZITIV (0–100), perIssue = puncte per apariție suplimentară, cap = plafon total (≥ points).
 critical=true doar dacă profesorul cere explicit ca eroarea să blocheze fabricația.
 what/why/fix: explicații în română pentru STUDENT — ce a greșit, de ce contează la fabricație, cum repară pas cu pas în OrCAD/Allegro.
 explanation: o frază pentru profesor despre cum ai interpretat cererea. Dacă cererea nu se poate verifica cu tipurile de mai sus, alege cea mai apropiată și spune asta în explanation.`;
@@ -119,9 +119,9 @@ explanation: o frază pentru profesor despre cum ai interpretat cererea. Dacă c
       return {
         ...out,
         code: code.startsWith("CUSTOM_") ? code : `CUSTOM_${code}`,
-        points: Math.max(0, Math.min(100, Number(out.points) || 0)),
-        perIssue: Math.max(0, Number(out.perIssue) || 0),
-        cap: Math.max(Number(out.points) || 0, Number(out.cap) || 0),
+        points: Math.min(100, Math.abs(Number(out.points) || 0)),
+        perIssue: Math.abs(Number(out.perIssue) || 0),
+        cap: Math.max(Math.abs(Number(out.points) || 0), Math.abs(Number(out.cap) || 0)),
       };
     } catch (e) {
       if (NoObjectGeneratedError.isInstance(e)) throw new Error("AI nu a returnat o regulă validă. Reformulați cererea mai concret.");
