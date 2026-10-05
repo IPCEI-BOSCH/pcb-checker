@@ -356,6 +356,16 @@ function Review() {
                               ><X className="mr-1 h-4 w-4" />{status === "rejected" ? "Respins" : "Respinge"}</Button>
                             </div>
                           )}
+                          {canManage && (
+                            <div className="mt-1 flex justify-end gap-1">
+                              {st.status === "archived" ? (
+                                <Button size="sm" variant="ghost" aria-label={`Dezarhivează proiectul ${st.full_name}`} onClick={() => archiveStudent(st.id, st.full_name, false)}><ArchiveRestore className="mr-1 h-4 w-4" /> Dezarhivează</Button>
+                              ) : (
+                                <Button size="sm" variant="ghost" aria-label={`Arhivează proiectul ${st.full_name}`} onClick={() => archiveStudent(st.id, st.full_name, true)}><Archive className="mr-1 h-4 w-4" /> Arhivează</Button>
+                              )}
+                              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" aria-label={`Șterge definitiv proiectul ${st.full_name}`} onClick={() => setDelStudent({ id: st.id, name: st.full_name })}><Trash2 className="mr-1 h-4 w-4" /> Șterge</Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
