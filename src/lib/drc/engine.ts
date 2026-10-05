@@ -1,4 +1,5 @@
-import { DEFAULT_SETTINGS, type Settings } from "./settings";
+import { DEFAULT_SETTINGS, ruleApplies, type Settings } from "./settings";
+import { CATALOG } from "./catalog";
 import { layerBBox, outlineBBox, primitiveBBox } from "../gerber/parser";
 import type { BBox, Layer, LayerKind, Primitive } from "../gerber/types";
 
