@@ -78,6 +78,7 @@ function Layout() {
     { to: "/rules", label: "Reguli & Setări", icon: SlidersHorizontal, show: ctx.has("admin", "series_manager") },
     { to: "/cam", label: "Generator CAM", icon: Grid3x3, show: ctx.has("admin", "series_manager", "instructor", "cam_tech") },
     { to: "/history", label: "Istoric pe ani", icon: HistoryIcon, show: ctx.isStaff },
+    { to: "/insights", label: "Statistici & Integritate", icon: ShieldAlert, show: ctx.isStaff },
     { to: "/admin", label: "Administrare", icon: Settings2, show: ctx.has("admin", "series_manager") },
   ] as const;
 
