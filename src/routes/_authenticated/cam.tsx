@@ -348,26 +348,37 @@ function Cam() {
             <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${dims.cols}, minmax(0, 1fr))` }}>
               {[...slots].sort((a, b) => b.row - a.row || a.col - b.col).map((s) => {
                 const i = s.row * dims.cols + s.col;
+                const code = `${String.fromCharCode(65 + s.col)}${s.row + 1}`;
+                const sel = selected === i && !!s.board;
                 return (
-                  <div key={i} className={`flex aspect-square flex-col items-center justify-center rounded border p-0.5 text-center text-[9px] leading-tight ${s.board ? "border-primary/60 bg-accent" : "border-dashed border-border text-muted-foreground"}`}>
-                    <span className="font-mono opacity-60">#{i + 1}</span>
-                    {s.board ? <><span className="line-clamp-2 break-all">{s.board.label}</span><button className="text-destructive" onClick={() => removeAt(i)}>elimină</button></> : <span>liber</span>}
+                  <div key={i} role={s.board ? "button" : undefined} tabIndex={s.board ? 0 : undefined} onClick={() => s.board && setSelected(sel ? null : i)}
+                    className={`flex aspect-square cursor-default flex-col items-center justify-center rounded border p-0.5 text-center text-[9px] leading-tight ${s.board ? `cursor-pointer bg-accent ${sel ? "border-primary ring-2 ring-primary" : "border-primary/60"}` : "border-dashed border-border text-muted-foreground"}`}>
+                    <span className="font-mono opacity-60">{code} · #{i + 1}</span>
+                    {s.board ? <><span className="line-clamp-2 break-all">{s.board.label}</span><button className="text-destructive" onClick={(e) => { e.stopPropagation(); removeAt(i); if (sel) setSelected(null); }}>elimină</button></> : <span>liber</span>}
                   </div>
                 );
               })}
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">Apasă pe o plăcuță ca să o vezi singură în inspector.</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base">Inspector Gerber — {mode === "panel" ? "panou" : "stencil"}</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-base">Inspector Gerber — {selBoard ? selBoard.label : mode === "panel" ? "panou" : "stencil"}</CardTitle>
+            {selBoard && <Button size="sm" variant="ghost" onClick={() => setSelected(null)}>Înapoi la {mode === "panel" ? "panou" : "stencil"}</Button>}
+          </CardHeader>
           <CardContent>
-            {viewLayers.length ? <div className="h-[520px]"><GerberViewer layers={viewLayers} issues={[]} /></div> : <p className="text-sm text-muted-foreground">Adăugați plăcuțe pentru a vedea previzualizarea.</p>}
+            {selBoard ? <div className="h-[520px]"><GerberViewer key={selBoard.label} layers={selBoard.layers} issues={[]} /></div>
+              : viewLayers.length ? <div className="h-[520px]"><GerberViewer layers={viewLayers} issues={[]} /></div> : <p className="text-sm text-muted-foreground">Adăugați plăcuțe pentru a vedea previzualizarea.</p>}
           </CardContent>
         </Card>
       </div>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">Poziții proiecte — {pageName(mode, pageIdx)}</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle className="text-base">Poziții proiecte — {pageName(mode, pageIdx)}</CardTitle>
+          {positions.length > 0 && <Button size="sm" variant="outline" onClick={exportBorderou}><Download className="mr-1 h-4 w-4" /> Borderou CETTI (CSV)</Button>}
+        </CardHeader>
         <CardContent><PositionsTable rows={positions} /></CardContent>
       </Card>
     </div>
