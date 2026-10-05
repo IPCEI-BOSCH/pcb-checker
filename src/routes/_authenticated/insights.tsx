@@ -6,8 +6,8 @@ import * as XLSX from "xlsx";
 import { ShieldAlert, BarChart3, Play, Download, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchStructure, seriesLabel, sortSeriesByYear } from "@/lib/data";
-import { loadGerberZip } from "@/lib/gerber/load";
-import { FP_VERSION, VERDICT_LABEL, fingerprint, similarityDetail, transformPts, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { FP_VERSION, VERDICT_LABEL, transformPts, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { createIntegrityPool } from "@/lib/integrity/pool";
 import type { DrcReport } from "@/lib/drc/engine";
 import type { Json } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -145,35 +145,49 @@ function Insights() {
     const targets = (rows.data ?? []).filter((r) => r.zipPath && r.submissionId && (force || !fps.has(r.studentId)));
     setProg({ done: 0, total: targets.length });
     const next = new Map(fps);
-    let fail = 0;
-    for (let i = 0; i < targets.length; i++) {
-      const t = targets[i]!;
-      try {
-        const { data, error } = await supabase.storage.from("gerbers").download(t.zipPath!);
-        if (error) throw error;
-        const fp = fingerprint(await loadGerberZip(data));
-        next.set(t.studentId, fp);
-        await supabase.from("layout_fingerprints").upsert({ submission_id: t.submissionId!, student_id: t.studentId, version: FP_VERSION, data: fp as unknown as Json });
-      } catch { fail++; }
-      setProg({ done: i + 1, total: targets.length });
-    }
+    let fail = 0, done = 0, cursor = 0;
+    const pool = createIntegrityPool();
+    const worker = async () => {
+      while (cursor < targets.length) {
+        const t = targets[cursor++]!;
+        try {
+          const { data, error } = await supabase.storage.from("gerbers").download(t.zipPath!);
+          if (error) throw error;
+          const fp = await pool.fingerprint(data);
+          next.set(t.studentId, fp);
+          await supabase.from("layout_fingerprints").upsert({ submission_id: t.submissionId!, student_id: t.studentId, version: FP_VERSION, data: fp as unknown as Json });
+        } catch { fail++; }
+        setProg({ done: ++done, total: targets.length });
+      }
+    };
+    try { await Promise.all(Array.from({ length: pool.size }, worker)); } finally { pool.close(); }
     setFps(next);
     setProg(null);
     qc.invalidateQueries({ queryKey: ["fingerprints"] });
     toast.success(`Amprente: ${next.size}${fail ? ` · ${fail} arhive nu au putut fi citite` : ""}`);
   };
 
-  const allPairs = useMemo(() => {
+  const [allPairs, setAllPairs] = useState<Pair[]>([]);
+  const [pairsBusy, setPairsBusy] = useState(false);
+  useEffect(() => {
     const all = (rows.data ?? []).filter((r) => fps.has(r.studentId));
     const mine = all.filter((r) => r.seriesId === seriesId);
-    const out: Pair[] = [];
+    const list: [Row, Row][] = [];
     for (const a of mine)
       for (const b of all) {
         if (a.studentId === b.studentId) continue;
         if (b.seriesId === seriesId && b.studentId < a.studentId) continue;
-        out.push({ a, b, d: similarityDetail(fps.get(a.studentId)!, fps.get(b.studentId)!) });
+        list.push([a, b]);
       }
-    return out;
+    if (!list.length) { setAllPairs([]); return; }
+    let cancelled = false;
+    const pool = createIntegrityPool();
+    setPairsBusy(true);
+    pool.pairs(Object.fromEntries(fps), list.map(([a, b]) => [a.studentId, b.studentId]))
+      .then((ds) => { if (!cancelled) setAllPairs(list.map(([a, b], i) => ({ a, b, d: ds[i]! }))); })
+      .catch(() => { if (!cancelled) toast.error("Compararea amprentelor a eșuat"); })
+      .finally(() => { pool.close(); if (!cancelled) setPairsBusy(false); });
+    return () => { cancelled = true; pool.close(); };
   }, [rows.data, fps, seriesId]);
 
   const baseline = useMemo(() => {
@@ -302,6 +316,7 @@ function Insights() {
                 <span className="text-sm text-muted-foreground">{fps.size} amprente salvate · media similarității în serie {baseline.toFixed(1)}%</span>
               </div>
               {prog && <Progress value={(prog.done / Math.max(1, prog.total)) * 100} />}
+              {pairsBusy && <p className="text-xs text-muted-foreground">Se compară proiectele în fundal…</p>}
 
               {!!clusters.length && (
                 <div className="rounded-md border border-destructive p-3 text-sm">
