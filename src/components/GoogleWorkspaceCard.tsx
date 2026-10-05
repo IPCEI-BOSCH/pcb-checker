@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ensureDriveFolders, googleWorkspaceStatus } from "@/lib/drive.functions";
 
 /** Live Google Drive / Sheets status with a one-click folder initialization for the given students. */
-export function GoogleWorkspaceCard({ studentIds, onFoldersCreated }: { studentIds?: string[]; onFoldersCreated?: () => void }) {
+export function GoogleWorkspaceCard({ studentIds, onFoldersCreated }: { studentIds?: string[] | undefined; onFoldersCreated?: (() => void) | undefined }) {
   const status = useServerFn(googleWorkspaceStatus);
   const ensure = useServerFn(ensureDriveFolders);
   const q = useQuery({ queryKey: ["google-status"], queryFn: () => status(), staleTime: 60_000 });
@@ -36,7 +36,7 @@ export function GoogleWorkspaceCard({ studentIds, onFoldersCreated }: { studentI
   };
 
   const d = q.data;
-  const Dot = ({ on, label }: { on?: boolean; label: string }) => (
+  const Dot = ({ on, label }: { on?: boolean | undefined; label: string }) => (
     <span className="flex items-center gap-1.5 text-sm">
       {on ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <XCircle className="h-4 w-4 text-destructive" />}
       {label}: <b>{q.isLoading ? "se verifică…" : on ? "conectat" : "neconectat"}</b>

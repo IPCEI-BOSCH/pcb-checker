@@ -105,7 +105,10 @@ export const syncToDrive = createServerFn({ method: "POST" })
     const r = row as unknown as { student_id: string; storage_path?: string; file_path?: string; slot_key?: string; file_name?: string; drive_file_id: string | null };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: owner } = await supabaseAdmin.from("students").select("user_id").eq("id", r.student_id!).single();
-    if (owner?.user_id !== context.userId) throw new Error("Doar studentul își poate sincroniza fișierele.");
+    if (owner?.user_id !== context.userId) {
+      const { data: staff } = await context.supabase.rpc("is_staff", { _uid: context.userId });
+      if (!staff) throw new Error("Doar studentul sau cadrele didactice pot sincroniza fișierele.");
+    }
     const st = await ensureStudentTree(supabaseAdmin, r.student_id!);
     const path = (data.kind === "slot" ? r.storage_path : r.file_path)!;
     const dl = await supabaseAdmin.storage.from("gerbers").download(path);

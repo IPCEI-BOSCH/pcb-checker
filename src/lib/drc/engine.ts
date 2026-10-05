@@ -42,7 +42,7 @@ export interface DrcReport {
   rules: RuleResult[];
   issues: DrcIssue[];
   /** Explanations for teacher-defined rules used in this report. */
-  customCatalog?: Record<string, { err: string; category: string; what: string; why: string; fix: string }>;
+  customCatalog?: Record<string, { err: string; category: string; what: string; why: string; fix: string }> | undefined;
 }
 
 export const RULES = {
