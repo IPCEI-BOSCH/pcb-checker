@@ -311,6 +311,13 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   const topPads = (top?.primitives.filter((p) => p.t === "flash" && !p.clear) ?? []) as Extract<Primitive, { t: "flash" }>[];
   const pasteAps = (paste?.primitives.filter((p) => p.t === "flash" && !p.clear) ?? []) as Extract<Primitive, { t: "flash" }>[];
   const maskAps = (mask?.primitives.filter((p) => p.t === "flash" && !p.clear) ?? []) as Extract<Primitive, { t: "flash" }>[];
+  // VIA = small drilled pad without paste; component-pad rules (mask opening, silk) do not apply to it.
+  const isVia = (p: Extract<Primitive, { t: "flash" }>) => {
+    const h = holes.find((h) => Math.hypot(h.x - p.x, h.y - p.y) < 0.2);
+    if (!h || h.d > 0.5 || Math.max(p.w, p.h) > 1.05) return false;
+    return !pasteAps.some((a) => Math.hypot(a.x - p.x, a.y - p.y) < 0.2);
+  };
+  const viaCount = topPads.filter(isVia).length;
 
   // Via in pad (SMT): hole inside a pad that also has paste (i.e. an SMD pad)
   if (smt) {
@@ -328,16 +335,18 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   // Solder mask openings
   if (mask && top) {
     let n = 0;
-    for (const pad of topPads) {
+    const compPads = topPads.filter((p) => !isVia(p));
+    for (const pad of compPads) {
       const open = maskAps.some((m) => Math.hypot(m.x - pad.x, m.y - pad.y) < Math.max(0.05, Math.min(pad.w, pad.h) / 3));
       const regionOpen = mask.primitives.some((m) => m.t === "region" && pointInBBox(pad.x, pad.y, primitiveBBox(m)));
       if (!open && !regionOpen) {
         n++;
-        if (n <= 10) fail("SSTOP_OVER_PAD", `Pad fără deschidere în mască la (${pad.x.toFixed(2)}, ${pad.y.toFixed(2)}).`, { x: pad.x, y: pad.y, layer: "top_mask" });
+        if (n <= 10) fail("SSTOP_OVER_PAD", `Pad de componentă fără deschidere în mască la (${pad.x.toFixed(2)}, ${pad.y.toFixed(2)}).`, { x: pad.x, y: pad.y, layer: "top_mask" });
       }
     }
-    if (!n) note("SSTOP_OVER_PAD", `${topPads.length} pad-uri, toate cu deschidere în mască.`);
-    else failed.set("SSTOP_OVER_PAD", `${n} pad-uri acoperite de mască.`);
+    const viaNote = viaCount ? ` VIA-urile (${viaCount}) sunt ignorate — pot fi acoperite de mască (tented).` : "";
+    if (!n) note("SSTOP_OVER_PAD", `${compPads.length} pad-uri de componentă, toate cu deschidere în mască.${viaNote}`);
+    else failed.set("SSTOP_OVER_PAD", `${n} pad-uri de componentă acoperite de mască.${viaNote}`);
 
     // Duplication trap
     const topLines = top.primitives.filter((p) => p.t === "line").length;
