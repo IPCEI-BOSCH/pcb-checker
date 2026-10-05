@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { CloudDownload, CloudUpload, Download, Link2, Lock, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { fetchStructure, logAudit } from "@/lib/data";
+import { fetchStructure, logAudit, seriesLabel } from "@/lib/data";
 import {
   ALL_COLUMNS,
   AUTO_COLUMNS,
@@ -16,6 +16,7 @@ import {
   autoCells,
   diffManualColumns,
   exportWorkbook,
+  exportYearWorkbook,
   extractSpreadsheetId,
   fetchGradeRows,
   readSpreadsheetFile,
@@ -50,6 +51,7 @@ function Gradebook() {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [seriesId, setSeriesId] = useState<string>("");
+  const [yearId, setYearId] = useState<string>("");
   const [busy, setBusy] = useState<string | null>(null);
   const [changes, setChanges] = useState<ManualChange[] | null>(null);
   const [sourceLabel, setSourceLabel] = useState("");
@@ -63,6 +65,10 @@ function Gradebook() {
 
   const structure = useQuery({ queryKey: ["structure"], queryFn: fetchStructure });
   const rows = useQuery({ queryKey: ["gradebook", seriesId], queryFn: () => fetchGradeRows(seriesId || null) });
+  const years = structure.data?.years;
+  const activeYearId = yearId || years?.find((y) => y.is_active)?.id || years?.[0]?.id || "";
+  const yearName = years?.find((y) => y.id === activeYearId)?.name ?? "";
+  const yearSeries = useMemo(() => (structure.data?.series ?? []).filter((s) => s.academic_year_id === activeYearId), [structure.data, activeYearId]);
   const links = useQuery({
     queryKey: ["sheet-links"],
     queryFn: async () => {
@@ -74,7 +80,10 @@ function Gradebook() {
 
   const link = useMemo(() => links.data?.find((l) => l.series_id === seriesId) ?? null, [links.data, seriesId]);
   const canManage = has("admin", "series_manager");
-  const data = rows.data ?? [];
+  const data = useMemo(() => {
+    const ids = new Set(yearSeries.map((s) => s.id));
+    return (rows.data ?? []).filter((r) => ids.has(r.seriesId));
+  }, [rows.data, yearSeries]);
 
   const saveLink = async () => {
     if (!seriesId) return void toast.error("Alege mai întâi seria.");
@@ -94,7 +103,7 @@ function Gradebook() {
     setBusy("Se creează foaia Google Sheets…");
     try {
       const name = structure.data?.series.find((x) => x.id === seriesId)?.name ?? "Serie";
-      const r = await createSheet({ data: { title: `P1DCE — Situație Seria ${name}`, tabs: [sheetName] } });
+      const r = await createSheet({ data: { title: `P1DCE — Situație Seria ${name} — ${yearName}`, tabs: [sheetName] } });
       const { error } = await supabase.from("sheet_links").upsert({ series_id: seriesId, spreadsheet_id: r.spreadsheetId, sheet_name: sheetName, updated_by: user.id }, { onConflict: "series_id" });
       if (error) throw error;
       await push({ data: { spreadsheetId: r.spreadsheetId, sheetName, header: [...AUTO_COLUMNS], manualHeader: [...MANUAL_COLUMNS], values: data.map(autoCells) } });
@@ -175,7 +184,8 @@ function Gradebook() {
     }
   };
 
-  const seriesName = structure.data?.series.find((s) => s.id === seriesId)?.name ?? "toate-seriile";
+  const seriesName = structure.data?.series.find((s) => s.id === seriesId)?.name;
+  const fileBase = `CEF2-Proiect_Situatie-${yearName.replace(/[^\w-]+/g, "_")}${seriesName ? `-Seria_${seriesName}` : ""}`;
 
   return (
     <div className="space-y-6">
@@ -187,17 +197,23 @@ function Gradebook() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={seriesId || "ALL"} onValueChange={(v) => setSeriesId(v === "ALL" ? "" : v)}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Serie" /></SelectTrigger>
+        <Select value={activeYearId} onValueChange={(v) => { setYearId(v); setSeriesId(""); }}>
+          <SelectTrigger className="w-48" aria-label="An universitar"><SelectValue placeholder="An universitar" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">Toate seriile vizibile</SelectItem>
-            {structure.data?.series.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+            {years?.map((y) => <SelectItem key={y.id} value={y.id}>{y.name}{y.is_active ? " (curent)" : ""}{y.is_demo ? " · demo" : ""}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button variant="secondary" onClick={() => exportWorkbook(data, `CEF2-Proiect_Situatie-${seriesName}`, "xlsx")} disabled={!data.length}>
-          <Download className="mr-2 h-4 w-4" /> Export Excel
+        <Select value={seriesId || "ALL"} onValueChange={(v) => setSeriesId(v === "ALL" ? "" : v)}>
+          <SelectTrigger className="w-64" aria-label="Serie"><SelectValue placeholder="Serie" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Toate seriile din {yearName}</SelectItem>
+            {yearSeries.map((s) => <SelectItem key={s.id} value={s.id}>{seriesLabel(s, years)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button variant="secondary" onClick={() => exportYearWorkbook(data, yearName, seriesId ? yearSeries.filter((s) => s.id === seriesId) : yearSeries)} disabled={!data.length}>
+          <Download className="mr-2 h-4 w-4" /> Export Excel {seriesName ? `Seria ${seriesName}` : "an"} {yearName}
         </Button>
-        <Button variant="secondary" onClick={() => exportWorkbook(data, `CEF2-Proiect_Situatie-${seriesName}`, "csv")} disabled={!data.length}>
+        <Button variant="secondary" onClick={() => exportWorkbook(data, fileBase, "csv")} disabled={!data.length}>
           <Download className="mr-2 h-4 w-4" /> Export CSV
         </Button>
         <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={!!busy || !data.length}>
