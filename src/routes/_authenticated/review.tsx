@@ -390,6 +390,19 @@ function Review() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!delStudent} onOpenChange={(o) => !o && setDelStudent(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Șterge definitiv proiectul — {delStudent?.name}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Se șterg definitiv toate predările, fișierele Gerber din arhivă, sloturile de fabricație și dosarul de proiect ale acestui student. Acțiunea nu poate fi anulată. Dacă vrei doar să îl ascunzi din listă, folosește „Arhivează”.
+          </p>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setDelStudent(null)}>Anulează</Button>
+            <Button variant="destructive" disabled={busy} onClick={() => delStudent && deleteStudent(delStudent.id, delStudent.name)}><Trash2 className="mr-1 h-4 w-4" /> Șterge definitiv</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
         <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
           <DialogHeader><DialogTitle>Gerber & DRC — {view?.name}</DialogTitle></DialogHeader>
