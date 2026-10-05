@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS, ruleApplies, type Settings } from "./settings";
 import { CATALOG } from "./catalog";
+import { extractTextBlocks, type SilkBlock } from "../silk/extract";
 import { layerBBox, outlineBBox, primitiveBBox } from "../gerber/parser";
 import type { BBox, Layer, LayerKind, Primitive } from "../gerber/types";
 
@@ -44,6 +45,8 @@ export interface DrcReport {
   issues: DrcIssue[];
   /** Explanations for teacher-defined rules used in this report. */
   customCatalog?: Record<string, { err: string; category: string; what: string; why: string; fix: string }> | undefined;
+  /** Text blocks found on the silkscreen (geometry only; reading is done on demand). */
+  silkText?: { blocks: SilkBlock[]; read?: Record<number, { text: string; confidence: number }>; mirrored?: boolean; nameFound?: boolean | null } | undefined;
 }
 
 export const RULES = {
@@ -84,6 +87,7 @@ export const TITLES: Record<string, string> = {
   MISSING_PASTE: "Strat pastă (stencil)",
   STENCIL_RATIO: "Stencil IPC-7525B (AR / Area Ratio)",
   STENCIL_WINDOWPANE: "Segmentare ferestre termice",
+  SILK_TEXT_SIZE: "Lizibilitate text serigrafie",
 };
 
 // code -> [penalty, severity when failing, SMT only]
@@ -507,6 +511,16 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     }
   }
 
+  // Silkscreen text legibility: words/designators measured from stroke clusters.
+  const silkBlocks = [...extractTextBlocks(one("top_silk")), ...extractTextBlocks(one("bottom_silk"))].slice(0, 300);
+  silkBlocks.forEach((b, i) => (b.idx = i));
+  {
+    const small = silkBlocks.filter((b) => b.textHeight < (R.silkMinTextHeight ?? 1) - 0.01 || b.stroke < (R.silkMinStroke ?? 0.15) - 0.005);
+    small.slice(0, 8).forEach((b) => fail("SILK_TEXT_SIZE", `Text #${b.idx}: înălțime ${b.textHeight.toFixed(2)} mm, linie ${b.stroke.toFixed(2)} mm (min ${R.silkMinTextHeight} / ${R.silkMinStroke} mm).`, { x: b.x, y: b.y, layer: b.layer }));
+    if (small.length) failed.set("SILK_TEXT_SIZE", `${small.length} din ${silkBlocks.length} texte de serigrafie sunt prea mici sau prea subțiri.`);
+    else note("SILK_TEXT_SIZE", silkBlocks.length ? `${silkBlocks.length} texte de serigrafie, toate lizibile.` : "Nu s-au găsit texte pe serigrafie.");
+  }
+
 
   // Min trace width
   let minTrace: number | null = null;
@@ -629,6 +643,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     rules,
     issues: issues.sort((a, b) => sevRank(a.severity) - sevRank(b.severity)),
     customCatalog: Object.keys(customCatalog).length ? customCatalog : undefined,
+    silkText: silkBlocks.length ? { blocks: silkBlocks } : undefined,
   };
 }
 

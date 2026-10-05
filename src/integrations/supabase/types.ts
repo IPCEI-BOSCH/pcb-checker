@@ -208,6 +208,93 @@ export type Database = {
           },
         ]
       }
+      integrity_reviews: {
+        Row: {
+          id: string
+          note: string | null
+          reviewed_by: string
+          similarity: number | null
+          status: string
+          student_a: string
+          student_b: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          note?: string | null
+          reviewed_by?: string
+          similarity?: number | null
+          status: string
+          student_a: string
+          student_b: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          note?: string | null
+          reviewed_by?: string
+          similarity?: number | null
+          status?: string
+          student_a?: string
+          student_b?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrity_reviews_student_a_fkey"
+            columns: ["student_a"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrity_reviews_student_b_fkey"
+            columns: ["student_b"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      layout_fingerprints: {
+        Row: {
+          created_at: string
+          data: Json
+          student_id: string
+          submission_id: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          data: Json
+          student_id: string
+          submission_id: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          data?: Json
+          student_id?: string
+          submission_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "layout_fingerprints_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "layout_fingerprints_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: true
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
