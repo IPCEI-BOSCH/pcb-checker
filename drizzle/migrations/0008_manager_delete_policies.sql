@@ -1,0 +1,3 @@
+create policy "subs manage delete" on public.submissions for delete to authenticated using (exists (select 1 from public.students s where s.id = submissions.student_id and public.can_manage_group(auth.uid(), s.group_id)));
+create policy "slots manage delete" on public.student_fabrication_slots for delete to authenticated using (exists (select 1 from public.students s where s.id = student_fabrication_slots.student_id and public.can_manage_group(auth.uid(), s.group_id)));
+create policy "pf manage delete" on public.project_files for delete to authenticated using (exists (select 1 from public.students s where s.id = project_files.student_id and public.can_manage_group(auth.uid(), s.group_id)));
