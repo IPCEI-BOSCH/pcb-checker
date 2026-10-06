@@ -123,7 +123,7 @@ function SelfCheck() {
     if (!current) return;
     setBusy("Se trimite predarea oficială…");
     const revision = (history.data?.filter((h) => h.kind === "OFFICIAL").length ?? 0) + 1;
-    const { error } = await supabase.from("submissions").insert({
+    const { data: inserted, error } = await supabase.from("submissions").insert({
       student_id: st.id,
       user_id: user.id,
       kind: "OFFICIAL",
@@ -134,9 +134,19 @@ function SelfCheck() {
       drc_score: current.report.score,
       blocking_count: current.report.blockingCount,
       report: current.report as never,
-    });
+    }).select("id").single();
     setBusy(null);
     if (error) return void toast.error(error.message);
+    // Background integrity check (results visible to staff only).
+    if (inserted && current.layers) {
+      const layers = current.layers;
+      void (async () => {
+        try {
+          const [{ fingerprint }, { checkSubmissionIntegrity }] = await Promise.all([import("@/lib/integrity/fingerprint"), import("@/lib/integrity/integrity.functions")]);
+          await checkSubmissionIntegrity({ data: { submissionId: inserted.id, fingerprint: fingerprint(layers) } });
+        } catch (e) { console.warn("integrity check skipped", e); }
+      })();
+    }
     toast.success(`Predare oficială v${revision} înregistrată.`);
     qc.invalidateQueries({ queryKey: ["my-subs-all"] });
   };
