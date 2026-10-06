@@ -3,10 +3,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { ShieldAlert, BarChart3, Play, Download, Eye } from "lucide-react";
+import { ShieldAlert, BarChart3, Play, Download, Eye, Bell, Star, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchStructure, seriesLabel, sortSeriesByYear } from "@/lib/data";
-import { FP_VERSION, VERDICT_LABEL, transformPts, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { adjustPair, seriesBaseline, type Adjusted } from "@/lib/integrity/adjust";
+import { FP_VERSION, PAIR_VERSION, VERDICT_LABEL, transformPts, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
 import { createIntegrityPool } from "@/lib/integrity/pool";
 import type { DrcReport } from "@/lib/drc/engine";
 import type { Json } from "@/integrations/supabase/types";
@@ -37,7 +38,8 @@ export const Route = createFileRoute("/_authenticated/insights")({
 
 type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; zipPath: string | null; report: DrcReport | null; score: number | null };
 type Review = { student_a: string; student_b: string; status: "false_positive" | "discuss" | "confirmed"; note: string | null };
-type Pair = { a: Row; b: Row; d: SimilarityDetail };
+type Pair = { a: Row; b: Row; d: SimilarityDetail; adj?: Adjusted };
+type Alert = { id: string; student_id: string; other_student_id: string; similarity: number; adjusted: number; status: string; created_at: string; detail: SimilarityDetail };
 
 const STATUS_LABEL: Record<Review["status"], string> = { false_positive: "Fals pozitiv", discuss: "De discutat", confirmed: "Confirmat" };
 
@@ -69,6 +71,14 @@ function Insights() {
   const years = structure.data?.years ?? [];
   const allSeries = sortSeriesByYear(structure.data?.series ?? [], years);
   const [seriesId, setSeriesId] = useState("");
+  useEffect(() => {
+    if (seriesId || !allSeries.length) return;
+    const active = new Set(years.filter((y) => y.is_active).map((y) => y.id));
+    const pick = allSeries.find((s) => active.has(s.academic_year_id) && !s.is_archived) ?? allSeries.find((s) => !s.is_archived) ?? allSeries[0]!;
+    setSeriesId(pick.id);
+  }, [allSeries, years, seriesId]);
+  const [useAdjusted, setUseAdjusted] = useState(true);
+  const [adjThreshold, setAdjThreshold] = useState(55);
   const [withHistory, setWithHistory] = useState(true);
   const [threshold, setThreshold] = useState(80);
   const [sameThemeThreshold, setSameThemeThreshold] = useState(92);
@@ -167,14 +177,58 @@ function Insights() {
     toast.success(`Amprente: ${next.size}${fail ? ` · ${fail} arhive nu au putut fi citite` : ""}`);
   };
 
-  const [allPairs, setAllPairs] = useState<Pair[]>([]);
+  const refs = useQuery({
+    queryKey: ["integrity_refs", compareIds],
+    enabled: !!rows.data?.length,
+    queryFn: async () => {
+      const ids = (rows.data ?? []).map((r) => r.studentId);
+      const out = new Set<string>();
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data } = await supabase.from("integrity_references").select("student_id").in("student_id", ids.slice(i, i + 200));
+        for (const r of data ?? []) out.add(r.student_id);
+      }
+      return out;
+    },
+  });
+  const refSet = refs.data ?? new Set<string>();
+  const toggleRef = async (studentId: string, on: boolean) => {
+    const { data: u } = await supabase.auth.getUser();
+    const { error } = on
+      ? await supabase.from("integrity_references").insert({ student_id: studentId, created_by: u.user!.id })
+      : await supabase.from("integrity_references").delete().eq("student_id", studentId);
+    if (error) return void toast.error(error.message);
+    qc.invalidateQueries({ queryKey: ["integrity_refs"] });
+  };
+
+  const alerts = useQuery({
+    queryKey: ["integrity_alerts", seriesId, rows.data?.length],
+    enabled: !!rows.data?.length,
+    queryFn: async () => {
+      const ids = (rows.data ?? []).filter((r) => r.seriesId === seriesId).map((r) => r.studentId);
+      const out: Alert[] = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data } = await supabase.from("integrity_alerts").select("id, student_id, other_student_id, similarity, adjusted, status, created_at, detail").in("student_id", ids.slice(i, i + 200)).neq("status", "dismissed").order("created_at", { ascending: false });
+        out.push(...((data ?? []) as unknown as Alert[]));
+      }
+      return out;
+    },
+  });
+  const setAlertStatus = async (id: string, status: "seen" | "dismissed") => {
+    const { error } = await supabase.from("integrity_alerts").update({ status }).eq("id", id);
+    if (error) return void toast.error(error.message);
+    qc.invalidateQueries({ queryKey: ["integrity_alerts"] });
+  };
+
+  const [rawPairs, setRawPairs] = useState<Pair[]>([]);
   const [pairsBusy, setPairsBusy] = useState(false);
+  const [pairProg, setPairProg] = useState<{ done: number; total: number; cached: number } | null>(null);
   const fpsRef = useRef(fps);
   fpsRef.current = fps;
   const fpsKey = useMemo(() => [...fps.keys()].sort().join(","), [fps]);
+  const [recompute, setRecompute] = useState(0);
   useEffect(() => {
     const cur = fpsRef.current;
-    const all = (rows.data ?? []).filter((r) => cur.has(r.studentId));
+    const all = (rows.data ?? []).filter((r) => cur.has(r.studentId) && r.submissionId);
     const mine = all.filter((r) => r.seriesId === seriesId);
     const list: [Row, Row][] = [];
     for (const a of mine)
@@ -183,29 +237,71 @@ function Insights() {
         if (b.seriesId === seriesId && b.studentId < a.studentId) continue;
         list.push([a, b]);
       }
-    if (!list.length) { setAllPairs([]); setPairsBusy(false); return; }
+    if (!list.length) { setRawPairs([]); setPairsBusy(false); setPairProg(null); return; }
     let cancelled = false;
+    const force = recompute > 0;
     const pool = createIntegrityPool();
     setPairsBusy(true);
-    pool.pairs(Object.fromEntries(cur), list.map(([a, b]) => [a.studentId, b.studentId]))
-      .then((ds) => { if (!cancelled) setAllPairs(list.map(([a, b], i) => ({ a, b, d: ds[i]! }))); })
+    (async () => {
+      const sk = (x: string, y: string) => (x < y ? `${x}|${y}` : `${y}|${x}`);
+      // 1) cached scores
+      const cache = new Map<string, SimilarityDetail>();
+      if (!force) {
+        const subs = [...new Set(all.map((r) => r.submissionId!))];
+        for (let i = 0; i < subs.length && !cancelled; i += 150) {
+          const { data } = await supabase.from("layout_similarity_pairs").select("submission_a, submission_b, detail").eq("version", PAIR_VERSION).in("submission_a", subs.slice(i, i + 150));
+          for (const r of data ?? []) cache.set(sk(r.submission_a, r.submission_b), r.detail as unknown as SimilarityDetail);
+        }
+      }
+      const missing = list.filter(([a, b]) => !cache.has(sk(a.submissionId!, b.submissionId!)));
+      setPairProg({ done: 0, total: missing.length, cached: list.length - missing.length });
+      // 2) compute missing in chunks (progress + persistence)
+      const CH = 60;
+      for (let i = 0; i < missing.length && !cancelled; i += CH) {
+        const sl = missing.slice(i, i + CH);
+        const ds = await pool.pairs(Object.fromEntries(cur), sl.map(([a, b]) => [a.studentId, b.studentId]));
+        const up = sl.map(([a, b], j) => {
+          cache.set(sk(a.submissionId!, b.submissionId!), ds[j]!);
+          const [x, y] = a.submissionId! < b.submissionId! ? [a, b] : [b, a];
+          return { submission_a: x.submissionId!, submission_b: y.submissionId!, student_a: x.studentId, student_b: y.studentId, version: PAIR_VERSION, total: ds[j]!.total, detail: ds[j]! as unknown as Json };
+        });
+        void supabase.from("layout_similarity_pairs").upsert(up);
+        if (!cancelled) setPairProg({ done: Math.min(missing.length, i + CH), total: missing.length, cached: list.length - missing.length });
+      }
+      if (!cancelled) setRawPairs(list.map(([a, b]) => ({ a, b, d: cache.get(sk(a.submissionId!, b.submissionId!))! })));
+    })()
       .catch((e) => { if (!cancelled) toast.error(`Compararea amprentelor a eșuat: ${(e as Error).message}`); })
-      .finally(() => { pool.close(); if (!cancelled) setPairsBusy(false); });
+      .finally(() => { pool.close(); if (!cancelled) { setPairsBusy(false); setPairProg(null); } });
     return () => { cancelled = true; pool.close(); setPairsBusy(false); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.data, fpsKey, seriesId]);
+  }, [rows.data, fpsKey, seriesId, recompute]);
+
+  const allPairs = useMemo(() => {
+    const scored = rawPairs.map((p) => ({ a: p.a.studentId, b: p.b.studentId, total: p.d.total }));
+    const base = seriesBaseline(scored.filter((p) => !refSet.has(p.a) && !refSet.has(p.b)));
+    const refSim = new Map<string, number>();
+    for (const p of scored) {
+      if (refSet.has(p.a)) refSim.set(p.b, Math.max(refSim.get(p.b) ?? 0, p.total));
+      if (refSet.has(p.b)) refSim.set(p.a, Math.max(refSim.get(p.a) ?? 0, p.total));
+    }
+    return rawPairs
+      .filter((p) => !refSet.has(p.a.studentId) && !refSet.has(p.b.studentId))
+      .map((p) => ({ ...p, adj: adjustPair({ a: p.a.studentId, b: p.b.studentId, total: p.d.total }, base, (id) => refSim.get(id) ?? 0) }));
+  }, [rawPairs, refSet]);
 
   const baseline = useMemo(() => {
     const v = allPairs.map((p) => p.d.total).sort((x, y) => x - y);
     return v.length ? v[Math.floor(v.length / 2)]! : 0;
   }, [allPairs]);
 
+  const scoreOf = (p: Pair) => (useAdjusted ? p.adj?.adjusted ?? p.d.total : p.d.total);
   const abovePairs = useMemo(() => allPairs.filter((p) => {
     const same = p.a.theme === p.b.theme && p.a.theme !== "—";
-    if (p.d.total < (same ? sameThemeThreshold : threshold)) return false;
+    const pass = useAdjusted ? (p.adj!.adjusted >= adjThreshold && p.d.total >= (same ? 70 : 60)) || !!p.d.partial || p.d.total >= (same ? sameThemeThreshold : threshold) : p.d.total >= (same ? sameThemeThreshold : threshold);
+    if (!pass) return false;
     if (hideFp && reviews.data?.get(pairKey(p.a.studentId, p.b.studentId))?.status === "false_positive") return false;
     return true;
-  }).sort((x, y) => y.d.total - x.d.total), [allPairs, threshold, sameThemeThreshold, hideFp, reviews.data]);
+  }).sort((x, y) => scoreOf(y) - scoreOf(x) || y.d.total - x.d.total), [allPairs, threshold, sameThemeThreshold, hideFp, reviews.data, useAdjusted, adjThreshold]);
   const belowOnly = !abovePairs.length && allPairs.length > 0;
   const pairs = useMemo(() => belowOnly ? [...allPairs].sort((x, y) => y.d.total - x.d.total).slice(0, 15) : abovePairs, [belowOnly, allPairs, abovePairs]);
 
@@ -239,7 +335,7 @@ function Insights() {
       const rv = reviews.data?.get(pairKey(p.a.studentId, p.b.studentId));
       return {
         Proiect: p.a.name, "Temă": p.a.theme, "Seamănă cu": p.b.name, "Temă 2": p.b.theme, "Serie/an 2": yearOf(p.b.seriesId),
-        "Similaritate %": p.d.total, Verdict: VERDICT_LABEL[p.d.verdict], "Pad-uri %": p.d.pads, "Găuri %": p.d.holes, "Trasee %": p.d.copper, "Serigrafie %": p.d.silk, "Global %": p.d.global,
+        "Similaritate %": p.d.total, "Peste media seriei %": p.adj?.adjusted ?? "", "Z": p.adj?.z ?? "", "Componente %": p.d.comps ?? "", "Zonă max %": p.d.zoneMax ?? "", "Copie parțială": p.d.partial ? "da" : "", Verdict: VERDICT_LABEL[p.d.verdict], "Pad-uri %": p.d.pads, "Găuri %": p.d.holes, "Trasee %": p.d.copper, "Serigrafie %": p.d.silk, "Global %": p.d.global,
         "Transformare": `${p.d.transform.rot}°${p.d.transform.mirror ? " oglindit" : ""}`, Decizie: rv ? STATUS_LABEL[rv.status] : "", "Observație": rv?.note ?? "",
       };
     });
@@ -307,6 +403,34 @@ function Insights() {
           </Card>
 
           <Card>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> Alerte la predare {!!alerts.data?.filter((x) => x.status === "new").length && <Badge variant="destructive">{alerts.data.filter((x) => x.status === "new").length} noi</Badge>}</CardTitle></CardHeader>
+            <CardContent>
+              <p className="mb-2 text-xs text-muted-foreground">La fiecare predare oficială, placa este comparată automat cu restul seriei (inclusiv anii anteriori). Studentul nu vede nimic.</p>
+              <Table>
+                <TableHeader><TableRow><TableHead>Predare</TableHead><TableHead>Seamănă cu</TableHead><TableHead className="text-right">Similaritate</TableHead><TableHead>Data</TableHead><TableHead /></TableRow></TableHeader>
+                <TableBody>
+                  {(alerts.data ?? []).map((al) => {
+                    const ra = rows.data?.find((r) => r.studentId === al.student_id), rb = rows.data?.find((r) => r.studentId === al.other_student_id);
+                    return (
+                      <TableRow key={al.id} className={al.status === "new" ? "font-medium" : "text-muted-foreground"}>
+                        <TableCell>{ra?.name ?? "—"}</TableCell>
+                        <TableCell>{rb?.name ?? "alt an"}{rb && <div className="text-xs text-muted-foreground">{yearOf(rb.seriesId)}</div>}</TableCell>
+                        <TableCell className="text-right"><Badge variant="destructive">{Number(al.similarity).toFixed(1)}%</Badge><div className="text-[10px] text-muted-foreground">peste medie {Number(al.adjusted).toFixed(0)}%{al.detail?.partial ? " · copie parțială" : ""}</div></TableCell>
+                        <TableCell className="text-xs">{new Date(al.created_at).toLocaleString("ro-RO")}</TableCell>
+                        <TableCell className="space-x-1 text-right">
+                          {al.status === "new" && <Button size="sm" variant="outline" onClick={() => setAlertStatus(al.id, "seen")}>Văzut</Button>}
+                          <Button size="sm" variant="ghost" onClick={() => setAlertStatus(al.id, "dismissed")}>Închide</Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {!alerts.data?.length && <TableRow><TableCell colSpan={5} className="text-muted-foreground">Nicio alertă pentru această serie.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader><CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /> Integritate academică — amprentă layout</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">Plăcile sunt suprapuse automat (rotire 0/90/180/270°, oglindire, mutare) și se măsoară cât coincid pad-urile, găurile, traseele și textele. Scorul este un indiciu care merită verificat manual, nu o dovadă. Rezultatele sunt vizibile doar cadrelor didactice.</p>
@@ -314,16 +438,37 @@ function Insights() {
                 <label className="flex items-center gap-2 text-sm"><Switch checked={withHistory} onCheckedChange={setWithHistory} aria-label="Include anii anteriori" /> Aceeași serie din anii anteriori</label>
                 <label className="flex items-center gap-2 text-sm">Prag teme diferite <Input type="number" className="w-20" value={threshold} min={40} max={100} onChange={(e) => setThreshold(+e.target.value || 80)} /> %</label>
                 <label className="flex items-center gap-2 text-sm">Prag aceeași temă <Input type="number" className="w-20" value={sameThemeThreshold} min={40} max={100} onChange={(e) => setSameThemeThreshold(+e.target.value || 92)} /> %</label>
+                <label className="flex items-center gap-2 text-sm"><Switch checked={useAdjusted} onCheckedChange={setUseAdjusted} aria-label="Scor ajustat după serie" /> Ordonează după cât iese peste media seriei</label>
+                {useAdjusted && <label className="flex items-center gap-2 text-sm">Prag peste medie <Input type="number" className="w-20" value={adjThreshold} min={10} max={100} onChange={(e) => setAdjThreshold(+e.target.value || 55)} /> %</label>}
                 <label className="flex items-center gap-2 text-sm"><Switch checked={hideFp} onCheckedChange={setHideFp} aria-label="Ascunde falsurile pozitive" /> Ascunde „Fals pozitiv”</label>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Button onClick={() => runFingerprints(false)} disabled={!!prog || !rows.data}><Play className="mr-1 h-4 w-4" /> Calculează amprentele lipsă</Button>
-                <Button variant="outline" onClick={() => runFingerprints(true)} disabled={!!prog || !rows.data}>Recalculează tot</Button>
+                <Button variant="outline" onClick={async () => { await runFingerprints(true); setRecompute((n) => n + 1); }} disabled={!!prog || !rows.data}>Recalculează tot</Button>
                 <Button variant="outline" onClick={exportXlsx} disabled={!pairs.length}><Download className="mr-1 h-4 w-4" /> Export Excel</Button>
                 <span className="text-sm text-muted-foreground">{fps.size} amprente salvate · media similarității în serie {baseline.toFixed(1)}%</span>
               </div>
               {prog && <Progress value={(prog.done / Math.max(1, prog.total)) * 100} />}
-              {pairsBusy && <p className="text-xs text-muted-foreground">Se compară proiectele în fundal…</p>}
+              {prog && <p className="text-xs text-muted-foreground">Pas 1/2 — amprente: {prog.done}/{prog.total}</p>}
+              {pairProg && (
+                <div className="space-y-1">
+                  <Progress value={pairProg.total ? (pairProg.done / pairProg.total) * 100 : 100} />
+                  <p className="text-xs text-muted-foreground">Pas 2/2 — perechi noi comparate: {pairProg.done}/{pairProg.total} · {pairProg.cached} luate din comparațiile salvate</p>
+                </div>
+              )}
+              {pairsBusy && !pairProg && <p className="text-xs text-muted-foreground">Se încarcă comparațiile salvate…</p>}
+
+              <div className="rounded-md border border-border p-3 text-sm">
+                <div className="mb-2 flex items-center gap-2 font-medium"><Star className="h-4 w-4" /> Proiecte de referință (exemplul de la curs)</div>
+                <p className="mb-2 text-xs text-muted-foreground">Asemănarea cu un proiect de referință nu se mai consideră copiere: scade scorul perechilor care seamănă amândouă cu el.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[...refSet].map((id) => { const r = rows.data?.find((x) => x.studentId === id); return r ? <Badge key={id} variant="secondary" className="gap-1">{r.name}<button aria-label={`Scoate ${r.name} din referințe`} onClick={() => toggleRef(id, false)}><X className="h-3 w-3" /></button></Badge> : null; })}
+                  <Select value="" onValueChange={(v) => toggleRef(v, true)}>
+                    <SelectTrigger className="h-8 w-60" aria-label="Adaugă proiect de referință"><SelectValue placeholder="Adaugă proiect de referință…" /></SelectTrigger>
+                    <SelectContent>{(rows.data ?? []).filter((r) => r.submissionId && !refSet.has(r.studentId)).map((r) => <SelectItem key={r.studentId} value={r.studentId}>{r.name} · {yearOf(r.seriesId)}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
 
               {!!clusters.length && (
                 <div className="rounded-md border border-destructive p-3 text-sm">
@@ -344,12 +489,15 @@ function Insights() {
                         <TableCell><div className="font-medium">{p.a.name}</div><div className="text-xs text-muted-foreground">Temă: {p.a.theme}</div></TableCell>
                         <TableCell><div className="font-medium">{p.b.name}</div><div className="text-xs text-muted-foreground">Temă: {p.b.theme} · {yearOf(p.b.seriesId)}</div></TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          Pad-uri {p.d.pads}% · Găuri {p.d.holes}% · Trasee {p.d.copper}%{p.d.silk ? ` · Text ${p.d.silk}%` : ""}
+                          Pad-uri {p.d.pads}%{p.d.comps != null ? ` · Componente ${p.d.comps}%` : ""} · Găuri {p.d.holes}% · Trasee {p.d.copper}%{p.d.silk ? ` · Text ${p.d.silk}%` : ""}
+                          {p.d.zoneMax != null && <div>Cea mai asemănătoare zonă {p.d.zoneMax}% · {p.d.zones ?? 0}/9 zone identice</div>}
+                          {p.d.partial && <Badge variant="destructive" className="mt-1">Copie parțială</Badge>}
                           <div>{p.d.transform.rot}°{p.d.transform.mirror ? ", oglindit" : ""}</div>
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge variant={sameTheme ? "secondary" : "destructive"}>{p.d.total.toFixed(1)}%</Badge>
                           <div className="text-[10px] text-muted-foreground">{VERDICT_LABEL[p.d.verdict]} · {sameTheme ? "aceeași temă" : "teme diferite"}</div>
+                          {p.adj && <div className="text-[10px] text-muted-foreground">peste media seriei: {p.adj.adjusted}% (z {p.adj.z})</div>}
                         </TableCell>
                         <TableCell>
                           <Select value={rv?.status ?? "none"} onValueChange={(v) => saveReview(p, v as Review["status"] | "none", rv?.note ?? undefined)}>
