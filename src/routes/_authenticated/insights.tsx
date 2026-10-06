@@ -169,8 +169,12 @@ function Insights() {
 
   const [allPairs, setAllPairs] = useState<Pair[]>([]);
   const [pairsBusy, setPairsBusy] = useState(false);
+  const fpsRef = useRef(fps);
+  fpsRef.current = fps;
+  const fpsKey = useMemo(() => [...fps.keys()].sort().join(","), [fps]);
   useEffect(() => {
-    const all = (rows.data ?? []).filter((r) => fps.has(r.studentId));
+    const cur = fpsRef.current;
+    const all = (rows.data ?? []).filter((r) => cur.has(r.studentId));
     const mine = all.filter((r) => r.seriesId === seriesId);
     const list: [Row, Row][] = [];
     for (const a of mine)
@@ -179,28 +183,31 @@ function Insights() {
         if (b.seriesId === seriesId && b.studentId < a.studentId) continue;
         list.push([a, b]);
       }
-    if (!list.length) { setAllPairs([]); return; }
+    if (!list.length) { setAllPairs([]); setPairsBusy(false); return; }
     let cancelled = false;
     const pool = createIntegrityPool();
     setPairsBusy(true);
-    pool.pairs(Object.fromEntries(fps), list.map(([a, b]) => [a.studentId, b.studentId]))
+    pool.pairs(Object.fromEntries(cur), list.map(([a, b]) => [a.studentId, b.studentId]))
       .then((ds) => { if (!cancelled) setAllPairs(list.map(([a, b], i) => ({ a, b, d: ds[i]! }))); })
-      .catch(() => { if (!cancelled) toast.error("Compararea amprentelor a eșuat"); })
+      .catch((e) => { if (!cancelled) toast.error(`Compararea amprentelor a eșuat: ${(e as Error).message}`); })
       .finally(() => { pool.close(); if (!cancelled) setPairsBusy(false); });
-    return () => { cancelled = true; pool.close(); };
-  }, [rows.data, fps, seriesId]);
+    return () => { cancelled = true; pool.close(); setPairsBusy(false); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.data, fpsKey, seriesId]);
 
   const baseline = useMemo(() => {
     const v = allPairs.map((p) => p.d.total).sort((x, y) => x - y);
     return v.length ? v[Math.floor(v.length / 2)]! : 0;
   }, [allPairs]);
 
-  const pairs = useMemo(() => allPairs.filter((p) => {
+  const abovePairs = useMemo(() => allPairs.filter((p) => {
     const same = p.a.theme === p.b.theme && p.a.theme !== "—";
     if (p.d.total < (same ? sameThemeThreshold : threshold)) return false;
     if (hideFp && reviews.data?.get(pairKey(p.a.studentId, p.b.studentId))?.status === "false_positive") return false;
     return true;
   }).sort((x, y) => y.d.total - x.d.total), [allPairs, threshold, sameThemeThreshold, hideFp, reviews.data]);
+  const belowOnly = !abovePairs.length && allPairs.length > 0;
+  const pairs = useMemo(() => belowOnly ? [...allPairs].sort((x, y) => y.d.total - x.d.total).slice(0, 15) : abovePairs, [belowOnly, allPairs, abovePairs]);
 
   const clusters = useMemo(() => {
     const parent = new Map<string, string>();
@@ -357,7 +364,7 @@ function Insights() {
                       </TableRow>
                     );
                   })}
-                  {!pairs.length && <TableRow><TableCell colSpan={6} className="text-muted-foreground">{fps.size ? "Nicio pereche peste prag." : "Apasă „Calculează amprentele lipsă”."}</TableCell></TableRow>}
+                  {!pairs.length && <TableRow><TableCell colSpan={6} className="text-muted-foreground">{pairsBusy ? "Se compară…" : fps.size ? "Nu există perechi de comparat în seria aleasă." : "Apasă „Calculează amprentele lipsă”."}</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </CardContent>
