@@ -81,4 +81,4 @@
 - [x] Detectare blocuri text, regulă „Lizibilitate text serigrafie” (dezactivată implicit)
 - [x] Citire AI la cerere: nume student, designatoare duplicate, text în oglindă
 - [x] Amprente salvate, aliniere rotire/oglindire, scor explicat, decizii, Excel, grupuri, comparație vizuală
-- [ ] Alertă automată la predarea oficială (amprenta se calculează când un cadru deschide pagina)
+- [x] Alertă automată la predarea oficială + comparații salvate + scor ajustat după serie + proiecte de referință
