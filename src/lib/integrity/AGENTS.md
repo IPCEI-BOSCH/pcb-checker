@@ -3,3 +3,4 @@
 - Pair similarity scores are cached in `layout_similarity_pairs` keyed by submission pair + `PAIR_VERSION`; bump the version when `similarityDetail` changes — avoids recomparing every pair on each visit.
 - Suspicion is series-relative (`src/lib/integrity/adjust.ts`: median/MAD, per-project mean, teacher reference projects in `integrity_references`) — simple themes make all boards look alike.
 - Official submissions trigger `checkSubmissionIntegrity` (server fn, ownership verified, admin client) which writes staff-only `integrity_alerts`; students never receive scores.
+- v4: trace segments (midpoint+direction+width, length-weighted) feed the copper score; comparison dialog renders real Gerber primitives from the stored ZIPs (`src/components/IntegrityOverlayViewer.tsx`) mapped with the fingerprint centroid + pair transform — no synthetic dots.
