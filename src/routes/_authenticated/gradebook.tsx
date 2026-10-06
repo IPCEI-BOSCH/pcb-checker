@@ -4,12 +4,11 @@ import { createSpreadsheet } from "@/lib/sheets.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Calculator, CloudDownload, CloudUpload, Download, Link2, Lock, Upload } from "lucide-react";
+import { Calculator, CloudDownload, CloudUpload, Download, Link2, Lock, Printer, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit, seriesLabel } from "@/lib/data";
 import {
-  ALL_COLUMNS,
   AUTO_COLUMNS,
   LINK_COLUMNS,
   linkCells,
@@ -25,10 +24,21 @@ import {
   proposeFinalGrades,
   DEFAULT_WEIGHTS,
   type FinalWeights,
-  rowToArray,
   type ManualChange,
+  type GradeRow,
+  type GradeField,
+  GRADE_FIELD_KEY,
+  updateStudentGradeField,
+  bulkUpdateGrades,
+  calculateGradebookKpis,
 } from "@/lib/gradebook";
 import { GoogleWorkspaceCard } from "@/components/GoogleWorkspaceCard";
+import { GradebookKpis } from "@/components/GradebookKpis";
+import { GradebookFilters, applyFilters, EMPTY_FILTERS, type GbFilters } from "@/components/GradebookFilters";
+import { GradebookTable } from "@/components/GradebookTable";
+import { GradebookBulkBar } from "@/components/GradebookBulkBar";
+import { StudentInspectionDrawer } from "@/components/StudentInspectionDrawer";
+import { printOfficialSheet } from "@/components/GradebookOfficialPrint";
 import { pullGradebook, pushGradebook } from "@/lib/sheets.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +47,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const Route = createFileRoute("/_authenticated/gradebook")({
   head: () => ({
@@ -72,8 +81,9 @@ function Gradebook() {
   const [weightsOpen, setWeightsOpen] = useState(false);
   const [weights, setWeights] = useState<FinalWeights>(DEFAULT_WEIGHTS);
   const runFinal = () => {
-    const diff = proposeFinalGrades(data, weights);
+    const diff = proposeFinalGrades(finalScope ?? data, weights);
     setWeightsOpen(false);
+    setFinalScope(null);
     setSourceLabel(`calculul notei finale (DRC ${weights.drc}% · schemă ${weights.schema}% · documentație ${weights.doc}%)`);
     setChanges(diff);
     if (!diff.length) toast.info("Nicio notă de calculat — lipsesc componente sau notele există deja.");
@@ -96,10 +106,27 @@ function Gradebook() {
 
   const link = useMemo(() => links.data?.find((l) => l.series_id === seriesId) ?? null, [links.data, seriesId]);
   const canManage = has("admin", "series_manager");
+  const canEdit = has("admin", "series_manager", "instructor");
   const data = useMemo(() => {
     const ids = new Set(yearSeries.map((s) => s.id));
     return (rows.data ?? []).filter((r) => ids.has(r.seriesId));
   }, [rows.data, yearSeries]);
+  const [filters, setFilters] = useState<GbFilters>(EMPTY_FILTERS);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [inspect, setInspect] = useState<GradeRow | null>(null);
+  const [finalScope, setFinalScope] = useState<GradeRow[] | null>(null);
+  const filtered = useMemo(() => applyFilters(data, filters), [data, filters]);
+  const selectedRows = useMemo(() => data.filter((r) => selected.has(r.studentId)), [data, selected]);
+  const groupNames = useMemo(() => [...new Set(data.map((r) => r.groupName))].sort(), [data]);
+  const kpis = useMemo(() => calculateGradebookKpis(filtered), [filtered]);
+  const alerts = useQuery({
+    queryKey: ["gb-alerts"],
+    enabled: canEdit,
+    queryFn: async () => {
+      const { count } = await supabase.from("integrity_alerts").select("id", { count: "exact", head: true }).eq("status", "new");
+      return count ?? 0;
+    },
+  });
 
   const saveLink = async () => {
     if (!seriesId) return void toast.error("Alege mai întâi seria.");
@@ -205,6 +232,32 @@ function Gradebook() {
   const seriesName = structure.data?.series.find((s) => s.id === seriesId)?.name;
   const fileBase = `CEF2-Proiect_Situatie-${yearName.replace(/[^\w-]+/g, "_")}${seriesName ? `-Seria_${seriesName}` : ""}`;
 
+  const saveField = async (studentId: string, field: GradeField, value: number | string | null) => {
+    const key = ["gradebook", seriesId];
+    const prev = qc.getQueryData<GradeRow[]>(key);
+    const k = GRADE_FIELD_KEY[field];
+    qc.setQueryData<GradeRow[]>(key, (old) => old?.map((r) => (r.studentId === studentId ? { ...r, [k]: field === "teacher_notes" ? String(value ?? "") : value } : r)));
+    try {
+      await updateStudentGradeField(studentId, field, value);
+    } catch (e) {
+      qc.setQueryData(key, prev);
+      toast.error((e as Error).message);
+      throw e;
+    }
+  };
+  const bulkApply = async (field: GradeField, value: number) => {
+    setBusy("Se aplică nota în bloc…");
+    try {
+      const n = await bulkUpdateGrades(selectedRows.map((r) => r.studentId), { [field]: value });
+      await logAudit(user.id, "GRADEBOOK_BULK", "series", seriesId || null, { field, value, students: n });
+      toast.success(`Notă aplicată pentru ${n} studenți.`);
+      qc.invalidateQueries({ queryKey: ["gradebook"] });
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+  };
+  const print = (list: GradeRow[]) => {
+    if (!printOfficialSheet(list, yearName, seriesName ? `Seria ${seriesName}` : "Toate seriile")) toast.error("Permite ferestrele pop-up pentru tipărire.");
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -291,31 +344,33 @@ function Gradebook() {
         </CardContent>
       </Card>
 
+      <GradebookKpis k={kpis} alerts={alerts.data ?? null} />
+
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">Situație ({data.length} studenți)</CardTitle></CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {ALL_COLUMNS.map((c, i) => (
-                  <TableHead key={c} className={i >= AUTO_COLUMNS.length && i < AUTO_COLUMNS.length + MANUAL_COLUMNS.length ? "text-primary" : ""}>{c}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((r) => (
-                <TableRow key={r.studentId}>
-                  {rowToArray(r).map((v, i) => (
-                    <TableCell key={i} className={i >= AUTO_COLUMNS.length && i < AUTO_COLUMNS.length + MANUAL_COLUMNS.length ? "text-primary" : ""}>
-                      {typeof v === "string" && v.startsWith("https://drive.google.com") ? <a href={v} target="_blank" rel="noreferrer" className="text-primary underline">Deschide folder</a> : (v ?? "—")}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <CardHeader className="flex-row items-center justify-between gap-2 pb-3">
+          <CardTitle className="text-base">Situație ({data.length} studenți)</CardTitle>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => exportWorkbook(filtered, `${fileBase}-filtrat`, "xlsx")} disabled={!filtered.length}><Download className="mr-1 h-4 w-4" /> Export filtrat</Button>
+            <Button size="sm" variant="outline" onClick={() => print(filtered)} disabled={!filtered.length}><Printer className="mr-1 h-4 w-4" /> Borderou A4</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <GradebookFilters f={filters} setF={setFilters} groups={groupNames} shown={filtered.length} total={data.length} />
+          <GradebookTable rows={filtered} canEdit={canEdit} selected={selected} setSelected={setSelected} onSave={saveField} onInspect={setInspect} />
+          {canEdit && <p className="text-xs text-muted-foreground">Editare directă: Enter salvează și coboară, Tab trece la celula următoare, Esc anulează. Notele acceptă 1–10 cu virgulă sau punct.</p>}
         </CardContent>
       </Card>
+
+      <GradebookBulkBar
+        count={selectedRows.length}
+        canEdit={canEdit}
+        onClear={() => setSelected(new Set())}
+        onApply={bulkApply}
+        onFinal={() => { setFinalScope(selectedRows); setWeightsOpen(true); }}
+        onExport={() => exportWorkbook(selectedRows, `${fileBase}-selectie`, "xlsx")}
+        onPrint={() => print(selectedRows)}
+      />
+      <StudentInspectionDrawer row={inspect} onClose={() => setInspect(null)} />
 
       <Dialog open={weightsOpen} onOpenChange={setWeightsOpen}>
         <DialogContent className="max-w-md">
