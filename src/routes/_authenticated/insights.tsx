@@ -7,7 +7,7 @@ import { ShieldAlert, BarChart3, Play, Download, Eye, Bell, Star, X } from "luci
 import { supabase } from "@/integrations/supabase/client";
 import { fetchStructure, seriesLabel, sortSeriesByYear } from "@/lib/data";
 import { adjustPair, seriesBaseline, type Adjusted } from "@/lib/integrity/adjust";
-import { FP_VERSION, PAIR_VERSION, VERDICT_LABEL, transformPts, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { FP_VERSION, PAIR_VERSION, VERDICT_LABEL, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
 import { createIntegrityPool } from "@/lib/integrity/pool";
 import type { DrcReport } from "@/lib/drc/engine";
 import type { Json } from "@/integrations/supabase/types";
@@ -20,6 +20,7 @@ import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { IntegrityOverlayViewer } from "@/components/IntegrityOverlayViewer";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const Route = createFileRoute("/_authenticated/insights")({
@@ -336,7 +337,7 @@ function Insights() {
       const rv = reviews.data?.get(pairKey(p.a.studentId, p.b.studentId));
       return {
         Proiect: p.a.name, "Temă": p.a.theme, "Seamănă cu": p.b.name, "Temă 2": p.b.theme, "Serie/an 2": yearOf(p.b.seriesId),
-        "Similaritate %": p.d.total, "Peste media seriei %": p.adj?.adjusted ?? "", "Z": p.adj?.z ?? "", "Componente %": p.d.comps ?? "", "Zonă max %": p.d.zoneMax ?? "", "Copie parțială": p.d.partial ? "da" : "", Verdict: VERDICT_LABEL[p.d.verdict], "Pad-uri %": p.d.pads, "Găuri %": p.d.holes, "Trasee %": p.d.copper, "Serigrafie %": p.d.silk, "Global %": p.d.global,
+        "Similaritate %": p.d.total, "Peste media seriei %": p.adj?.adjusted ?? "", "Z": p.adj?.z ?? "", "Componente %": p.d.comps ?? "", "Zonă max %": p.d.zoneMax ?? "", "Copie parțială": p.d.partial ? "da" : "", Verdict: VERDICT_LABEL[p.d.verdict], "Pad-uri %": p.d.pads, "Găuri %": p.d.holes, "Trasee %": p.d.traces ?? p.d.copper, "Cupru %": p.d.copper, "Serigrafie %": p.d.silk, "Global %": p.d.global,
         "Transformare": `${p.d.transform.rot}°${p.d.transform.mirror ? " oglindit" : ""}`, Decizie: rv ? STATUS_LABEL[rv.status] : "", "Observație": rv?.note ?? "",
       };
     });
@@ -521,52 +522,17 @@ function Insights() {
           </Card>
         </>
       )}
-      <OverlayDialog pair={overlay} a={overlay ? fps.get(overlay.a.studentId) : undefined} b={overlay ? fps.get(overlay.b.studentId) : undefined} onClose={() => setOverlay(null)} />
+      <OverlayDialog pair={overlay} meta={yearOf} onClose={() => setOverlay(null)} />
     </div>
   );
 }
 
-function OverlayDialog({ pair, a, b, onClose }: { pair: Pair | null; a?: Fingerprint | undefined; b?: Fingerprint | undefined; onClose: () => void }) {
-  const [mix, setMix] = useState(50);
-  const geo = useMemo(() => {
-    if (!pair || !a || !b) return null;
-    const bp = transformPts(b.padPts ?? [], pair.d.transform);
-    const bh = transformPts((b.holePts ?? []).map(([x, y]) => [x, y] as [number, number]), pair.d.transform);
-    const bc = transformPts(b.copperPts ?? [], pair.d.transform);
-    const ap = a.padPts ?? [], ah = (a.holePts ?? []).map(([x, y]) => [x, y] as [number, number]), ac = a.copperPts ?? [];
-    const all = [...ap, ...bp, ...ac, ...bc];
-    const ext = Math.max(5, ...all.map((p) => Math.max(Math.abs(p[0]), Math.abs(p[1])))) + 2;
-    return { ap, ah, ac, bp, bh, bc, ext };
-  }, [pair, a, b]);
+function OverlayDialog({ pair, onClose, meta }: { pair: Pair | null; onClose: () => void; meta: (sid: string) => string }) {
   return (
     <Dialog open={!!pair} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader><DialogTitle>Comparație vizuală {pair && `— ${pair.d.total.toFixed(1)}%`}</DialogTitle></DialogHeader>
-        {pair && !geo?.ap.length && <p className="text-sm text-muted-foreground">Amprentele sunt din versiunea veche — apasă „Recalculează tot”.</p>}
-        {pair && geo && !!geo.ap.length && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-4 text-sm">
-              <span><span className="inline-block h-3 w-3 rounded-full bg-primary align-middle" /> {pair.a.name}</span>
-              <span><span className="inline-block h-3 w-3 rounded-full bg-destructive align-middle" /> {pair.b.name} (aliniat: {pair.d.transform.rot}°{pair.d.transform.mirror ? ", oglindit" : ""})</span>
-            </div>
-            <svg viewBox={`${-geo.ext} ${-geo.ext} ${geo.ext * 2} ${geo.ext * 2}`} className="aspect-square w-full rounded-md border border-border bg-muted" role="img" aria-label="Suprapunerea celor două plăci">
-              <g transform="scale(1,-1)">
-                <g className="text-primary" fill="currentColor" stroke="currentColor" opacity={(100 - mix) / 100}>
-                  {geo.ac.map((p, i) => <circle key={`ac${i}`} cx={p[0]} cy={p[1]} r={0.15} />)}
-                  {geo.ap.map((p, i) => <circle key={`ap${i}`} cx={p[0]} cy={p[1]} r={0.45} />)}
-                  {geo.ah.map((p, i) => <circle key={`ah${i}`} cx={p[0]} cy={p[1]} r={0.3} fill="none" strokeWidth={0.1} />)}
-                </g>
-                <g className="text-destructive" fill="currentColor" stroke="currentColor" opacity={mix / 100}>
-                  {geo.bc.map((p, i) => <circle key={`bc${i}`} cx={p[0]} cy={p[1]} r={0.15} />)}
-                  {geo.bp.map((p, i) => <circle key={`bp${i}`} cx={p[0]} cy={p[1]} r={0.3} />)}
-                  {geo.bh.map((p, i) => <circle key={`bh${i}`} cx={p[0]} cy={p[1]} r={0.2} fill="none" strokeWidth={0.1} />)}
-                </g>
-              </g>
-            </svg>
-            <div className="flex items-center gap-3 text-sm"><span>{pair.a.name}</span><Slider value={[mix]} min={0} max={100} step={5} onValueChange={(v) => setMix(v[0] ?? 50)} aria-label="Transparență" /><span>{pair.b.name}</span></div>
-            <p className="text-xs text-muted-foreground">Pad-uri {pair.d.pads}% · Găuri {pair.d.holes}% · Trasee {pair.d.copper}% · Text {pair.d.silk}% · Distribuție globală {pair.d.global}%</p>
-          </div>
-        )}
+      <DialogContent className="max-w-6xl">
+        <DialogHeader><DialogTitle>Comparație Gerber {pair && `— ${pair.d.total.toFixed(1)}%`}</DialogTitle></DialogHeader>
+        {pair && <IntegrityOverlayViewer a={{ name: pair.a.name, zipPath: pair.a.zipPath, meta: `${pair.a.theme} · ${meta(pair.a.seriesId)}` }} b={{ name: pair.b.name, zipPath: pair.b.zipPath, meta: `${pair.b.theme} · ${meta(pair.b.seriesId)}` }} detail={pair.d} />}
       </DialogContent>
     </Dialog>
   );
