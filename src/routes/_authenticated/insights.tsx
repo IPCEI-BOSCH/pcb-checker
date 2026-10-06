@@ -265,7 +265,8 @@ function Insights() {
           const [x, y] = a.submissionId! < b.submissionId! ? [a, b] : [b, a];
           return { submission_a: x.submissionId!, submission_b: y.submissionId!, student_a: x.studentId, student_b: y.studentId, version: PAIR_VERSION, total: ds[j]!.total, detail: ds[j]! as unknown as Json };
         });
-        void supabase.from("layout_similarity_pairs").upsert(up);
+        const { error: upErr } = await supabase.from("layout_similarity_pairs").upsert(up);
+        if (upErr) console.error("save pairs", upErr.message);
         if (!cancelled) setPairProg({ done: Math.min(missing.length, i + CH), total: missing.length, cached: list.length - missing.length });
       }
       if (!cancelled) setRawPairs(list.map(([a, b]) => ({ a, b, d: cache.get(sk(a.submissionId!, b.submissionId!))! })));
