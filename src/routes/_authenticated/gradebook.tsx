@@ -72,8 +72,9 @@ function Gradebook() {
   const [weightsOpen, setWeightsOpen] = useState(false);
   const [weights, setWeights] = useState<FinalWeights>(DEFAULT_WEIGHTS);
   const runFinal = () => {
-    const diff = proposeFinalGrades(data, weights);
+    const diff = proposeFinalGrades(finalScope ?? data, weights);
     setWeightsOpen(false);
+    setFinalScope(null);
     setSourceLabel(`calculul notei finale (DRC ${weights.drc}% · schemă ${weights.schema}% · documentație ${weights.doc}%)`);
     setChanges(diff);
     if (!diff.length) toast.info("Nicio notă de calculat — lipsesc componente sau notele există deja.");
@@ -96,10 +97,27 @@ function Gradebook() {
 
   const link = useMemo(() => links.data?.find((l) => l.series_id === seriesId) ?? null, [links.data, seriesId]);
   const canManage = has("admin", "series_manager");
+  const canEdit = has("admin", "series_manager", "instructor");
   const data = useMemo(() => {
     const ids = new Set(yearSeries.map((s) => s.id));
     return (rows.data ?? []).filter((r) => ids.has(r.seriesId));
   }, [rows.data, yearSeries]);
+  const [filters, setFilters] = useState<GbFilters>(EMPTY_FILTERS);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [inspect, setInspect] = useState<GradeRow | null>(null);
+  const [finalScope, setFinalScope] = useState<GradeRow[] | null>(null);
+  const filtered = useMemo(() => applyFilters(data, filters), [data, filters]);
+  const selectedRows = useMemo(() => data.filter((r) => selected.has(r.studentId)), [data, selected]);
+  const groupNames = useMemo(() => [...new Set(data.map((r) => r.groupName))].sort(), [data]);
+  const kpis = useMemo(() => calculateGradebookKpis(filtered), [filtered]);
+  const alerts = useQuery({
+    queryKey: ["gb-alerts"],
+    enabled: canEdit,
+    queryFn: async () => {
+      const { count } = await supabase.from("integrity_alerts").select("id", { count: "exact", head: true }).eq("status", "new");
+      return count ?? 0;
+    },
+  });
 
   const saveLink = async () => {
     if (!seriesId) return void toast.error("Alege mai întâi seria.");
@@ -204,6 +222,32 @@ function Gradebook() {
 
   const seriesName = structure.data?.series.find((s) => s.id === seriesId)?.name;
   const fileBase = `CEF2-Proiect_Situatie-${yearName.replace(/[^\w-]+/g, "_")}${seriesName ? `-Seria_${seriesName}` : ""}`;
+
+  const saveField = async (studentId: string, field: GradeField, value: number | string | null) => {
+    const key = ["gradebook", seriesId];
+    const prev = qc.getQueryData<GradeRow[]>(key);
+    const k = GRADE_FIELD_KEY[field];
+    qc.setQueryData<GradeRow[]>(key, (old) => old?.map((r) => (r.studentId === studentId ? { ...r, [k]: field === "teacher_notes" ? String(value ?? "") : value } : r)));
+    try {
+      await updateStudentGradeField(studentId, field, value);
+    } catch (e) {
+      qc.setQueryData(key, prev);
+      toast.error((e as Error).message);
+      throw e;
+    }
+  };
+  const bulkApply = async (field: GradeField, value: number) => {
+    setBusy("Se aplică nota în bloc…");
+    try {
+      const n = await bulkUpdateGrades(selectedRows.map((r) => r.studentId), { [field]: value });
+      await logAudit(user.id, "GRADEBOOK_BULK", "series", seriesId || null, { field, value, students: n });
+      toast.success(`Notă aplicată pentru ${n} studenți.`);
+      qc.invalidateQueries({ queryKey: ["gradebook"] });
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+  };
+  const print = (list: GradeRow[]) => {
+    if (!printOfficialSheet(list, yearName, seriesName ? `Seria ${seriesName}` : "Toate seriile")) toast.error("Permite ferestrele pop-up pentru tipărire.");
+  };
 
   return (
     <div className="space-y-6">
