@@ -1,0 +1,5 @@
+# Integrity module rules
+- Layout similarity (anti-plagiarism) is computed in the browser (`src/lib/integrity/fingerprint.ts`): point sets are aligned over 8 discrete rotations/mirrors plus translation; fingerprints (numbers only, versioned by `FP_VERSION`) are cached in `layout_fingerprints` and staff decisions in `integrity_reviews` — avoids re-downloading every archive.
+- Pair similarity scores are cached in `layout_similarity_pairs` keyed by submission pair + `PAIR_VERSION`; bump the version when `similarityDetail` changes — avoids recomparing every pair on each visit.
+- Suspicion is series-relative (`src/lib/integrity/adjust.ts`: median/MAD, per-project mean, teacher reference projects in `integrity_references`) — simple themes make all boards look alike.
+- Official submissions trigger `checkSubmissionIntegrity` (server fn, ownership verified, admin client) which writes staff-only `integrity_alerts`; students never receive scores.

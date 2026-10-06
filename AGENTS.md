@@ -34,8 +34,5 @@
 - `/rules` has one unified DRC window (`src/components/UnifiedRules.tsx`): built-in and custom rules in one table with a side editor (threshold via `RULE_LINKS`, scoring, variant, student texts); sandbox sits below in the same tab — avoids duplicated tabs.
 - Built-in rule texts are edited via `settings.overrides` and travel to reports through `report.customCatalog`, which takes precedence over `CATALOG` — catalog stays the fallback.
 - Deleting projects/series/years goes through `src/lib/purge.ts` (removes DB rows and stored files) — one path for history, demo reset and admin cleanup.
-- Layout similarity (anti-plagiarism) is computed in the browser (`src/lib/integrity/fingerprint.ts`): point sets are aligned over 8 discrete rotations/mirrors plus translation; fingerprints (numbers only, versioned by `FP_VERSION`) are cached in `layout_fingerprints` and staff decisions in `integrity_reviews` — avoids re-downloading every archive.
+- Anti-plagiarism lives in `src/lib/integrity` (browser fingerprints, cached pair scores, staff-only alerts) — see its AGENTS.md.
 - Silkscreen text is found geometrically (`src/lib/silk/extract.ts`, stroke clustering) inside DRC; reading the text is on-demand via AI (`src/lib/ai/silk-ai.functions.ts`) on a rendered contact sheet — no images stored, credits spent only when asked.
-- Pair similarity scores are cached in `layout_similarity_pairs` keyed by submission pair + `PAIR_VERSION`; bump the version when `similarityDetail` changes — avoids recomparing every pair on each visit.
-- Suspicion is series-relative (`src/lib/integrity/adjust.ts`: median/MAD, per-project mean, teacher reference projects in `integrity_references`) — simple themes make all boards look alike.
-- Official submissions trigger `checkSubmissionIntegrity` (server fn, ownership verified, admin client) which writes staff-only `integrity_alerts`; students never receive scores.
