@@ -332,6 +332,7 @@ function Insights() {
                 </div>
               )}
 
+              {belowOnly && <p className="text-sm text-muted-foreground">Nicio pereche nu depășește pragul. Mai jos sunt cele mai asemănătoare 15 perechi, doar ca reper.</p>}
               <Table>
                 <TableHeader><TableRow><TableHead>Proiect</TableHead><TableHead>Seamănă cu</TableHead><TableHead>Detaliu</TableHead><TableHead className="text-right">Similaritate</TableHead><TableHead>Decizie</TableHead><TableHead /></TableRow></TableHeader>
                 <TableBody>
