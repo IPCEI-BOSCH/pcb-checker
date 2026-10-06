@@ -4,12 +4,11 @@ import { createSpreadsheet } from "@/lib/sheets.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Calculator, CloudDownload, CloudUpload, Download, Link2, Lock, Upload } from "lucide-react";
+import { Calculator, CloudDownload, CloudUpload, Download, Link2, Lock, Printer, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit, seriesLabel } from "@/lib/data";
 import {
-  ALL_COLUMNS,
   AUTO_COLUMNS,
   LINK_COLUMNS,
   linkCells,
@@ -25,10 +24,21 @@ import {
   proposeFinalGrades,
   DEFAULT_WEIGHTS,
   type FinalWeights,
-  rowToArray,
   type ManualChange,
+  type GradeRow,
+  type GradeField,
+  GRADE_FIELD_KEY,
+  updateStudentGradeField,
+  bulkUpdateGrades,
+  calculateGradebookKpis,
 } from "@/lib/gradebook";
 import { GoogleWorkspaceCard } from "@/components/GoogleWorkspaceCard";
+import { GradebookKpis } from "@/components/GradebookKpis";
+import { GradebookFilters, applyFilters, EMPTY_FILTERS, type GbFilters } from "@/components/GradebookFilters";
+import { GradebookTable } from "@/components/GradebookTable";
+import { GradebookBulkBar } from "@/components/GradebookBulkBar";
+import { StudentInspectionDrawer } from "@/components/StudentInspectionDrawer";
+import { printOfficialSheet } from "@/components/GradebookOfficialPrint";
 import { pullGradebook, pushGradebook } from "@/lib/sheets.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +47,6 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const Route = createFileRoute("/_authenticated/gradebook")({
   head: () => ({
