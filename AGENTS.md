@@ -24,15 +24,14 @@
 - Teacher bulk ZIP import (`src/lib/zipImport.ts`) reuses series/groups by name and updates students by folder name (`file_prefix`), so re-imports never duplicate; staff insert slots/submissions via `can_manage_group` policies.
 - `date_in_*.txt` uses GerbTool's exact "FOLDER X Y" syntax with no header; stencil geometry has independent X/Y pitch and an explicit top-row origin.
 - Rule changes are activated through the sandbox (`src/components/RuleSandbox.tsx`), which runs baseline vs candidate DRC and requires manual per-project confirmation; runs are stored in `rule_test_runs` — keeps rule edits auditable and evidence-based.
-- DRC scoring: per rule `points + perIssue × extra occurrences`, capped by `cap`; rules flagged `critical` cap the total score at `rules.criticalScoreCap` and force "respins" — all values live in `drc_settings`, student explanations in `src/lib/drc/catalog.ts`.
+- DRC scoring and teacher-defined custom rules: see `src/lib/drc/AGENTS.md`.
 - CAM board/pitch are derived from DRC board width/height via `deriveCam` when `cam.autoFromBoard` is on — one board size drives DRC, panel and stencil.
 - Board size comes from the largest closed loop in the outline layer (`outlineBBox`), and layer names are matched on whole tokens so prefixed student files classify correctly — dimension text and name prefixes caused false rejections.
-- Teacher-defined DRC rules live in `settings.customRules` (generic check types in `CHECK_TYPES`, evaluated by `evalCustomRule` in `engine.ts`) and are scored like built-in penalties; their student explanations travel in `report.customCatalog` — rules can be added without code changes.
 - AI rule creation uses the Responses API via `src/lib/ai/rule-ai.functions.ts` (strict JSON schema, returns a draft only) — nothing is saved until tested in the sandbox.
 - Google Sheets link columns (`LINK_COLUMNS`) are written after the teacher's manual columns, so existing sheets keep their layout.
 - Folder points on `project_files` are guarded by a DB trigger (staff only); managers can upload into a student's folders via `can_manage_group` policies.
 - `/rules` has one unified DRC window (`src/components/UnifiedRules.tsx`): built-in and custom rules in one table with a side editor (threshold via `RULE_LINKS`, scoring, variant, student texts); sandbox sits below in the same tab — avoids duplicated tabs.
 - Built-in rule texts are edited via `settings.overrides` and travel to reports through `report.customCatalog`, which takes precedence over `CATALOG` — catalog stays the fallback.
 - Deleting projects/series/years goes through `src/lib/purge.ts` (removes DB rows and stored files) — one path for history, demo reset and admin cleanup.
-- Layout similarity (anti-plagiarism) is computed in the browser (`src/lib/integrity/fingerprint.ts`): point sets are aligned over 8 discrete rotations/mirrors plus translation; fingerprints (numbers only, versioned by `FP_VERSION`) are cached in `layout_fingerprints` and staff decisions in `integrity_reviews` — avoids re-downloading every archive.
+- Anti-plagiarism lives in `src/lib/integrity` (browser fingerprints, cached pair scores, staff-only alerts) — see its AGENTS.md.
 - Silkscreen text is found geometrically (`src/lib/silk/extract.ts`, stroke clustering) inside DRC; reading the text is on-demand via AI (`src/lib/ai/silk-ai.functions.ts`) on a rendered contact sheet — no images stored, credits spent only when asked.

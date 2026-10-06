@@ -78,6 +78,13 @@
       "when": 1791200764233,
       "tag": "0010_integrity_fingerprints",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791266460751,
+      "tag": "0011_integrity_v3",
+      "breakpoints": true
     }
   ]
 }
