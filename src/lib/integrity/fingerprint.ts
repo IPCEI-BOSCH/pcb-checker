@@ -1,9 +1,9 @@
 import type { Layer } from "@/lib/gerber/types";
 import { extractTextBlocks } from "@/lib/silk/extract";
 
-export const FP_VERSION = 2;
+export const FP_VERSION = 3;
 /** Bump when similarityDetail changes so cached pair scores are recomputed. */
-export const PAIR_VERSION = 3;
+export const PAIR_VERSION = 4;
 
 type P2 = [number, number];
 
@@ -24,6 +24,10 @@ export interface Fingerprint {
   holePts?: [number, number, number][];
   copperPts?: P2[];
   silkPts?: P2[];
+  /** v3: centred trace segments [midX, midY, angle 0..180°, width, length]. */
+  segs?: [number, number, number, number, number][];
+  /** v3: copper centroid used to centre all point sets (for real-Gerber overlay). */
+  centroid?: P2;
 }
 
 export interface SimilarityDetail {
@@ -35,6 +39,8 @@ export interface SimilarityDetail {
   global: number;
   /** v3: component placement match (pads clustered into parts). */
   comps?: number;
+  /** v4: trace segments matched by position + direction + width. */
+  traces?: number;
   /** v3: best 3x3 zone match of A's pads (catches partial copies). */
   zoneMax?: number;
   /** v3: number of zones (with ≥4 pads) matched ≥85%. */
@@ -64,6 +70,7 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   const pts: P2[] = [];
   let copperLen = 0;
   const segs: [number, number, number][] = [];
+  const segFull: [number, number, number, number, number][] = [];
   for (const l of copper) {
     for (const p of l.primitives) {
       if (p.clear) continue;
@@ -72,6 +79,7 @@ export function fingerprint(layers: Layer[]): Fingerprint {
         const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1);
         copperLen += len;
         segs.push([(p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, len]);
+        if (len > 0.3) segFull.push([(p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, ((Math.atan2(p.y2 - p.y1, p.x2 - p.x1) * 180) / Math.PI + 360) % 180, p.w, len]);
       }
     }
   }
@@ -105,6 +113,8 @@ export function fingerprint(layers: Layer[]): Fingerprint {
     holePts: sub(holes, 400).map((h) => [r2(h.x - cx), r2(h.y - cy), r2(h.d)]),
     copperPts: sub(segs, 600).map(([x, y]) => [r2(x - cx), r2(y - cy)]),
     silkPts: silk.slice(0, 150).map((b) => [r2(b.x - cx), r2(b.y - cy)]),
+    segs: sub(segFull, 800).map(([x, y, a, w, l]) => [r2(x - cx), r2(y - cy), Math.round(a), r2(w), r2(l)]),
+    centroid: [cx, cy],
   };
 }
 
@@ -203,6 +213,30 @@ function zoneMatch(a: P2[], bt: P2[], tol: number) {
   return { max, good };
 }
 
+/** Fraction of segments matched (midpoint within tol, same direction ±12°, width ±40%) after applying B's transform. */
+function traceMatch(a: NonNullable<Fingerprint["segs"]>, b: NonNullable<Fingerprint["segs"]>, t: Tf, dx: number, dy: number) {
+  if (!a.length || !b.length) return 0;
+  const tol = 0.6;
+  const m = new Map<string, number[]>();
+  a.forEach((s, i) => { const k = `${Math.floor(s[0] / tol)},${Math.floor(s[1] / tol)}`; (m.get(k) ?? m.set(k, []).get(k)!).push(i); });
+  const rotA = (ang: number) => { let r = t.mirror ? 180 - ang : ang; r += t.rot; return ((r % 180) + 180) % 180; };
+  let hit = 0, wa = 0;
+  for (const s of b) {
+    const [x, y] = apply([s[0], s[1]], t, dx, dy);
+    const ang = rotA(s[2]);
+    const cx = Math.floor(x / tol), cy = Math.floor(y / tol);
+    let ok = false;
+    for (let i = -1; i <= 1 && !ok; i++) for (let j = -1; j <= 1 && !ok; j++)
+      for (const k of m.get(`${cx + i},${cy + j}`) ?? []) {
+        const q = a[k]!; const da = Math.abs(q[2] - ang); const dA = Math.min(da, 180 - da);
+        if (Math.abs(q[0] - x) <= tol && Math.abs(q[1] - y) <= tol && dA <= 12 && Math.abs(q[3] - s[3]) <= 0.4 * Math.max(q[3], s[3], 0.1)) { ok = true; break; }
+      }
+    wa += s[4]; if (ok) hit += s[4];
+  }
+  const la = a.reduce((x, s) => x + s[4], 0);
+  return hit / Math.max(la, wa, 1e-6);
+}
+
 /** Cheap check: boards whose pad/hole counts differ a lot cannot be copies — skips the costly alignment. */
 export function prefilter(a: Fingerprint, b: Fingerprint) {
   return ratio(a.pads, b.pads) < 0.55 || ratio(a.holes || 1, b.holes || 1) < 0.55;
@@ -228,14 +262,17 @@ export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDeta
   const compA = components(a.padPts!), compB = tr(components(b.padPts!));
   const comps = matchFrac(index(compA, 0.6), compA.length, compB, 0.6);
   const zm = zoneMatch(a.padPts!, tr(b.padPts), 0.25);
+  const hasSegs = (a.segs?.length ?? 0) >= 5 && (b.segs?.length ?? 0) >= 5;
+  const traces = hasSegs ? traceMatch(a.segs!, b.segs!, al.t, al.dx, al.dy) : copper;
+  const cu = hasSegs ? 0.4 * copper + 0.6 * traces : copper;
   const s = hasSilk
-    ? 0.25 * al.score + 0.15 * comps + 0.15 * holes + 0.2 * copper + 0.1 * silk + 0.15 * global
-    : 0.3 * al.score + 0.15 * comps + 0.15 * holes + 0.25 * copper + 0.15 * global;
+    ? 0.25 * al.score + 0.15 * comps + 0.15 * holes + 0.2 * cu + 0.1 * silk + 0.15 * global
+    : 0.3 * al.score + 0.15 * comps + 0.15 * holes + 0.25 * cu + 0.15 * global;
   const total = Math.round(Math.max(0, Math.min(1, s)) * 1000) / 10;
   const pct = (v: number) => Math.round(v * 1000) / 10;
   return {
     total, pads: pct(al.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global),
-    comps: pct(comps), zoneMax: pct(zm.max), zones: zm.good, partial: total < 80 && zm.good >= 2 && zm.max >= 0.9,
+    comps: pct(comps), traces: pct(traces), zoneMax: pct(zm.max), zones: zm.good, partial: total < 80 && zm.good >= 2 && zm.max >= 0.9,
     transform: { rot: al.t.rot, mirror: al.t.mirror, dx: al.dx, dy: al.dy }, verdict: verdictOf(total),
   };
 }
