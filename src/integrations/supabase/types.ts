@@ -208,6 +208,93 @@ export type Database = {
           },
         ]
       }
+      integrity_alerts: {
+        Row: {
+          adjusted: number
+          created_at: string
+          detail: Json
+          id: string
+          other_student_id: string
+          similarity: number
+          status: string
+          student_id: string
+          submission_id: string
+        }
+        Insert: {
+          adjusted: number
+          created_at?: string
+          detail: Json
+          id?: string
+          other_student_id: string
+          similarity: number
+          status?: string
+          student_id: string
+          submission_id: string
+        }
+        Update: {
+          adjusted?: number
+          created_at?: string
+          detail?: Json
+          id?: string
+          other_student_id?: string
+          similarity?: number
+          status?: string
+          student_id?: string
+          submission_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrity_alerts_other_student_id_fkey"
+            columns: ["other_student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrity_alerts_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrity_alerts_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integrity_references: {
+        Row: {
+          created_at: string
+          created_by: string
+          note: string | null
+          student_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          note?: string | null
+          student_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          note?: string | null
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrity_references_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: true
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integrity_reviews: {
         Row: {
           id: string
@@ -290,6 +377,68 @@ export type Database = {
             foreignKeyName: "layout_fingerprints_submission_id_fkey"
             columns: ["submission_id"]
             isOneToOne: true
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      layout_similarity_pairs: {
+        Row: {
+          created_at: string
+          detail: Json
+          student_a: string
+          student_b: string
+          submission_a: string
+          submission_b: string
+          total: number
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          detail: Json
+          student_a: string
+          student_b: string
+          submission_a: string
+          submission_b: string
+          total: number
+          version: number
+        }
+        Update: {
+          created_at?: string
+          detail?: Json
+          student_a?: string
+          student_b?: string
+          submission_a?: string
+          submission_b?: string
+          total?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "layout_similarity_pairs_student_a_fkey"
+            columns: ["student_a"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "layout_similarity_pairs_student_b_fkey"
+            columns: ["student_b"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "layout_similarity_pairs_submission_a_fkey"
+            columns: ["submission_a"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "layout_similarity_pairs_submission_b_fkey"
+            columns: ["submission_b"]
+            isOneToOne: false
             referencedRelation: "submissions"
             referencedColumns: ["id"]
           },
