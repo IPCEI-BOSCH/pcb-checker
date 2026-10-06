@@ -29,6 +29,7 @@ export const driveFolderUrl = (id: string | null) => (id ? `https://drive.google
 
 export interface GradeRow {
   studentId: string;
+  groupId: string;
   seriesId: string;
   seriesName: string;
   groupName: string;
@@ -138,6 +139,7 @@ export async function fetchGradeRows(seriesId: string | null): Promise<GradeRow[
       const report = sub?.report as { designPoints?: number } | null;
       return {
         studentId: st.id,
+        groupId: g.id,
         seriesId: g.series_id,
         seriesName: ser?.name ?? "",
         groupName: g.name,
@@ -314,3 +316,51 @@ export function proposeFinalGrades(rows: GradeRow[], w: FinalWeights): ManualCha
   }
   return out;
 }
+
+export type GradeField = "grade_schema" | "grade_doc" | "grade_final" | "teacher_notes";
+export const GRADE_FIELD_KEY: Record<GradeField, "gradeSchema" | "gradeDoc" | "gradeFinal" | "notes"> = {
+  grade_schema: "gradeSchema", grade_doc: "gradeDoc", grade_final: "gradeFinal", teacher_notes: "notes",
+};
+
+/** Parses a 1.00–10.00 grade ("9,5" ok); empty -> null; invalid -> undefined. */
+export function parseGrade(raw: string): number | null | undefined {
+  const s = raw.trim().replace(",", ".");
+  if (!s) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 1 || n > 10) return undefined;
+  return Math.round(n * 100) / 100;
+}
+
+export async function updateStudentGradeField(studentId: string, field: GradeField, value: number | string | null) {
+  const v = field === "teacher_notes" ? (String(value ?? "").trim() || null) : value;
+  const { data, error } = await supabase.from("students").update({ [field]: v } as never).eq("id", studentId).select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("Nu ai drept de editare pentru acest student.");
+}
+
+export async function bulkUpdateGrades(studentIds: string[], patch: Partial<Record<GradeField, number | string | null>>) {
+  if (!studentIds.length) return 0;
+  const { data, error } = await supabase.from("students").update(patch as never).in("id", studentIds).select("id");
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+export interface GradebookKpis {
+  total: number; submitted: number; submitRate: number; approved: number; rejected: number; pending: number;
+  graded: number; needsGrading: number; avgDrc: number | null; avgSchema: number | null; avgDoc: number | null; avgFinal: number | null;
+}
+const avg = (xs: (number | null)[]) => { const v = xs.filter((x): x is number => x != null); return v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(2) : null; };
+export function calculateGradebookKpis(rows: GradeRow[]): GradebookKpis {
+  const submitted = rows.filter((r) => r.reviewStatus !== "none").length;
+  return {
+    total: rows.length, submitted, submitRate: rows.length ? Math.round((submitted / rows.length) * 100) : 0,
+    approved: rows.filter((r) => r.reviewStatus === "approved").length,
+    rejected: rows.filter((r) => r.reviewStatus === "rejected").length,
+    pending: rows.filter((r) => r.reviewStatus === "pending").length,
+    graded: rows.filter((r) => r.gradeFinal != null).length,
+    needsGrading: rows.filter(needsGrading).length,
+    avgDrc: avg(rows.map((r) => r.designPoints)), avgSchema: avg(rows.map((r) => r.gradeSchema)),
+    avgDoc: avg(rows.map((r) => r.gradeDoc)), avgFinal: avg(rows.map((r) => r.gradeFinal)),
+  };
+}
+export const needsGrading = (r: GradeRow) => r.reviewStatus !== "none" && (r.gradeSchema == null || r.gradeDoc == null || r.gradeFinal == null);
