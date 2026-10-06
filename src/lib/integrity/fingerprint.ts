@@ -2,6 +2,8 @@ import type { Layer } from "@/lib/gerber/types";
 import { extractTextBlocks } from "@/lib/silk/extract";
 
 export const FP_VERSION = 2;
+/** Bump when similarityDetail changes so cached pair scores are recomputed. */
+export const PAIR_VERSION = 3;
 
 type P2 = [number, number];
 
@@ -31,6 +33,16 @@ export interface SimilarityDetail {
   copper: number;
   silk: number;
   global: number;
+  /** v3: component placement match (pads clustered into parts). */
+  comps?: number;
+  /** v3: best 3x3 zone match of A's pads (catches partial copies). */
+  zoneMax?: number;
+  /** v3: number of zones (with ≥4 pads) matched ≥85%. */
+  zones?: number;
+  /** v3: a region is copied although the whole board differs. */
+  partial?: boolean;
+  /** v3: pair skipped by the cheap pre-filter (sizes too different). */
+  prefiltered?: boolean;
   /** Best transform: rotation in degrees, mirror flag, translation applied to B. */
   transform: { rot: number; mirror: boolean; dx: number; dy: number };
   verdict: "identic" | "foarte_similar" | "similar" | "diferit";
@@ -155,12 +167,54 @@ function align(a: P2[], b: P2[]) {
   return best;
 }
 
+/** Clusters pads into parts (single-linkage, 2.6 mm) and returns part centroids. */
+function components(pads: P2[]): P2[] {
+  const n = pads.length, link = 2.6;
+  const parent = pads.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)));
+  const idx = index(pads, link);
+  const key = (p: P2) => [Math.floor(p[0] / link), Math.floor(p[1] / link)];
+  const pos = new Map(pads.map((p, i) => [p, i] as const));
+  for (let i = 0; i < n; i++) {
+    const [cx, cy] = key(pads[i]!) as [number, number];
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++)
+      for (const q of idx.get(`${cx + dx},${cy + dy}`) ?? []) {
+        if (Math.hypot(q[0] - pads[i]![0], q[1] - pads[i]![1]) <= link) parent[find(i)] = find(pos.get(q)!);
+      }
+  }
+  const g = new Map<number, P2[]>();
+  pads.forEach((p, i) => { const r = find(i); (g.get(r) ?? g.set(r, []).get(r)!).push(p); });
+  return [...g.values()].map((ps) => [ps.reduce((a, p) => a + p[0], 0) / ps.length, ps.reduce((a, p) => a + p[1], 0) / ps.length] as P2);
+}
+
+/** Per-zone (3x3) fraction of A's pads matched by transformed B pads. */
+function zoneMatch(a: P2[], bt: P2[], tol: number) {
+  const bIdx = index(bt, tol);
+  const xs = a.map((p) => p[0]), ys = a.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs) + 1e-6, y0 = Math.min(...ys), y1 = Math.max(...ys) + 1e-6;
+  const tot = new Array(9).fill(0), hit = new Array(9).fill(0);
+  for (const p of a) {
+    const z = Math.min(2, Math.floor(((p[0] - x0) / (x1 - x0)) * 3)) + 3 * Math.min(2, Math.floor(((p[1] - y0) / (y1 - y0)) * 3));
+    tot[z]++;
+    if (matchFrac(bIdx, bt.length, [p], tol) > 0) hit[z]++;
+  }
+  let max = 0, good = 0;
+  for (let z = 0; z < 9; z++) if (tot[z] >= 4) { const f = hit[z] / tot[z]; max = Math.max(max, f); if (f >= 0.85) good++; }
+  return { max, good };
+}
+
+/** Cheap check: boards whose pad/hole counts differ a lot cannot be copies — skips the costly alignment. */
+export function prefilter(a: Fingerprint, b: Fingerprint) {
+  return ratio(a.pads, b.pads) < 0.55 || ratio(a.holes || 1, b.holes || 1) < 0.55;
+}
+
 export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDetail {
   const global = Math.max(0, Math.min(1, globalSim(a, b)));
   const hasGeo = (a.padPts?.length ?? 0) >= 5 && (b.padPts?.length ?? 0) >= 5;
-  if (!hasGeo) {
-    const total = Math.round(global * 1000) / 10;
-    return { total, pads: 0, holes: 0, copper: 0, silk: 0, global: total, transform: { rot: 0, mirror: false, dx: 0, dy: 0 }, verdict: verdictOf(total) };
+  const pf = hasGeo && prefilter(a, b);
+  if (!hasGeo || pf) {
+    const total = Math.round(global * (pf ? 600 : 1000)) / 10;
+    return { total, pads: 0, holes: 0, copper: 0, silk: 0, global: Math.round(global * 1000) / 10, prefiltered: pf, transform: { rot: 0, mirror: false, dx: 0, dy: 0 }, verdict: verdictOf(total) };
   }
   const al = align(a.padPts!, b.padPts!);
   const tr = (pts: P2[] | undefined) => (pts ?? []).map((p) => apply(p, al.t, al.dx, al.dy));
@@ -171,12 +225,19 @@ export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDeta
   const silkA = a.silkPts ?? [], silkB = tr(b.silkPts);
   const silk = silkA.length || silkB.length ? matchFrac(index(silkA, 0.6), silkA.length, silkB, 0.6) : 0;
   const hasSilk = silkA.length > 0 && silkB.length > 0;
+  const compA = components(a.padPts!), compB = tr(components(b.padPts!));
+  const comps = matchFrac(index(compA, 0.6), compA.length, compB, 0.6);
+  const zm = zoneMatch(a.padPts!, tr(b.padPts), 0.25);
   const s = hasSilk
-    ? 0.35 * al.score + 0.2 * holes + 0.2 * copper + 0.1 * silk + 0.15 * global
-    : 0.4 * al.score + 0.2 * holes + 0.25 * copper + 0.15 * global;
+    ? 0.25 * al.score + 0.15 * comps + 0.15 * holes + 0.2 * copper + 0.1 * silk + 0.15 * global
+    : 0.3 * al.score + 0.15 * comps + 0.15 * holes + 0.25 * copper + 0.15 * global;
   const total = Math.round(Math.max(0, Math.min(1, s)) * 1000) / 10;
   const pct = (v: number) => Math.round(v * 1000) / 10;
-  return { total, pads: pct(al.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global), transform: { rot: al.t.rot, mirror: al.t.mirror, dx: al.dx, dy: al.dy }, verdict: verdictOf(total) };
+  return {
+    total, pads: pct(al.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global),
+    comps: pct(comps), zoneMax: pct(zm.max), zones: zm.good, partial: total < 80 && zm.good >= 2 && zm.max >= 0.9,
+    transform: { rot: al.t.rot, mirror: al.t.mirror, dx: al.dx, dy: al.dy }, verdict: verdictOf(total),
+  };
 }
 
 export function verdictOf(total: number): SimilarityDetail["verdict"] {
