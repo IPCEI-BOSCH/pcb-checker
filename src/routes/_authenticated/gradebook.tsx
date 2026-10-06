@@ -291,31 +291,33 @@ function Gradebook() {
         </CardContent>
       </Card>
 
+      <GradebookKpis k={kpis} alerts={alerts.data ?? null} />
+
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base">Situație ({data.length} studenți)</CardTitle></CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {ALL_COLUMNS.map((c, i) => (
-                  <TableHead key={c} className={i >= AUTO_COLUMNS.length && i < AUTO_COLUMNS.length + MANUAL_COLUMNS.length ? "text-primary" : ""}>{c}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((r) => (
-                <TableRow key={r.studentId}>
-                  {rowToArray(r).map((v, i) => (
-                    <TableCell key={i} className={i >= AUTO_COLUMNS.length && i < AUTO_COLUMNS.length + MANUAL_COLUMNS.length ? "text-primary" : ""}>
-                      {typeof v === "string" && v.startsWith("https://drive.google.com") ? <a href={v} target="_blank" rel="noreferrer" className="text-primary underline">Deschide folder</a> : (v ?? "—")}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <CardHeader className="flex-row items-center justify-between gap-2 pb-3">
+          <CardTitle className="text-base">Situație ({data.length} studenți)</CardTitle>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => exportWorkbook(filtered, `${fileBase}-filtrat`, "xlsx")} disabled={!filtered.length}><Download className="mr-1 h-4 w-4" /> Export filtrat</Button>
+            <Button size="sm" variant="outline" onClick={() => print(filtered)} disabled={!filtered.length}><Printer className="mr-1 h-4 w-4" /> Borderou A4</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <GradebookFilters f={filters} setF={setFilters} groups={groupNames} shown={filtered.length} total={data.length} />
+          <GradebookTable rows={filtered} canEdit={canEdit} selected={selected} setSelected={setSelected} onSave={saveField} onInspect={setInspect} />
+          {canEdit && <p className="text-xs text-muted-foreground">Editare directă: Enter salvează și coboară, Tab trece la celula următoare, Esc anulează. Notele acceptă 1–10 cu virgulă sau punct.</p>}
         </CardContent>
       </Card>
+
+      <GradebookBulkBar
+        count={selectedRows.length}
+        canEdit={canEdit}
+        onClear={() => setSelected(new Set())}
+        onApply={bulkApply}
+        onFinal={() => { setFinalScope(selectedRows); setWeightsOpen(true); }}
+        onExport={() => exportWorkbook(selectedRows, `${fileBase}-selectie`, "xlsx")}
+        onPrint={() => print(selectedRows)}
+      />
+      <StudentInspectionDrawer row={inspect} onClose={() => setInspect(null)} />
 
       <Dialog open={weightsOpen} onOpenChange={setWeightsOpen}>
         <DialogContent className="max-w-md">
