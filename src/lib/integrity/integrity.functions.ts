@@ -68,7 +68,8 @@ export const checkSubmissionIntegrity = createServerFn({ method: "POST" })
     const alerts = results
       .filter((r) => !refSet.has(r.sid) && !refSet.has(me.id))
       .map((r) => ({ r, adj: adjustPair({ a: me.id, b: r.sid, total: r.d.total }, base, (id) => (id === me.id ? myRef : myRef)) }))
-      .filter(({ r, adj }) => r.d.total >= ALERT_TOTAL || adj.adjusted >= ALERT_ADJUSTED || !!r.d.partial)
+      // Alert on routing evidence only; same-schematic similarity (independent routing) never alerts.
+      .filter(({ r, adj }) => r.d.cls !== "independent" && (r.d.cls !== "inspectie" || r.d.total >= ALERT_TOTAL || adj.adjusted >= ALERT_ADJUSTED))
       .map(({ r, adj }) => ({ submission_id: sub.id, student_id: me.id, other_student_id: r.sid, similarity: r.d.total, adjusted: adj.adjusted, detail: { ...r.d, ...adj } as never, status: "new" }));
     if (alerts.length) await db.from("integrity_alerts").upsert(alerts, { onConflict: "submission_id,other_student_id" });
     return { ok: true };

@@ -1,13 +1,16 @@
 import type { Layer } from "@/lib/gerber/types";
+import { outlineBBox } from "@/lib/gerber/parser";
 import { extractTextBlocks } from "@/lib/silk/extract";
 
-export const FP_VERSION = 3;
+export const FP_VERSION = 4;
 /** Bump when similarityDetail changes so cached pair scores are recomputed. */
-export const PAIR_VERSION = 4;
+export const PAIR_VERSION = 5;
 
 type P2 = [number, number];
+/** [midX, midY, angle 0..180°, width, length, layer 0=top 1=bottom] */
+type Seg = [number, number, number, number, number, number?];
 
-/** Layout fingerprint used for similarity checks between submissions. Point sets are centred on the copper centroid. */
+/** Layout fingerprint used for similarity checks between submissions. Point sets are centred on the board outline centre. */
 export interface Fingerprint {
   v?: number;
   pads: number;
@@ -19,16 +22,19 @@ export interface Fingerprint {
   /** Radial copper density around board centroid (8 rings) — rotation invariant. */
   radial: number[];
   copperLen: number;
-  /** v2: centred point sets used for geometric alignment (rotation 0/90/180/270, mirror, translation). */
   padPts?: P2[];
   holePts?: [number, number, number][];
   copperPts?: P2[];
   silkPts?: P2[];
-  /** v3: centred trace segments [midX, midY, angle 0..180°, width, length]. */
-  segs?: [number, number, number, number, number][];
-  /** v3: copper centroid used to centre all point sets (for real-Gerber overlay). */
+  segs?: Seg[];
+  /** Reference point used to centre all point sets (outline centre in v4, copper centroid before). */
   centroid?: P2;
+  /** v4: board outline size (mm). */
+  board?: P2 | undefined;
 }
+
+/** Automatic pre-classification — replaces the generic "undecided" state. */
+export type PairClass = "copiere_trasee" | "obfuscare" | "copie_partiala" | "inspectie" | "independent";
 
 export interface SimilarityDetail {
   total: number;
@@ -37,21 +43,39 @@ export interface SimilarityDetail {
   copper: number;
   silk: number;
   global: number;
-  /** v3: component placement match (pads clustered into parts). */
   comps?: number;
-  /** v4: trace segments matched by position + direction + width. */
   traces?: number;
-  /** v3: best 3x3 zone match of A's pads (catches partial copies). */
+  /** v5: same parts / same schematic (pads, components, holes without mounting holes). */
+  schema?: number;
+  /** v5: copper routing match, width-independent (centre lines). */
+  routing?: number;
+  /** v5: routing match with width too (exact copy). */
+  routingExact?: number;
+  /** v5: best 3x3 zone routing match. */
+  routeZoneMax?: number;
+  cls?: PairClass;
   zoneMax?: number;
-  /** v3: number of zones (with ≥4 pads) matched ≥85%. */
   zones?: number;
-  /** v3: a region is copied although the whole board differs. */
   partial?: boolean;
-  /** v3: pair skipped by the cheap pre-filter (sizes too different). */
   prefiltered?: boolean;
-  /** Best transform: rotation in degrees, mirror flag, translation applied to B. */
   transform: { rot: number; mirror: boolean; dx: number; dy: number };
   verdict: "identic" | "foarte_similar" | "similar" | "diferit";
+}
+
+export const CLASS_LABEL: Record<PairClass, string> = {
+  copiere_trasee: "Copiere trasee",
+  obfuscare: "Copie camuflată",
+  copie_partiala: "Copie parțială",
+  inspectie: "De inspectat",
+  independent: "Rutare independentă",
+};
+export const CLASS_RANK: Record<PairClass, number> = { copiere_trasee: 4, obfuscare: 4, copie_partiala: 3, inspectie: 2, independent: 0 };
+
+/** Legacy pairs (no cls) are classified from what they have. */
+export function classOf(d: SimilarityDetail): PairClass {
+  if (d.cls) return d.cls;
+  const r = d.traces ?? d.copper;
+  return r >= 75 ? "copiere_trasee" : d.partial ? "copie_partiala" : r >= 40 || d.total >= 85 ? "inspectie" : "independent";
 }
 
 const DIST_BINS = 120;
@@ -70,8 +94,9 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   const pts: P2[] = [];
   let copperLen = 0;
   const segs: [number, number, number][] = [];
-  const segFull: [number, number, number, number, number][] = [];
+  const segFull: [number, number, number, number, number, number][] = [];
   for (const l of copper) {
+    const ly = l.kind === "bottom_copper" ? 1 : 0;
     for (const p of l.primitives) {
       if (p.clear) continue;
       if (p.t === "flash") pts.push([p.x, p.y]);
@@ -79,7 +104,14 @@ export function fingerprint(layers: Layer[]): Fingerprint {
         const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1);
         copperLen += len;
         segs.push([(p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, len]);
-        if (len > 0.3) segFull.push([(p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, ((Math.atan2(p.y2 - p.y1, p.x2 - p.x1) * 180) / Math.PI + 360) % 180, p.w, len]);
+        // Long segments are split into ~2 mm pieces so a partly re-routed trace still matches partly.
+        if (len > 0.3) {
+          const n = Math.max(1, Math.round(len / 2)), ang = ((Math.atan2(p.y2 - p.y1, p.x2 - p.x1) * 180) / Math.PI + 360) % 180;
+          for (let k = 0; k < n; k++) {
+            const t = (k + 0.5) / n;
+            segFull.push([p.x1 + (p.x2 - p.x1) * t, p.y1 + (p.y2 - p.y1) * t, ang, p.w, len / n, ly]);
+          }
+        }
       }
     }
   }
@@ -100,6 +132,11 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   const radial = new Array(RINGS).fill(0);
   for (const s of segs) radial[Math.min(RINGS - 1, Math.floor((Math.hypot(s[0] - cx, s[1] - cy) / maxR) * RINGS))] += s[2];
   for (const p of pts) radial[Math.min(RINGS - 1, Math.floor((Math.hypot(p[0] - cx, p[1] - cy) / maxR) * RINGS))] += 1;
+  // v4: point sets are centred on the board outline centre (stable reference) — falls back to the copper centroid.
+  const outl = layers.find((l) => l.kind === "outline");
+  const ob = outl ? outlineBBox(outl) : null;
+  const okBox = ob && ob.maxX - ob.minX > 3 && ob.maxY - ob.minY > 3 && ob.maxX - ob.minX < 300;
+  const ox = okBox ? (ob!.minX + ob!.maxX) / 2 : cx, oy = okBox ? (ob!.minY + ob!.maxY) / 2 : cy;
   const silk = [...extractTextBlocks(layers.find((l) => l.kind === "top_silk")), ...extractTextBlocks(layers.find((l) => l.kind === "bottom_silk"))];
   return {
     v: FP_VERSION,
@@ -109,12 +146,13 @@ export function fingerprint(layers: Layer[]): Fingerprint {
     drill: norm(drill),
     radial: norm(radial),
     copperLen,
-    padPts: sub(pts, 400).map(([x, y]) => [r2(x - cx), r2(y - cy)]),
-    holePts: sub(holes, 400).map((h) => [r2(h.x - cx), r2(h.y - cy), r2(h.d)]),
-    copperPts: sub(segs, 600).map(([x, y]) => [r2(x - cx), r2(y - cy)]),
-    silkPts: silk.slice(0, 150).map((b) => [r2(b.x - cx), r2(b.y - cy)]),
-    segs: sub(segFull, 800).map(([x, y, a, w, l]) => [r2(x - cx), r2(y - cy), Math.round(a), r2(w), r2(l)]),
-    centroid: [cx, cy],
+    padPts: sub(pts, 400).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
+    holePts: sub(holes, 400).map((h) => [r2(h.x - ox), r2(h.y - oy), r2(h.d)]),
+    copperPts: sub(segs, 600).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
+    silkPts: silk.slice(0, 150).map((b) => [r2(b.x - ox), r2(b.y - oy)]),
+    segs: sub(segFull, 1000).map(([x, y, a, w, l, ly]) => [r2(x - ox), r2(y - oy), Math.round(a), r2(w), r2(l), ly]),
+    centroid: [ox, oy],
+    board: okBox ? [r2(ob!.maxX - ob!.minX), r2(ob!.maxY - ob!.minY)] : undefined,
   };
 }
 
@@ -155,23 +193,37 @@ function matchFrac(aIdx: Map<string, P2[]>, na: number, b: P2[], tol: number) {
   return hit / Math.max(na, b.length);
 }
 
-/** Finds the rotation/mirror/translation that best overlays B's pads onto A's (offset voting, then exact match count). */
-function align(a: P2[], b: P2[]) {
+/**
+ * Finds the rotation/mirror/translation that best overlays B onto A.
+ * v5: candidates = outline-centred (0,0) + top 12 offset votes (pads + holes, larger sample),
+ * each refined on a 0.05 mm grid; score uses pads AND trace midpoints so a one-pitch (2.54 mm) shift
+ * that only lines up pin rows loses to the true alignment.
+ */
+function align(a: P2[], b: P2[], ca: P2[] = [], cb: P2[] = []) {
   const tol = 0.25;
-  const aIdx = index(a, tol);
-  const sampleA = sub(a, 40);
-  let best = { score: 0, t: TFS[0]!, dx: 0, dy: 0 };
+  const aIdx = index(a, tol), cIdx = index(ca, 0.5);
+  const sampleA = sub(a, 150);
+  const scoreAt = (bt: P2[], ct: P2[], dx: number, dy: number) => {
+    const sp = matchFrac(aIdx, a.length, bt.map(([x, y]) => [x + dx, y + dy] as P2), tol);
+    if (ca.length < 5 || ct.length < 5) return { sp, s: sp };
+    const sc = matchFrac(cIdx, ca.length, ct.map(([x, y]) => [x + dx, y + dy] as P2), 0.5);
+    return { sp, s: 0.6 * sp + 0.4 * sc };
+  };
+  let best = { score: 0, rank: -1, t: TFS[0]!, dx: 0, dy: 0 };
   for (const t of TFS) {
-    const bt = b.map((p) => apply(p, t));
+    const bt = b.map((p) => apply(p, t)), ct = sub(cb, 300).map((p) => apply(p, t));
     const votes = new Map<string, number>();
-    for (const pa of sampleA) for (const pb of bt) { const k = `${Math.round((pa[0] - pb[0]) / 0.2)},${Math.round((pa[1] - pb[1]) / 0.2)}`; votes.set(k, (votes.get(k) ?? 0) + 1); }
-    const top = [...votes.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3);
-    top.push(["0,0", 0]);
-    for (const [k] of top) {
-      const [ix, iy] = k.split(",").map(Number) as [number, number];
-      const dx = ix * 0.2, dy = iy * 0.2;
-      const score = matchFrac(aIdx, a.length, bt.map(([x, y]) => [x + dx, y + dy] as P2), tol);
-      if (score > best.score) best = { score, t, dx, dy };
+    for (const pa of sampleA) for (const pb of bt) { const k = `${Math.round((pa[0] - pb[0]) / 0.25)},${Math.round((pa[1] - pb[1]) / 0.25)}`; votes.set(k, (votes.get(k) ?? 0) + 1); }
+    const cands: P2[] = [[0, 0], ...[...votes.entries()].sort((x, y) => y[1] - x[1]).slice(0, 12).map(([k]) => k.split(",").map((v) => +v * 0.25) as P2)];
+    const scored = cands.map(([dx, dy]) => ({ dx, dy, ...scoreAt(bt, ct, dx, dy) })).sort((x, y) => y.s - x.s).slice(0, 3);
+    for (const c of scored) {
+      let cur = c;
+      for (let ix = -4; ix <= 4; ix++) for (let iy = -4; iy <= 4; iy++) {
+        if (!ix && !iy) continue;
+        const dx = c.dx + ix * 0.05, dy = c.dy + iy * 0.05, r = scoreAt(bt, ct, dx, dy);
+        if (r.s > cur.s) cur = { dx, dy, ...r };
+      }
+      if (cur.s > best.rank) best = { score: cur.sp, rank: cur.s, t, dx: r2(cur.dx), dy: r2(cur.dy) };
     }
   }
   return best;
@@ -213,28 +265,47 @@ function zoneMatch(a: P2[], bt: P2[], tol: number) {
   return { max, good };
 }
 
-/** Fraction of segments matched (midpoint within tol, same direction ±12°, width ±40%) after applying B's transform. */
-function traceMatch(a: NonNullable<Fingerprint["segs"]>, b: NonNullable<Fingerprint["segs"]>, t: Tf, dx: number, dy: number) {
-  if (!a.length || !b.length) return 0;
-  const tol = 0.6;
+/**
+ * Length-weighted fraction of trace pieces matched after applying B's transform.
+ * loose = centre line only (position ±0.4 mm, direction ±10°, same layer) — immune to trace-width camouflage;
+ * exact = also width ±25%. Also returns the best 3x3 zone match (partial / module copy).
+ */
+function traceMatch(a: Seg[], b: Seg[], t: Tf, dx: number, dy: number) {
+  const out = { loose: 0, exact: 0, zoneMax: 0, zones: 0 };
+  if (!a.length || !b.length) return out;
+  const tol = 0.4;
   const m = new Map<string, number[]>();
   a.forEach((s, i) => { const k = `${Math.floor(s[0] / tol)},${Math.floor(s[1] / tol)}`; (m.get(k) ?? m.set(k, []).get(k)!).push(i); });
   const rotA = (ang: number) => { let r = t.mirror ? 180 - ang : ang; r += t.rot; return ((r % 180) + 180) % 180; };
-  let hit = 0, wa = 0;
+  let hitL = 0, hitE = 0, wb = 0;
+  const pieces: { x: number; y: number; l: number; ok: boolean }[] = [];
   for (const s of b) {
     const [x, y] = apply([s[0], s[1]], t, dx, dy);
     const ang = rotA(s[2]);
     const cx = Math.floor(x / tol), cy = Math.floor(y / tol);
-    let ok = false;
-    for (let i = -1; i <= 1 && !ok; i++) for (let j = -1; j <= 1 && !ok; j++)
+    let loose = false, exact = false;
+    for (let i = -1; i <= 1 && !exact; i++) for (let j = -1; j <= 1 && !exact; j++)
       for (const k of m.get(`${cx + i},${cy + j}`) ?? []) {
         const q = a[k]!; const da = Math.abs(q[2] - ang); const dA = Math.min(da, 180 - da);
-        if (Math.abs(q[0] - x) <= tol && Math.abs(q[1] - y) <= tol && dA <= 12 && Math.abs(q[3] - s[3]) <= 0.4 * Math.max(q[3], s[3], 0.1)) { ok = true; break; }
+        if (Math.abs(q[0] - x) > tol || Math.abs(q[1] - y) > tol || dA > 10) continue;
+        if (q[5] != null && s[5] != null && q[5] !== s[5]) continue;
+        loose = true;
+        if (Math.abs(q[3] - s[3]) <= 0.25 * Math.max(q[3], s[3], 0.1)) { exact = true; break; }
       }
-    wa += s[4]; if (ok) hit += s[4];
+    wb += s[4]; if (loose) hitL += s[4]; if (exact) hitE += s[4];
+    pieces.push({ x, y, l: s[4], ok: loose });
   }
-  const la = a.reduce((x, s) => x + s[4], 0);
-  return hit / Math.max(la, wa, 1e-6);
+  const la = a.reduce((x, s) => x + s[4], 0), den = Math.max(la, wb, 1e-6);
+  out.loose = hitL / den; out.exact = hitE / den;
+  const xs = pieces.map((p) => p.x), ys = pieces.map((p) => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs) + 1e-6, y0 = Math.min(...ys), y1 = Math.max(...ys) + 1e-6;
+  const tot = new Array(9).fill(0), hit = new Array(9).fill(0);
+  for (const p of pieces) {
+    const z = Math.min(2, Math.floor(((p.x - x0) / (x1 - x0)) * 3)) + 3 * Math.min(2, Math.floor(((p.y - y0) / (y1 - y0)) * 3));
+    tot[z] += p.l; if (p.ok) hit[z] += p.l;
+  }
+  for (let z = 0; z < 9; z++) if (tot[z] >= Math.max(10, 0.06 * wb)) { const f = hit[z] / tot[z]; out.zoneMax = Math.max(out.zoneMax, f); if (f >= 0.85) out.zones++; }
+  return out;
 }
 
 /** Cheap check: boards whose pad/hole counts differ a lot cannot be copies — skips the costly alignment. */
@@ -242,18 +313,22 @@ export function prefilter(a: Fingerprint, b: Fingerprint) {
   return ratio(a.pads, b.pads) < 0.55 || ratio(a.holes || 1, b.holes || 1) < 0.55;
 }
 
+/** Mounting holes (≥2.8 mm) are identical on most boards of a series — excluded as boilerplate. */
+const MOUNT_D = 2.8;
+
 export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDetail {
   const global = Math.max(0, Math.min(1, globalSim(a, b)));
   const hasGeo = (a.padPts?.length ?? 0) >= 5 && (b.padPts?.length ?? 0) >= 5;
   const pf = hasGeo && prefilter(a, b);
   if (!hasGeo || pf) {
     const total = Math.round(global * (pf ? 600 : 1000)) / 10;
-    return { total, pads: 0, holes: 0, copper: 0, silk: 0, global: Math.round(global * 1000) / 10, prefiltered: pf, transform: { rot: 0, mirror: false, dx: 0, dy: 0 }, verdict: verdictOf(total) };
+    return { total, pads: 0, holes: 0, copper: 0, silk: 0, global: Math.round(global * 1000) / 10, prefiltered: pf, cls: "independent", transform: { rot: 0, mirror: false, dx: 0, dy: 0 }, verdict: verdictOf(total) };
   }
-  const al = align(a.padPts!, b.padPts!);
+  const segMid = (s?: Seg[]) => (s ?? []).map((x) => [x[0], x[1]] as P2);
+  const al = align(a.padPts!, b.padPts!, segMid(a.segs), segMid(b.segs));
   const tr = (pts: P2[] | undefined) => (pts ?? []).map((p) => apply(p, al.t, al.dx, al.dy));
-  const holesA = (a.holePts ?? []).map(([x, y]) => [x, y] as P2);
-  const holesB = tr((b.holePts ?? []).map(([x, y]) => [x, y] as P2));
+  const holesA = (a.holePts ?? []).filter((h) => h[2] < MOUNT_D).map(([x, y]) => [x, y] as P2);
+  const holesB = tr((b.holePts ?? []).filter((h) => h[2] < MOUNT_D).map(([x, y]) => [x, y] as P2));
   const holes = matchFrac(index(holesA, 0.25), holesA.length, holesB, 0.25);
   const copper = matchFrac(index(a.copperPts ?? [], 0.5), a.copperPts?.length ?? 0, tr(b.copperPts), 0.5);
   const silkA = a.silkPts ?? [], silkB = tr(b.silkPts);
@@ -263,16 +338,24 @@ export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDeta
   const comps = matchFrac(index(compA, 0.6), compA.length, compB, 0.6);
   const zm = zoneMatch(a.padPts!, tr(b.padPts), 0.25);
   const hasSegs = (a.segs?.length ?? 0) >= 5 && (b.segs?.length ?? 0) >= 5;
-  const traces = hasSegs ? traceMatch(a.segs!, b.segs!, al.t, al.dx, al.dy) : copper;
-  const cu = hasSegs ? 0.4 * copper + 0.6 * traces : copper;
+  const tm = hasSegs ? traceMatch(a.segs!, b.segs!, al.t, al.dx, al.dy) : { loose: copper, exact: copper, zoneMax: zm.max, zones: zm.good };
+  const schema = 0.4 * comps + 0.35 * al.score + 0.25 * holes;
+  const routing = tm.loose;
+  // Routing dominates: same schematic alone (same theme) must not look like a copy.
   const s = hasSilk
-    ? 0.25 * al.score + 0.15 * comps + 0.15 * holes + 0.2 * cu + 0.1 * silk + 0.15 * global
-    : 0.3 * al.score + 0.15 * comps + 0.15 * holes + 0.25 * cu + 0.15 * global;
+    ? 0.45 * routing + 0.15 * tm.exact + 0.2 * schema + 0.1 * silk + 0.1 * global
+    : 0.5 * routing + 0.15 * tm.exact + 0.25 * schema + 0.1 * global;
   const total = Math.round(Math.max(0, Math.min(1, s)) * 1000) / 10;
   const pct = (v: number) => Math.round(v * 1000) / 10;
+  const partial = routing < 0.75 && tm.zones >= 1 && tm.zoneMax >= 0.9 && (zm.max >= 0.85 || !hasSegs);
+  const cls: PairClass = routing >= 0.75
+    ? (hasSilk && silk < 0.2 ? "obfuscare" : "copiere_trasee")
+    : partial ? "copie_partiala"
+    : routing >= 0.4 ? "inspectie" : "independent";
   return {
     total, pads: pct(al.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global),
-    comps: pct(comps), traces: pct(traces), zoneMax: pct(zm.max), zones: zm.good, partial: total < 80 && zm.good >= 2 && zm.max >= 0.9,
+    comps: pct(comps), traces: pct(routing), schema: pct(schema), routing: pct(routing), routingExact: pct(tm.exact), routeZoneMax: pct(tm.zoneMax),
+    cls, zoneMax: pct(zm.max), zones: tm.zones, partial,
     transform: { rot: al.t.rot, mirror: al.t.mirror, dx: al.dx, dy: al.dy }, verdict: verdictOf(total),
   };
 }
