@@ -193,23 +193,37 @@ function matchFrac(aIdx: Map<string, P2[]>, na: number, b: P2[], tol: number) {
   return hit / Math.max(na, b.length);
 }
 
-/** Finds the rotation/mirror/translation that best overlays B's pads onto A's (offset voting, then exact match count). */
-function align(a: P2[], b: P2[]) {
+/**
+ * Finds the rotation/mirror/translation that best overlays B onto A.
+ * v5: candidates = outline-centred (0,0) + top 12 offset votes (pads + holes, larger sample),
+ * each refined on a 0.05 mm grid; score uses pads AND trace midpoints so a one-pitch (2.54 mm) shift
+ * that only lines up pin rows loses to the true alignment.
+ */
+function align(a: P2[], b: P2[], ca: P2[] = [], cb: P2[] = []) {
   const tol = 0.25;
-  const aIdx = index(a, tol);
-  const sampleA = sub(a, 40);
-  let best = { score: 0, t: TFS[0]!, dx: 0, dy: 0 };
+  const aIdx = index(a, tol), cIdx = index(ca, 0.5);
+  const sampleA = sub(a, 150);
+  const scoreAt = (bt: P2[], ct: P2[], dx: number, dy: number) => {
+    const sp = matchFrac(aIdx, a.length, bt.map(([x, y]) => [x + dx, y + dy] as P2), tol);
+    if (ca.length < 5 || ct.length < 5) return { sp, s: sp };
+    const sc = matchFrac(cIdx, ca.length, ct.map(([x, y]) => [x + dx, y + dy] as P2), 0.5);
+    return { sp, s: 0.6 * sp + 0.4 * sc };
+  };
+  let best = { score: 0, rank: -1, t: TFS[0]!, dx: 0, dy: 0 };
   for (const t of TFS) {
-    const bt = b.map((p) => apply(p, t));
+    const bt = b.map((p) => apply(p, t)), ct = sub(cb, 300).map((p) => apply(p, t));
     const votes = new Map<string, number>();
-    for (const pa of sampleA) for (const pb of bt) { const k = `${Math.round((pa[0] - pb[0]) / 0.2)},${Math.round((pa[1] - pb[1]) / 0.2)}`; votes.set(k, (votes.get(k) ?? 0) + 1); }
-    const top = [...votes.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3);
-    top.push(["0,0", 0]);
-    for (const [k] of top) {
-      const [ix, iy] = k.split(",").map(Number) as [number, number];
-      const dx = ix * 0.2, dy = iy * 0.2;
-      const score = matchFrac(aIdx, a.length, bt.map(([x, y]) => [x + dx, y + dy] as P2), tol);
-      if (score > best.score) best = { score, t, dx, dy };
+    for (const pa of sampleA) for (const pb of bt) { const k = `${Math.round((pa[0] - pb[0]) / 0.25)},${Math.round((pa[1] - pb[1]) / 0.25)}`; votes.set(k, (votes.get(k) ?? 0) + 1); }
+    const cands: P2[] = [[0, 0], ...[...votes.entries()].sort((x, y) => y[1] - x[1]).slice(0, 12).map(([k]) => k.split(",").map((v) => +v * 0.25) as P2)];
+    const scored = cands.map(([dx, dy]) => ({ dx, dy, ...scoreAt(bt, ct, dx, dy) })).sort((x, y) => y.s - x.s).slice(0, 3);
+    for (const c of scored) {
+      let cur = c;
+      for (let ix = -4; ix <= 4; ix++) for (let iy = -4; iy <= 4; iy++) {
+        if (!ix && !iy) continue;
+        const dx = c.dx + ix * 0.05, dy = c.dy + iy * 0.05, r = scoreAt(bt, ct, dx, dy);
+        if (r.s > cur.s) cur = { dx, dy, ...r };
+      }
+      if (cur.s > best.rank) best = { score: cur.sp, rank: cur.s, t, dx: r2(cur.dx), dy: r2(cur.dy) };
     }
   }
   return best;
