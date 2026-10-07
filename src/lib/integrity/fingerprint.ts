@@ -30,7 +30,7 @@ export interface Fingerprint {
   /** Reference point used to centre all point sets (outline centre in v4, copper centroid before). */
   centroid?: P2;
   /** v4: board outline size (mm). */
-  board?: P2;
+  board?: P2 | undefined;
 }
 
 /** Automatic pre-classification — replaces the generic "undecided" state. */
