@@ -1,13 +1,16 @@
 import type { Layer } from "@/lib/gerber/types";
+import { outlineBBox } from "@/lib/gerber/parser";
 import { extractTextBlocks } from "@/lib/silk/extract";
 
-export const FP_VERSION = 3;
+export const FP_VERSION = 4;
 /** Bump when similarityDetail changes so cached pair scores are recomputed. */
-export const PAIR_VERSION = 4;
+export const PAIR_VERSION = 5;
 
 type P2 = [number, number];
+/** [midX, midY, angle 0..180°, width, length, layer 0=top 1=bottom] */
+type Seg = [number, number, number, number, number, number?];
 
-/** Layout fingerprint used for similarity checks between submissions. Point sets are centred on the copper centroid. */
+/** Layout fingerprint used for similarity checks between submissions. Point sets are centred on the board outline centre. */
 export interface Fingerprint {
   v?: number;
   pads: number;
@@ -19,16 +22,19 @@ export interface Fingerprint {
   /** Radial copper density around board centroid (8 rings) — rotation invariant. */
   radial: number[];
   copperLen: number;
-  /** v2: centred point sets used for geometric alignment (rotation 0/90/180/270, mirror, translation). */
   padPts?: P2[];
   holePts?: [number, number, number][];
   copperPts?: P2[];
   silkPts?: P2[];
-  /** v3: centred trace segments [midX, midY, angle 0..180°, width, length]. */
-  segs?: [number, number, number, number, number][];
-  /** v3: copper centroid used to centre all point sets (for real-Gerber overlay). */
+  segs?: Seg[];
+  /** Reference point used to centre all point sets (outline centre in v4, copper centroid before). */
   centroid?: P2;
+  /** v4: board outline size (mm). */
+  board?: P2;
 }
+
+/** Automatic pre-classification — replaces the generic "undecided" state. */
+export type PairClass = "copiere_trasee" | "obfuscare" | "copie_partiala" | "inspectie" | "independent";
 
 export interface SimilarityDetail {
   total: number;
@@ -37,21 +43,39 @@ export interface SimilarityDetail {
   copper: number;
   silk: number;
   global: number;
-  /** v3: component placement match (pads clustered into parts). */
   comps?: number;
-  /** v4: trace segments matched by position + direction + width. */
   traces?: number;
-  /** v3: best 3x3 zone match of A's pads (catches partial copies). */
+  /** v5: same parts / same schematic (pads, components, holes without mounting holes). */
+  schema?: number;
+  /** v5: copper routing match, width-independent (centre lines). */
+  routing?: number;
+  /** v5: routing match with width too (exact copy). */
+  routingExact?: number;
+  /** v5: best 3x3 zone routing match. */
+  routeZoneMax?: number;
+  cls?: PairClass;
   zoneMax?: number;
-  /** v3: number of zones (with ≥4 pads) matched ≥85%. */
   zones?: number;
-  /** v3: a region is copied although the whole board differs. */
   partial?: boolean;
-  /** v3: pair skipped by the cheap pre-filter (sizes too different). */
   prefiltered?: boolean;
-  /** Best transform: rotation in degrees, mirror flag, translation applied to B. */
   transform: { rot: number; mirror: boolean; dx: number; dy: number };
   verdict: "identic" | "foarte_similar" | "similar" | "diferit";
+}
+
+export const CLASS_LABEL: Record<PairClass, string> = {
+  copiere_trasee: "Copiere trasee",
+  obfuscare: "Copie camuflată",
+  copie_partiala: "Copie parțială",
+  inspectie: "De inspectat",
+  independent: "Rutare independentă",
+};
+export const CLASS_RANK: Record<PairClass, number> = { copiere_trasee: 4, obfuscare: 4, copie_partiala: 3, inspectie: 2, independent: 0 };
+
+/** Legacy pairs (no cls) are classified from what they have. */
+export function classOf(d: SimilarityDetail): PairClass {
+  if (d.cls) return d.cls;
+  const r = d.traces ?? d.copper;
+  return r >= 75 ? "copiere_trasee" : d.partial ? "copie_partiala" : r >= 40 || d.total >= 85 ? "inspectie" : "independent";
 }
 
 const DIST_BINS = 120;
@@ -70,8 +94,9 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   const pts: P2[] = [];
   let copperLen = 0;
   const segs: [number, number, number][] = [];
-  const segFull: [number, number, number, number, number][] = [];
+  const segFull: [number, number, number, number, number, number][] = [];
   for (const l of copper) {
+    const ly = l.kind === "bottom_copper" ? 1 : 0;
     for (const p of l.primitives) {
       if (p.clear) continue;
       if (p.t === "flash") pts.push([p.x, p.y]);
@@ -79,7 +104,14 @@ export function fingerprint(layers: Layer[]): Fingerprint {
         const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1);
         copperLen += len;
         segs.push([(p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, len]);
-        if (len > 0.3) segFull.push([(p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, ((Math.atan2(p.y2 - p.y1, p.x2 - p.x1) * 180) / Math.PI + 360) % 180, p.w, len]);
+        // Long segments are split into ~2 mm pieces so a partly re-routed trace still matches partly.
+        if (len > 0.3) {
+          const n = Math.max(1, Math.round(len / 2)), ang = ((Math.atan2(p.y2 - p.y1, p.x2 - p.x1) * 180) / Math.PI + 360) % 180;
+          for (let k = 0; k < n; k++) {
+            const t = (k + 0.5) / n;
+            segFull.push([p.x1 + (p.x2 - p.x1) * t, p.y1 + (p.y2 - p.y1) * t, ang, p.w, len / n, ly]);
+          }
+        }
       }
     }
   }
