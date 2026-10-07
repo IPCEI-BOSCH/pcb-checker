@@ -7,7 +7,7 @@ import { ShieldAlert, BarChart3, Play, Download, Eye, Bell, Star, X } from "luci
 import { supabase } from "@/integrations/supabase/client";
 import { fetchStructure, seriesLabel, sortSeriesByYear } from "@/lib/data";
 import { adjustPair, seriesBaseline, type Adjusted } from "@/lib/integrity/adjust";
-import { FP_VERSION, PAIR_VERSION, VERDICT_LABEL, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { FP_VERSION, PAIR_VERSION, VERDICT_LABEL, CLASS_LABEL, CLASS_RANK, classOf, type PairClass, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
 import { createIntegrityPool } from "@/lib/integrity/pool";
 import type { DrcReport } from "@/lib/drc/engine";
 import type { Json } from "@/integrations/supabase/types";
@@ -84,6 +84,7 @@ function Insights() {
   const [threshold, setThreshold] = useState(80);
   const [sameThemeThreshold, setSameThemeThreshold] = useState(92);
   const [hideFp, setHideFp] = useState(true);
+  const [clsFilter, setClsFilter] = useState<"suspect" | "all" | PairClass>("suspect");
   const current = allSeries.find((s) => s.id === seriesId);
   const compareIds = useMemo(() => {
     if (!current) return [];
@@ -297,13 +298,22 @@ function Insights() {
   }, [allPairs]);
 
   const scoreOf = (p: Pair) => (useAdjusted ? p.adj?.adjusted ?? p.d.total : p.d.total);
+  const classCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const p of allPairs) { const k = classOf(p.d); c[k] = (c[k] ?? 0) + 1; }
+    return c;
+  }, [allPairs]);
   const abovePairs = useMemo(() => allPairs.filter((p) => {
-    const same = p.a.theme === p.b.theme && p.a.theme !== "—";
-    const pass = useAdjusted ? (p.adj!.adjusted >= adjThreshold && p.d.total >= (same ? 70 : 60)) || !!p.d.partial || p.d.total >= (same ? sameThemeThreshold : threshold) : p.d.total >= (same ? sameThemeThreshold : threshold);
-    if (!pass) return false;
+    const cls = classOf(p.d);
+    if (clsFilter === "suspect") { if (cls === "independent") return false; if (cls === "inspectie" && p.d.total < 50 && (p.adj?.adjusted ?? 0) < adjThreshold) return false; }
+    else if (clsFilter === "all") {
+      const same = p.a.theme === p.b.theme && p.a.theme !== "—";
+      const pass = useAdjusted ? (p.adj!.adjusted >= adjThreshold && p.d.total >= (same ? 70 : 60)) || !!p.d.partial || p.d.total >= (same ? sameThemeThreshold : threshold) : p.d.total >= (same ? sameThemeThreshold : threshold);
+      if (!pass && cls === "independent") return false;
+    } else if (cls !== clsFilter) return false;
     if (hideFp && reviews.data?.get(pairKey(p.a.studentId, p.b.studentId))?.status === "false_positive") return false;
     return true;
-  }).sort((x, y) => scoreOf(y) - scoreOf(x) || y.d.total - x.d.total), [allPairs, threshold, sameThemeThreshold, hideFp, reviews.data, useAdjusted, adjThreshold]);
+  }).sort((x, y) => CLASS_RANK[classOf(y.d)] - CLASS_RANK[classOf(x.d)] || (y.d.routing ?? y.d.traces ?? 0) - (x.d.routing ?? x.d.traces ?? 0) || scoreOf(y) - scoreOf(x)), [allPairs, threshold, sameThemeThreshold, hideFp, reviews.data, useAdjusted, adjThreshold, clsFilter]);
   const belowOnly = !abovePairs.length && allPairs.length > 0;
   const pairs = useMemo(() => belowOnly ? [...allPairs].sort((x, y) => y.d.total - x.d.total).slice(0, 15) : abovePairs, [belowOnly, allPairs, abovePairs]);
 
