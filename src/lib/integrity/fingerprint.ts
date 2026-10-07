@@ -100,6 +100,11 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   const radial = new Array(RINGS).fill(0);
   for (const s of segs) radial[Math.min(RINGS - 1, Math.floor((Math.hypot(s[0] - cx, s[1] - cy) / maxR) * RINGS))] += s[2];
   for (const p of pts) radial[Math.min(RINGS - 1, Math.floor((Math.hypot(p[0] - cx, p[1] - cy) / maxR) * RINGS))] += 1;
+  // v4: point sets are centred on the board outline centre (stable reference) — falls back to the copper centroid.
+  const outl = layers.find((l) => l.kind === "outline");
+  const ob = outl ? outlineBBox(outl) : null;
+  const okBox = ob && ob.maxX - ob.minX > 3 && ob.maxY - ob.minY > 3 && ob.maxX - ob.minX < 300;
+  const ox = okBox ? (ob!.minX + ob!.maxX) / 2 : cx, oy = okBox ? (ob!.minY + ob!.maxY) / 2 : cy;
   const silk = [...extractTextBlocks(layers.find((l) => l.kind === "top_silk")), ...extractTextBlocks(layers.find((l) => l.kind === "bottom_silk"))];
   return {
     v: FP_VERSION,
@@ -109,12 +114,13 @@ export function fingerprint(layers: Layer[]): Fingerprint {
     drill: norm(drill),
     radial: norm(radial),
     copperLen,
-    padPts: sub(pts, 400).map(([x, y]) => [r2(x - cx), r2(y - cy)]),
-    holePts: sub(holes, 400).map((h) => [r2(h.x - cx), r2(h.y - cy), r2(h.d)]),
-    copperPts: sub(segs, 600).map(([x, y]) => [r2(x - cx), r2(y - cy)]),
-    silkPts: silk.slice(0, 150).map((b) => [r2(b.x - cx), r2(b.y - cy)]),
-    segs: sub(segFull, 800).map(([x, y, a, w, l]) => [r2(x - cx), r2(y - cy), Math.round(a), r2(w), r2(l)]),
-    centroid: [cx, cy],
+    padPts: sub(pts, 400).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
+    holePts: sub(holes, 400).map((h) => [r2(h.x - ox), r2(h.y - oy), r2(h.d)]),
+    copperPts: sub(segs, 600).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
+    silkPts: silk.slice(0, 150).map((b) => [r2(b.x - ox), r2(b.y - oy)]),
+    segs: sub(segFull, 1000).map(([x, y, a, w, l, ly]) => [r2(x - ox), r2(y - oy), Math.round(a), r2(w), r2(l), ly]),
+    centroid: [ox, oy],
+    board: okBox ? [r2(ob!.maxX - ob!.minX), r2(ob!.maxY - ob!.minY)] : undefined,
   };
 }
 
