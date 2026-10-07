@@ -445,7 +445,7 @@ function Insights() {
           <Card>
             <CardHeader><CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /> Integritate academică — amprentă layout</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">Plăcile sunt suprapuse automat (rotire 0/90/180/270°, oglindire, mutare) și se măsoară cât coincid pad-urile, găurile, traseele și textele. Scorul este un indiciu care merită verificat manual, nu o dovadă. Rezultatele sunt vizibile doar cadrelor didactice.</p>
+              <p className="text-sm text-muted-foreground">Plăcile sunt aliniate după contur (rotire 0/90/180/270°, oglindire, mutare fină). „Schemă” arată cât seamănă piesele (normal la aceeași temă); „Rutare” arată cât coincid traseele de cupru, indiferent de grosime — aceasta e dovada reală de copiere. Fiecare pereche primește automat o clasificare; perechile cu rutare independentă sunt ascunse implicit. Scorul rămâne un indiciu pentru verificare manuală. Vizibil doar cadrelor didactice. După actualizare apasă „Recalculează tot”.</p>
               <div className="flex flex-wrap items-center gap-4">
                 <label className="flex items-center gap-2 text-sm"><Switch checked={withHistory} onCheckedChange={setWithHistory} aria-label="Include anii anteriori" /> Aceeași serie din anii anteriori</label>
                 <label className="flex items-center gap-2 text-sm">Prag teme diferite <Input type="number" className="w-20" value={threshold} min={40} max={100} onChange={(e) => setThreshold(+e.target.value || 80)} /> %</label>

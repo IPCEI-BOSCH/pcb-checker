@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { loadGerberZip } from "@/lib/gerber/load";
 import type { Layer, LayerKind, Primitive } from "@/lib/gerber/types";
-import { fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { fingerprint, CLASS_LABEL, classOf, type SimilarityDetail } from "@/lib/integrity/fingerprint";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Printer, RotateCcw } from "lucide-react";
+import { FlipHorizontal, Printer, RotateCcw, RotateCw } from "lucide-react";
 
 type Side = { name: string; zipPath: string | null; meta?: string };
 type Mode = "overlay" | "side" | "blink";
@@ -22,42 +22,68 @@ const GROUPS: { id: Group; label: string; kinds: LayerKind[] }[] = [
 const COL_A = "#00e5ff", COL_B = "#ff2bd6";
 
 type Tf = SimilarityDetail["transform"];
-type Loaded = { layers: Layer[]; c: [number, number] };
+type Loaded = { layers: Layer[]; c: [number, number]; area: number };
+type View = { s: number; ox: number; oy: number };
 
 async function loadSide(path: string | null): Promise<Loaded | null> {
   if (!path) return null;
   const { data, error } = await supabase.storage.from("gerbers").download(path);
   if (error || !data) throw new Error(error?.message ?? "Arhivă indisponibilă");
   const layers = await loadGerberZip(data);
-  const c = fingerprint(layers).centroid ?? [0, 0];
-  return { layers, c: c as [number, number] };
+  const fp = fingerprint(layers);
+  const c = (fp.centroid ?? [0, 0]) as [number, number];
+  const area = fp.board ? fp.board[0] * fp.board[1] : 1600;
+  return { layers, c, area };
 }
 
-/** Maps a raw board coordinate to the common frame: centre on own centroid, then (for B) rotate/mirror/translate. */
-function mapper(c: [number, number], t?: Tf) {
+const ROT = (r: number) => (r === 0 ? [1, 0] : r === 90 ? [0, 1] : r === 180 ? [-1, 0] : [0, -1]) as [number, number];
+
+/** Raw board coordinate → common frame: centre on own reference, then (for B) pair transform, then manual tweak. */
+function mapper(c: [number, number], t?: Tf, extra?: Tf) {
+  const step = (px: number, py: number, tf: Tf): [number, number] => {
+    if (tf.mirror) px = -px;
+    const [co, si] = ROT(tf.rot);
+    return [px * co - py * si + tf.dx, px * si + py * co + tf.dy];
+  };
   return (x: number, y: number): [number, number] => {
-    let px = x - c[0], py = y - c[1];
-    if (!t) return [px, py];
-    if (t.mirror) px = -px;
-    const [co, si] = t.rot === 0 ? [1, 0] : t.rot === 90 ? [0, 1] : t.rot === 180 ? [-1, 0] : [0, -1];
-    return [px * co - py * si + t.dx, px * si + py * co + t.dy];
+    let p: [number, number] = [x - c[0], y - c[1]];
+    if (t) p = step(p[0], p[1], t);
+    if (extra) p = step(p[0], p[1], extra);
+    return p;
   };
 }
 
-function drawBoard(ctx: CanvasRenderingContext2D, d: Loaded, groups: Set<Group>, color: string, t: Tf | undefined, view: { s: number; ox: number; oy: number }) {
-  const m = mapper(d.c, t);
+function polyArea(pts: [number, number][]) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i]!, [x2, y2] = pts[(i + 1) % pts.length]!; a += x1 * y2 - x2 * y1; }
+  return Math.abs(a / 2);
+}
+
+/**
+ * Draws one board into its own offscreen layer: dark primitives add copper, clear-polarity
+ * primitives (LPC / pour cut-outs) erase it with destination-out, regions use even-odd fill.
+ * Each layer group is rendered separately so a clearance on TOP never erases BOTTOM.
+ */
+function renderBoard(W: number, H: number, dpr: number, d: Loaded, groups: Set<Group>, color: string, t: Tf | undefined, extra: Tf | undefined, view: View, hidePours: boolean) {
+  const out = document.createElement("canvas"); out.width = W * dpr; out.height = H * dpr;
+  const octx = out.getContext("2d")!;
+  const m = mapper(d.c, t, extra);
   const P = (x: number, y: number) => { const [a, b] = m(x, y); return [view.ox + a * view.s, view.oy - b * view.s] as const; };
-  const rotSwap = t && (t.rot === 90 || t.rot === 270);
-  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  const totRot = ((t?.rot ?? 0) + (extra?.rot ?? 0)) % 180;
+  const rotSwap = totRot === 90;
+  const bigPour = d.area * 0.12;
   for (const g of GROUPS) {
     if (!groups.has(g.id)) continue;
+    const lc = document.createElement("canvas"); lc.width = out.width; lc.height = out.height;
+    const ctx = lc.getContext("2d")!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineCap = "round"; ctx.lineJoin = "round";
     for (const l of d.layers.filter((x) => g.kinds.includes(x.kind))) {
-      ctx.globalAlpha = g.id === "silk" ? 0.6 : g.id === "outline" ? 0.9 : 0.85;
       for (const p of l.primitives as Primitive[]) {
-        if (p.clear) continue;
+        if (hidePours && p.t === "region" && !p.clear && polyArea(p.pts) > bigPour) continue;
+        ctx.globalCompositeOperation = p.clear ? "destination-out" : "source-over";
         if (p.t === "line") {
           const [a, b] = P(p.x1, p.y1), [c, e] = P(p.x2, p.y2);
-          ctx.lineWidth = Math.max(1, (g.id === "outline" ? Math.max(p.w, 0.15) : p.w) * view.s);
+          ctx.lineWidth = Math.max(p.clear ? 0.5 : 1, (g.id === "outline" ? Math.max(p.w, 0.15) : p.w) * view.s);
           ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, e); ctx.stroke();
         } else if (p.t === "flash") {
           const [x, y] = P(p.x, p.y);
@@ -70,27 +96,40 @@ function drawBoard(ctx: CanvasRenderingContext2D, d: Loaded, groups: Set<Group>,
         } else if (p.t === "region" && p.pts.length > 2) {
           ctx.beginPath();
           p.pts.forEach(([x0, y0], i) => { const [x, y] = P(x0, y0); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
-          ctx.closePath(); ctx.fill();
+          ctx.closePath(); ctx.fill("evenodd");
         }
       }
-      if (g.id === "drill") {
-        ctx.lineWidth = Math.max(1, 0.12 * view.s);
-        for (const h of l.holes) { const [x, y] = P(h.x, h.y); ctx.beginPath(); ctx.arc(x, y, Math.max(1, (h.d / 2) * view.s), 0, Math.PI * 2); ctx.stroke(); }
+    }
+    // Drilled holes punch through copper, then are outlined so they stay visible.
+    if (g.id === "top" || g.id === "bottom" || g.id === "drill") {
+      const holes = d.layers.filter((x) => x.kind === "drill").flatMap((x) => x.holes);
+      for (const h of holes) {
+        const [x, y] = P(h.x, h.y), r = Math.max(1, (h.d / 2) * view.s);
+        if (g.id !== "drill") { ctx.globalCompositeOperation = "destination-out"; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+        else { ctx.globalCompositeOperation = "source-over"; ctx.lineWidth = Math.max(1, 0.12 * view.s); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); }
       }
     }
+    octx.globalAlpha = g.id === "silk" ? 0.6 : g.id === "outline" ? 0.9 : 0.85;
+    octx.globalCompositeOperation = "lighter";
+    octx.drawImage(lc, 0, 0);
   }
-  ctx.globalAlpha = 1;
+  return out;
 }
 
 function extent(d: Loaded | null, t?: Tf) {
   if (!d) return 10;
   const m = mapper(d.c, t); let e = 5;
-  for (const l of d.layers) for (const p of l.primitives) {
-    const pts: [number, number][] = p.t === "line" ? [[p.x1, p.y1], [p.x2, p.y2]] : p.t === "flash" ? [[p.x, p.y]] : p.pts;
-    for (const [x, y] of pts) { const [a, b] = m(x, y); e = Math.max(e, Math.abs(a), Math.abs(b)); }
+  for (const l of d.layers) {
+    if (l.kind !== "outline" && l.kind !== "top_copper" && l.kind !== "bottom_copper") continue;
+    for (const p of l.primitives) {
+      const pts: [number, number][] = p.t === "line" ? [[p.x1, p.y1], [p.x2, p.y2]] : p.t === "flash" ? [[p.x, p.y]] : p.pts;
+      for (const [x, y] of pts) { const [a, b] = m(x, y); e = Math.max(e, Math.abs(a), Math.abs(b)); }
+    }
   }
   return Math.min(e, 200);
 }
+
+const ID: Tf = { rot: 0, mirror: false, dx: 0, dy: 0 };
 
 export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; detail: SimilarityDetail }) {
   const [da, setDa] = useState<Loaded | null>(null);
@@ -100,15 +139,19 @@ export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; det
   const [mode, setMode] = useState<Mode>("overlay");
   const [mix, setMix] = useState(50);
   const [groups, setGroups] = useState<Set<Group>>(new Set(["top", "bottom", "drill", "outline"]));
+  const [hidePours, setHidePours] = useState(false);
   const [blinkB, setBlinkB] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<[number, number]>([0, 0]);
+  const [extra, setExtra] = useState<Tf>(ID);
+  const [cross, setCross] = useState<[number, number] | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
   const drag = useRef<[number, number] | null>(null);
 
   useEffect(() => {
     let off = false;
-    setBusy(true); setErr(null); setDa(null); setDb(null);
+    setBusy(true); setErr(null); setDa(null); setDb(null); setExtra(ID);
     Promise.all([loadSide(a.zipPath), loadSide(b.zipPath)])
       .then(([x, y]) => { if (!off) { setDa(x); setDb(y); if (!x || !y) setErr("Una dintre predări nu are arhivă ZIP stocată."); } })
       .catch((e) => !off && setErr((e as Error).message))
@@ -118,54 +161,72 @@ export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; det
 
   useEffect(() => {
     if (mode !== "blink") return;
-    const id = setInterval(() => setBlinkB((v) => !v), 700);
+    const id = setInterval(() => setBlinkB((v) => !v), 600);
     return () => clearInterval(id);
   }, [mode]);
 
   const ext = useMemo(() => Math.max(extent(da), extent(db, detail.transform)) + 2, [da, db, detail.transform]);
+  const manual = extra.rot || extra.mirror || extra.dx || extra.dy ? extra : undefined;
 
   useEffect(() => {
     const cv = canvas.current; if (!cv || !da || !db) return;
     const W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
     cv.width = W * dpr; cv.height = H * dpr;
-    const ctx = cv.getContext("2d")!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = "#05070a"; ctx.fillRect(0, 0, W, H);
+    const ctx = cv.getContext("2d")!; ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#05070a"; ctx.fillRect(0, 0, cv.width, cv.height);
     if (mode === "side") {
       const half = W / 2, s = (Math.min(half, H) / (2 * ext)) * zoom;
-      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, half - 1, H); ctx.clip();
-      drawBoard(ctx, da, groups, COL_A, undefined, { s, ox: half / 2 + pan[0], oy: H / 2 + pan[1] }); ctx.restore();
-      ctx.save(); ctx.beginPath(); ctx.rect(half + 1, 0, half, H); ctx.clip();
-      drawBoard(ctx, db, groups, COL_B, detail.transform, { s, ox: half * 1.5 + pan[0], oy: H / 2 + pan[1] }); ctx.restore();
-      ctx.fillStyle = "#333"; ctx.fillRect(half - 1, 0, 2, H);
+      const ia = renderBoard(W, H, dpr, da, groups, COL_A, undefined, undefined, { s, ox: half / 2 + pan[0], oy: H / 2 + pan[1] }, hidePours);
+      const ib = renderBoard(W, H, dpr, db, groups, COL_B, detail.transform, manual, { s, ox: half * 1.5 + pan[0], oy: H / 2 + pan[1] }, hidePours);
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, (half - 1) * dpr, H * dpr); ctx.clip(); ctx.drawImage(ia, 0, 0); ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.rect((half + 1) * dpr, 0, half * dpr, H * dpr); ctx.clip(); ctx.drawImage(ib, 0, 0); ctx.restore();
+      ctx.fillStyle = "#333"; ctx.fillRect((half - 1) * dpr, 0, 2 * dpr, H * dpr);
+      if (cross) {
+        // Linked crosshair: same board point in both halves.
+        const lx = cross[0] < half ? cross[0] : cross[0] - half;
+        ctx.strokeStyle = "#ffffff"; ctx.globalAlpha = 0.6; ctx.lineWidth = dpr;
+        for (const x of [lx, lx + half]) { ctx.beginPath(); ctx.moveTo(x * dpr, 0); ctx.lineTo(x * dpr, H * dpr); ctx.stroke(); }
+        ctx.beginPath(); ctx.moveTo(0, cross[1] * dpr); ctx.lineTo(W * dpr, cross[1] * dpr); ctx.stroke(); ctx.globalAlpha = 1;
+      }
       return;
     }
     const s = (Math.min(W, H) / (2 * ext)) * zoom, view = { s, ox: W / 2 + pan[0], oy: H / 2 + pan[1] };
     ctx.globalCompositeOperation = "lighter";
-    if (mode === "blink") drawBoard(ctx, blinkB ? db : da, groups, blinkB ? COL_B : COL_A, blinkB ? detail.transform : undefined, view);
-    else {
-      const tmp = document.createElement("canvas"); tmp.width = cv.width; tmp.height = cv.height;
-      const t2 = tmp.getContext("2d")!; t2.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawBoard(t2, da, groups, COL_A, undefined, view);
-      ctx.globalAlpha = Math.min(1, (100 - mix) / 50); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(tmp, 0, 0);
-      t2.setTransform(1, 0, 0, 1, 0, 0); t2.clearRect(0, 0, tmp.width, tmp.height); t2.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawBoard(t2, db, groups, COL_B, detail.transform, view);
-      ctx.globalAlpha = Math.min(1, mix / 50); ctx.drawImage(tmp, 0, 0);
+    if (mode === "blink") {
+      ctx.drawImage(blinkB ? renderBoard(W, H, dpr, db, groups, COL_B, detail.transform, manual, view, hidePours) : renderBoard(W, H, dpr, da, groups, COL_A, undefined, undefined, view, hidePours), 0, 0);
+    } else {
+      ctx.globalAlpha = Math.min(1, (100 - mix) / 50);
+      ctx.drawImage(renderBoard(W, H, dpr, da, groups, COL_A, undefined, undefined, view, hidePours), 0, 0);
+      ctx.globalAlpha = Math.min(1, mix / 50);
+      ctx.drawImage(renderBoard(W, H, dpr, db, groups, COL_B, detail.transform, manual, view, hidePours), 0, 0);
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-  }, [da, db, groups, mode, mix, blinkB, zoom, pan, ext, detail.transform]);
+  }, [da, db, groups, mode, mix, blinkB, zoom, pan, ext, detail.transform, manual, hidePours, cross]);
 
   const toggle = (g: Group) => setGroups((s) => { const n = new Set(s); if (n.has(g)) n.delete(g); else n.add(g); return n; });
+  const nudge = (dx: number, dy: number) => setExtra((e) => ({ ...e, dx: Math.round((e.dx + dx) * 100) / 100, dy: Math.round((e.dy + dy) * 100) / 100 }));
+
+  const onKey = (e: React.KeyboardEvent) => {
+    const st = e.shiftKey ? 1 : 0.2;
+    if (e.key === "ArrowLeft") nudge(-st, 0); else if (e.key === "ArrowRight") nudge(st, 0);
+    else if (e.key === "ArrowUp") nudge(0, st); else if (e.key === "ArrowDown") nudge(0, -st);
+    else if (e.key === " ") setMode((m) => (m === "blink" ? "overlay" : "blink"));
+    else return;
+    e.preventDefault();
+  };
 
   const print = () => {
     const img = canvas.current?.toDataURL("image/png"); if (!img) return;
     const w = window.open("", "_blank"); if (!w) return;
     const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
     const row = (k: string, v: string | number | undefined) => `<tr><td>${esc(k)}</td><td><b>${esc(String(v ?? "—"))}</b></td></tr>`;
-    w.document.write(`<!doctype html><html><head><title>Fișă integritate PCB</title><style>body{font-family:system-ui,sans-serif;margin:18mm;color:#111}h1{font-size:18px}table{border-collapse:collapse;width:100%;font-size:12px}td{border:1px solid #ccc;padding:4px 6px}img{width:100%;border:1px solid #999;margin:10px 0;background:#05070a}.sig{margin-top:30px;display:flex;justify-content:space-between;font-size:12px}@page{size:A4}</style></head><body>
-<h1>Fișă de verificare a integrității — layout PCB</h1>
+    w.document.write(`<!doctype html><html><head><title>Fișă integritate PCB</title><style>body{font-family:system-ui,sans-serif;margin:16mm;color:#111}h1{font-size:17px;margin:0}h2{font-size:12px;font-weight:normal;margin:2px 0 10px}table{border-collapse:collapse;width:100%;font-size:12px}td{border:1px solid #ccc;padding:4px 6px}img{width:100%;border:1px solid #999;margin:10px 0;background:#05070a}.sig{margin-top:30px;display:flex;justify-content:space-between;font-size:12px}@page{size:A4}</style></head><body>
+<h1>Universitatea Națională de Știință și Tehnologie POLITEHNICA București</h1>
+<h2>Facultatea de Electronică, Telecomunicații și Tehnologia Informației — Fișă de verificare a integrității layout-ului PCB</h2>
 <p style="font-size:12px">Generată: ${new Date().toLocaleString("ro-RO")}. Scorul este un indiciu pentru verificare umană, nu o probă automată.</p>
 <table>${row("Proiect A (cyan)", a.name + (a.meta ? " · " + a.meta : ""))}${row("Proiect B (magenta)", b.name + (b.meta ? " · " + b.meta : ""))}
-${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${row("Trasee (direcție+lățime) %", detail.traces)}${row("Cupru %", detail.copper)}${row("Componente %", detail.comps)}${row("Găuri %", detail.holes)}${row("Serigrafie %", detail.silk)}${row("Zonă max % / zone copiate", `${detail.zoneMax ?? "—"} / ${detail.zones ?? "—"}`)}${row("Copie parțială", detail.partial ? "da" : "nu")}${row("Transformare B", `${detail.transform.rot}°${detail.transform.mirror ? ", oglindit" : ""}, Δ ${detail.transform.dx.toFixed(1)}/${detail.transform.dy.toFixed(1)} mm`)}</table>
+${row("Clasificare automată", CLASS_LABEL[classOf(detail)])}${row("Rutare trasee % (fără grosime)", detail.routing ?? detail.traces)}${row("Rutare exactă % (cu grosime)", detail.routingExact)}${row("Schemă / piese %", detail.schema)}${row("Cea mai copiată zonă de trasee %", detail.routeZoneMax)}
+${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${row("Componente %", detail.comps)}${row("Găuri % (fără găuri de prindere)", detail.holes)}${row("Serigrafie %", detail.silk)}${row("Transformare B", `${detail.transform.rot}°${detail.transform.mirror ? ", oglindit" : ""}, Δ ${detail.transform.dx.toFixed(2)}/${detail.transform.dy.toFixed(2)} mm`)}${manual ? row("Ajustare manuală", `${extra.rot}°${extra.mirror ? ", oglindit" : ""}, Δ ${extra.dx}/${extra.dy} mm`) : ""}</table>
 <img src="${img}" alt="Suprapunere"/>
 <div class="sig"><span>Cadru didactic: ____________________</span><span>Semnătură: ____________</span></div>
 <script>onload=()=>print()</script></body></html>`);
@@ -173,7 +234,7 @@ ${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" ref={wrap}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {(["overlay", "side", "blink"] as Mode[]).map((m) => (
           <Button key={m} size="sm" variant={mode === m ? "default" : "outline"} onClick={() => setMode(m)}>
@@ -184,8 +245,15 @@ ${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${
         {GROUPS.map((g) => (
           <label key={g.id} className="flex items-center gap-1 text-xs"><Switch checked={groups.has(g.id)} onCheckedChange={() => toggle(g.id)} aria-label={g.label} />{g.label}</label>
         ))}
-        <Button size="sm" variant="ghost" onClick={() => { setZoom(1); setPan([0, 0]); }} aria-label="Resetează vederea"><RotateCcw className="h-4 w-4" /></Button>
+        <label className="flex items-center gap-1 text-xs"><Switch checked={hidePours} onCheckedChange={setHidePours} aria-label="Ascunde planurile de masă" />Ascunde planurile de masă</label>
+        <Button size="sm" variant="ghost" onClick={() => { setZoom(1); setPan([0, 0]); setExtra(ID); }} aria-label="Resetează vederea"><RotateCcw className="h-4 w-4" /></Button>
         <Button size="sm" variant="outline" onClick={print} disabled={!da || !db}><Printer className="mr-1 h-4 w-4" />Fișă A4</Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted-foreground">Ajustare manuală B:</span>
+        <Button size="sm" variant="outline" onClick={() => setExtra((e) => ({ ...e, rot: (e.rot + 90) % 360 }))} aria-label="Rotește B 90°"><RotateCw className="h-4 w-4" /></Button>
+        <Button size="sm" variant="outline" onClick={() => setExtra((e) => ({ ...e, mirror: !e.mirror }))} aria-label="Oglindește B"><FlipHorizontal className="h-4 w-4" /></Button>
+        <span className="text-muted-foreground">Săgeți = ±0,2 mm (Shift ±1 mm) · Spațiu = clipire · {extra.rot}°{extra.mirror ? " oglindit" : ""} Δ {extra.dx}/{extra.dy} mm</span>
       </div>
       <div className="flex flex-wrap gap-4 text-xs">
         <span><span className="mr-1 inline-block h-3 w-3 align-middle" style={{ background: COL_A }} />{a.name}</span>
@@ -195,12 +263,18 @@ ${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${
       <div className="relative">
         <canvas
           ref={canvas}
-          className="h-[60vh] w-full cursor-grab rounded-md border border-border"
+          tabIndex={0}
+          onKeyDown={onKey}
+          className="h-[60vh] w-full cursor-grab rounded-md border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onWheel={(e) => setZoom((z) => Math.min(40, Math.max(0.3, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))))}
-          onMouseDown={(e) => (drag.current = [e.clientX, e.clientY])}
-          onMouseMove={(e) => { if (!drag.current) return; const [x, y] = drag.current; drag.current = [e.clientX, e.clientY]; setPan(([px, py]) => [px + e.clientX - x, py + e.clientY - y]); }}
+          onMouseDown={(e) => { (e.target as HTMLCanvasElement).focus(); drag.current = [e.clientX, e.clientY]; }}
+          onMouseMove={(e) => {
+            const r = (e.target as HTMLCanvasElement).getBoundingClientRect();
+            if (mode === "side") setCross([e.clientX - r.left, e.clientY - r.top]);
+            if (!drag.current) return; const [x, y] = drag.current; drag.current = [e.clientX, e.clientY]; setPan(([px, py]) => [px + e.clientX - x, py + e.clientY - y]);
+          }}
           onMouseUp={() => (drag.current = null)}
-          onMouseLeave={() => (drag.current = null)}
+          onMouseLeave={() => { drag.current = null; setCross(null); }}
           role="img"
           aria-label="Suprapunerea Gerber a celor două plăci"
         />
@@ -210,7 +284,7 @@ ${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${
         <div className="flex items-center gap-3 text-sm"><span className="truncate">{a.name}</span><Slider value={[mix]} min={0} max={100} step={5} onValueChange={(v) => setMix(v[0] ?? 50)} aria-label="Amestec" /><span className="truncate">{b.name}</span></div>
       )}
       <p className="text-xs text-muted-foreground">
-        Pad-uri {detail.pads}% · Trasee {detail.traces ?? "—"}% · Cupru {detail.copper}% · Componente {detail.comps ?? "—"}% · Găuri {detail.holes}% · Text {detail.silk}% · Zonă max {detail.zoneMax ?? "—"}%{detail.partial ? " · copie parțială" : ""}. Rotița = zoom, trage = deplasare.
+        {CLASS_LABEL[classOf(detail)]} · Rutare {detail.routing ?? detail.traces ?? "—"}% (exactă {detail.routingExact ?? "—"}%) · Schemă {detail.schema ?? "—"}% · Pad-uri {detail.pads}% · Găuri {detail.holes}% · Text {detail.silk}%. Rotița = zoom, trage = deplasare.
       </p>
     </div>
   );
