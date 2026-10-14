@@ -1,8 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { googleFetch, aiConfig } from "./platform.server";
 
-const SHEETS = "https://connector-gateway.lovable.dev/google_sheets/v4";
-const AI = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 type Ctx = { supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }> }; userId: string };
 
@@ -16,13 +15,7 @@ async function assertManager(context: Ctx) {
 }
 
 async function sheets(path: string, init: RequestInit = {}) {
-  const lk = process.env["LOVABLE_API_KEY"];
-  const ck = process.env["GOOGLE_SHEETS_API_KEY"];
-  if (!lk || !ck) throw new Error("Contul Google Sheets nu este conectat.");
-  const res = await fetch(`${SHEETS}${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": ck, "Content-Type": "application/json" },
-  });
+  const res = await googleFetch("sheets", path, { ...init, headers: { "Content-Type": "application/json" } });
   const text = await res.text();
   if (!res.ok) throw new Error(`Google Sheets [${res.status}]: ${text}`);
   return text ? JSON.parse(text) : {};
@@ -75,17 +68,17 @@ export const aiSuggestSettings = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     await assertManager(context as never);
-    const key = process.env["LOVABLE_API_KEY"];
-    if (!key) throw new Error("Asistentul AI nu este configurat.");
+    const ai = aiConfig("google/gemini-2.5-flash");
+    if (!ai) throw new Error("Asistentul AI nu este configurat.");
     const system = `Ești expert în proiectare PCB și DFM pentru disciplina P1-DCE (Facultatea de Electronică UPB).
 Primești setările curente ale verificatorului (JSON cu secțiunile rules [mm], penalties {points,severity:"blocking"|"warning"|"info",enabled,smtOnly}, cam [mm]).
 Poți rescrie și textele regulilor standard (overrides: {COD: {title, what, why, fix, reference}}) — what/why/fix sunt pentru student, fix cu pași OrCAD/Allegro.
 Propune modificări conform cererii profesorului. 1 mil = 0.0254 mm. Returnează DOAR câmpurile modificate prin funcția propose_settings, plus o explicație scurtă în română.`;
-    const res = await fetch(AI, {
+    const res = await fetch(`${ai.baseURL}/chat/completions`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${ai.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: ai.model,
         messages: [
           { role: "system", content: system },
           { role: "user", content: `Setări curente:\n${JSON.stringify(data.current)}\n\nCerere: ${data.prompt}` },

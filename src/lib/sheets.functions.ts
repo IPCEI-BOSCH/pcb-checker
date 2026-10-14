@@ -1,22 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { googleFetch } from "./platform.server";
 
-const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
 
 type Cell = string | number | null;
-
-function creds() {
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-  const connKey = process.env["GOOGLE_SHEETS_API_KEY"];
-  if (!lovableKey || !connKey) {
-    throw new Error("NOT_CONNECTED: Contul Google Sheets nu este conectat la aplicație.");
-  }
-  return {
-    Authorization: `Bearer ${lovableKey}`,
-    "X-Connection-Api-Key": connKey,
-    "Content-Type": "application/json",
-  };
-}
 
 async function assertStaff(context: { supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }> } ; userId: string }) {
   const { data } = await context.supabase.rpc("is_staff", { _uid: context.userId });
@@ -24,7 +11,7 @@ async function assertStaff(context: { supabase: { rpc: (fn: string, args: Record
 }
 
 async function gateway(path: string, init: RequestInit) {
-  const res = await fetch(`${GATEWAY}${path}`, { ...init, headers: { ...creds(), ...(init.headers ?? {}) } });
+  const res = await googleFetch("sheets", path, { ...init, headers: { "Content-Type": "application/json", ...((init.headers as Record<string, string>) ?? {}) } });
   const text = await res.text();
   if (!res.ok) throw new Error(`Google Sheets [${res.status}]: ${text}`);
   return text ? JSON.parse(text) : {};

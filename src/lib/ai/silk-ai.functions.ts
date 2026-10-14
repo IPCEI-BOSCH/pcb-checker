@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { aiConfig } from "../platform.server";
 
 const MODEL = "openai/gpt-6-astra";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
@@ -18,19 +19,20 @@ export const aiReadSilk = createServerFn({ method: "POST" })
     return { image: i.image, count: Math.max(1, Math.min(60, Math.round(i.count || 1))) };
   })
   .handler(async ({ data }) => {
-    const key = process.env["LOVABLE_API_KEY"];
-    if (!key) throw new Error("Asistentul AI nu este configurat.");
+    const ai = aiConfig(MODEL);
+    const key = ai?.apiKey;
+    if (!ai || !key) throw new Error("Asistentul AI nu este configurat.");
     const [{ createOpenAI }, { streamText, Output, jsonSchema, NoObjectGeneratedError }, { createLovableAiGatewayRunIdFetch }] = await Promise.all([
       import("@ai-sdk/openai"),
       import("ai"),
       import("./run-id.server"),
     ]);
-    const runIdFetch = createLovableAiGatewayRunIdFetch();
+    const runIdFetch = ai.mode === "lovable" ? createLovableAiGatewayRunIdFetch() : null;
     const provider = createOpenAI({
-      baseURL: GATEWAY,
+      baseURL: ai.baseURL,
       apiKey: key,
-      headers: { "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
-      fetch: runIdFetch.fetch,
+      headers: ai.headers,
+      ...(runIdFetch ? { fetch: runIdFetch.fetch } : {}),
     });
     const schema = jsonSchema<SilkReadResult>({
       type: "object",
@@ -51,7 +53,7 @@ export const aiReadSilk = createServerFn({ method: "POST" })
       },
     });
     const result = streamText({
-      model: provider.responses(MODEL),
+      model: provider.responses(ai.model),
       system:
         "Citești texte de pe serigrafia unui PCB. Imaginea conține blocuri etichetate cu roșu #N; fiecare bloc e un cuvânt (designator ca R1, C3, U2, nume, an, logo). " +
         "Pentru fiecare bloc întorci exact textul vizibil (fără diacritice adăugate), idx = N, confidence 0..1. Dacă blocul nu e text (simbol, contur) întorci text gol și confidence 0. " +
