@@ -1,20 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { googleFetch, googleConfigured } from "./platform.server";
 
-const GW = "https://connector-gateway.lovable.dev/google_drive";
 const FOLDER = "application/vnd.google-apps.folder";
 export const ROOT_NAME = "PCB_DCE";
 
-function headers(extra: Record<string, string> = {}) {
-  const a = process.env["LOVABLE_API_KEY"];
-  const b = process.env["GOOGLE_DRIVE_API_KEY"];
-  if (!a || !b) throw new Error("Google Drive nu este conectat la aplicație.");
-  return { Authorization: `Bearer ${a}`, "X-Connection-Api-Key": b, ...extra };
-}
-
 async function drive(path: string, init: RequestInit = {}) {
-  const res = await fetch(`${GW}${path}`, { ...init, headers: { ...headers(), ...((init.headers as Record<string, string>) ?? {}) } });
+  const res = await googleFetch("drive", path, init);
   if (!res.ok) {
     const t = await res.text();
     console.error(`Drive [${res.status}] ${path}: ${t}`);
@@ -195,14 +188,14 @@ export const fetchDriveLayout = createServerFn({ method: "POST" })
   });
 
 export const driveStatus = createServerFn({ method: "GET" }).handler(async () => ({
-  connected: !!process.env["LOVABLE_API_KEY"] && !!process.env["GOOGLE_DRIVE_API_KEY"],
+  connected: googleConfigured("drive"),
 }));
 
 /** Live check of the Google connections (Drive ping + Sheets credentials). */
 export const googleWorkspaceStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
-    const out = { drive: false, sheets: !!process.env["LOVABLE_API_KEY"] && !!process.env["GOOGLE_SHEETS_API_KEY"], account: null as string | null, error: null as string | null };
+    const out = { drive: false, sheets: googleConfigured("sheets"), account: null as string | null, error: null as string | null };
     try {
       const r = (await (await drive(`/drive/v3/about?fields=user(emailAddress)`)).json()) as { user?: { emailAddress?: string } };
       out.drive = true;

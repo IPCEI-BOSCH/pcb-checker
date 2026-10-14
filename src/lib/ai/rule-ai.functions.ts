@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { aiConfig } from "../platform.server";
 
 const MODEL = "openai/gpt-6-astra";
-const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
 const CHECKS = ["min_hole", "max_hole", "min_line_width", "max_line_width", "min_pad", "max_pad", "layer_required", "max_holes", "min_holes", "hole_to_edge", "copper_to_edge", "max_primitives"];
 const LAYERS = ["top_copper", "bottom_copper", "top_mask", "top_silk", "top_paste", "outline", "drill", "fabrication"];
@@ -45,20 +45,21 @@ export const aiCreateRule = createServerFn({ method: "POST" })
     const roles = await Promise.all(["admin", "series_manager", "cam_tech"].map((r) => ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: r })));
     if (!roles.some((r) => r.data)) throw new Error("Forbidden");
 
-    const key = process.env["LOVABLE_API_KEY"];
-    if (!key) throw new Error("Asistentul AI nu este configurat.");
+    const ai = aiConfig(MODEL);
+    const key = ai?.apiKey;
+    if (!ai || !key) throw new Error("Asistentul AI nu este configurat.");
 
     const [{ createOpenAI }, { streamText, Output, jsonSchema, NoObjectGeneratedError }, { createLovableAiGatewayRunIdFetch }] = await Promise.all([
       import("@ai-sdk/openai"),
       import("ai"),
       import("./run-id.server"),
     ]);
-    const runIdFetch = createLovableAiGatewayRunIdFetch();
+    const runIdFetch = ai.mode === "lovable" ? createLovableAiGatewayRunIdFetch() : null;
     const provider = createOpenAI({
-      baseURL: GATEWAY,
+      baseURL: ai.baseURL,
       apiKey: key,
-      headers: { "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
-      fetch: runIdFetch.fetch,
+      headers: ai.headers,
+      ...(runIdFetch ? { fetch: runIdFetch.fetch } : {}),
     });
 
     const str = { type: "string" } as const;
@@ -116,7 +117,7 @@ what/why/fix: explicații în română pentru STUDENT — ce a greșit, de ce co
 explanation: o frază pentru profesor despre cum ai interpretat cererea. Dacă cererea nu se poate verifica cu tipurile de mai sus, alege cea mai apropiată și spune asta în explanation.`;
 
     const result = streamText({
-      model: provider.responses(MODEL),
+      model: provider.responses(ai.model),
       system,
       prompt: data.prompt,
       output: Output.object({ schema }),

@@ -35,3 +35,4 @@
 - Deleting projects/series/years goes through `src/lib/purge.ts` (removes DB rows and stored files) — one path for history, demo reset and admin cleanup.
 - Anti-plagiarism lives in `src/lib/integrity` (browser fingerprints, cached pair scores, staff-only alerts) — see its AGENTS.md.
 - Silkscreen text is found geometrically (`src/lib/silk/extract.ts`, stroke clustering) inside DRC; reading the text is on-demand via AI (`src/lib/ai/silk-ai.functions.ts`) on a rendered contact sheet — no images stored, credits spent only when asked.
+- Platform services (Google Drive/Sheets, AI) go through `src/lib/platform.server.ts`, which uses Lovable gateways when their keys exist and direct APIs otherwise; self-hosting files live in `selfhost/`, `install.sh`, `Dockerfile` — keeps the app runnable without Lovable.
