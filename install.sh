@@ -61,7 +61,7 @@ if [ ! -d selfhost/supabase ]; then
   PG=$(openssl rand -hex 16); DASH=$(openssl rand -hex 12)
   sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$PG|; s|^JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|; s|^ANON_KEY=.*|ANON_KEY=$ANON_KEY|; s|^SERVICE_ROLE_KEY=.*|SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY|; s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$DASH|; s|^SITE_URL=.*|SITE_URL=$PUBLIC_APP_URL|; s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=$PUBLIC_API_URL|; s|^SUPABASE_PUBLIC_URL=.*|SUPABASE_PUBLIC_URL=$PUBLIC_API_URL|; s|^ADDITIONAL_REDIRECT_URLS=.*|ADDITIONAL_REDIRECT_URLS=$PUBLIC_APP_URL/auth|; s|^ENABLE_EMAIL_SIGNUP=.*|ENABLE_EMAIL_SIGNUP=false|" "$E"
   # Microsoft Entra ID provider for the auth service
-  python3 - "$selfhost" <<'PY' || true
+  python3 - <<'PY' || true
 import re
 p="selfhost/supabase/docker-compose.yml"; s=open(p).read()
 if "GOTRUE_EXTERNAL_AZURE_ENABLED" not in s:
