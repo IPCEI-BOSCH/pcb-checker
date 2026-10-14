@@ -560,3 +560,5 @@ CREATE POLICY "staff view alerts" ON public.integrity_alerts FOR SELECT TO authe
   USING (EXISTS (SELECT 1 FROM public.students s WHERE s.id = student_id AND public.can_view_group(auth.uid(), s.group_id)));
 CREATE POLICY "staff update alerts" ON public.integrity_alerts FOR UPDATE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.students s WHERE s.id = student_id AND public.can_view_group(auth.uid(), s.group_id)));
+-- ==== storage bucket for uploaded Gerber ZIPs
+insert into storage.buckets (id, name, public) values ('gerbers', 'gerbers', false) on conflict (id) do nothing;

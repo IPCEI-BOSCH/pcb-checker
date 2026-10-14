@@ -42,6 +42,18 @@ function AuthPage() {
   const signIn = async () => {
     setBusy(true);
     setMsg(null);
+    // Self-hosted: Microsoft Entra ID directly through the auth server ("azure" provider).
+    if (import.meta.env.VITE_SELF_HOSTED === "true") {
+      const { error: e } = await supabase.auth.signInWithOAuth({
+        provider: "azure",
+        options: { redirectTo: `${window.location.origin}/auth`, scopes: "email openid profile", queryParams: { prompt: "select_account" } },
+      });
+      if (e) {
+        setMsg("Conectarea a eșuat. Încearcă din nou.");
+        setBusy(false);
+      }
+      return;
+    }
     const res = await lovable.auth.signInWithOAuth("microsoft", {
       redirect_uri: `${window.location.origin}/auth`,
       extraParams: { prompt: "select_account" },
