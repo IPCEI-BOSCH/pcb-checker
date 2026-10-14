@@ -43,7 +43,7 @@ function AuthPage() {
     setBusy(true);
     setMsg(null);
     // Self-hosted: Microsoft Entra ID directly through the auth server ("azure" provider).
-    if (import.meta.env.VITE_SELF_HOSTED === "true") {
+    if (import.meta.env['VITE_SELF_HOSTED'] === "true") {
       const { error: e } = await supabase.auth.signInWithOAuth({
         provider: "azure",
         options: { redirectTo: `${window.location.origin}/auth`, scopes: "email openid profile", queryParams: { prompt: "select_account" } },
