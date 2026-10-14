@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { googleFetch } from "./platform.server";
+import { googleFetch, googleConfigured } from "./platform.server";
 
 
 type Cell = string | number | null;
@@ -57,7 +57,7 @@ export const pullGradebook = createServerFn({ method: "POST" })
   });
 
 export const checkSheetsConnection = createServerFn({ method: "GET" }).handler(async () => ({
-  connected: !!process.env["LOVABLE_API_KEY"] && !!process.env["GOOGLE_SHEETS_API_KEY"],
+  connected: googleConfigured("sheets"),
 }));
 
 /** Creates a new spreadsheet in the connected Google account with the given tabs; returns its ID. */

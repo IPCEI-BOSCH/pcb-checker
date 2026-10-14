@@ -3,7 +3,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { aiConfig } from "../platform.server";
 
 const MODEL = "openai/gpt-6-astra";
-const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
 export interface SilkReadResult {
   texts: { idx: number; text: string; confidence: number }[];

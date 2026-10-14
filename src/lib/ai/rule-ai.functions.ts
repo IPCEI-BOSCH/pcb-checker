@@ -3,7 +3,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { aiConfig } from "../platform.server";
 
 const MODEL = "openai/gpt-6-astra";
-const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
 const CHECKS = ["min_hole", "max_hole", "min_line_width", "max_line_width", "min_pad", "max_pad", "layer_required", "max_holes", "min_holes", "hole_to_edge", "copper_to_edge", "max_primitives"];
 const LAYERS = ["top_copper", "bottom_copper", "top_mask", "top_silk", "top_paste", "outline", "drill", "fabrication"];
