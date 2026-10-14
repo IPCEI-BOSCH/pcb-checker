@@ -1,0 +1,18 @@
+# App container; the backend (database, auth, storage) runs from selfhost/supabase (created by install.sh).
+services:
+  pcb-checker:
+    build:
+      context: ..
+      args:
+        VITE_SUPABASE_URL: ${PUBLIC_API_URL}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+    restart: unless-stopped
+    env_file: ../.env.selfhost
+    environment:
+      SUPABASE_URL: http://host.docker.internal:8000
+      SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${APP_PORT:-3000}:3000"
