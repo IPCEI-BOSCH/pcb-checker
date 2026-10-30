@@ -88,6 +88,11 @@ export const TITLES: Record<string, string> = {
   STENCIL_RATIO: "Stencil IPC-7525B (AR / Area Ratio)",
   STENCIL_WINDOWPANE: "Segmentare ferestre termice",
   SILK_TEXT_SIZE: "Lizibilitate text serigrafie",
+  MASK_EXPANSION: "Expansiune mască pe pad-uri",
+  PASTE_SIZE: "Dimensiune pastă față de pad",
+  PASTE_MISSING_PAD: "Pastă lipsă pe pad-uri SMD",
+  VIA_DIAMETER: "Diametru via (0.4 mm)",
+  FAB_CONTENT: "Conținut strat FAB",
 };
 
 // code -> [penalty, severity when failing, SMT only]
@@ -584,6 +589,56 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
       if (!bad) note("STENCIL_RATIO", "Toate deschiderile respectă IPC-7525B.");
       if (!big) note("STENCIL_WINDOWPANE", "Nu există pad-uri termice mari.");
     }
+  }
+
+  // Calibrated on Seria A 2025 manual review: mask expansion, paste reduction, missing paste, via size, FAB content.
+  {
+    const near = (l: Layer | undefined, x: number, y: number) =>
+      l?.primitives.find((q) => q.t === "flash" && !q.clear && Math.abs(q.x - x) < 0.05 && Math.abs(q.y - y) < 0.05) as Extract<Primitive, { t: "flash" }> | undefined;
+    const smdPads = (top?.primitives ?? []).filter((p) => p.t === "flash" && !p.clear && !holes.some((h) => Math.hypot(h.x - p.x, h.y - p.y) < 0.05)) as Extract<Primitive, { t: "flash" }>[];
+    if (mask && smdPads.length) {
+      let n = 0;
+      for (const p of smdPads) {
+        const m = near(mask, p.x, p.y);
+        if (!m) continue; // missing openings are SSTOP_OVER_PAD
+        const pw = Math.min(p.w, p.h), mw = Math.min(m.w, m.h);
+        if (mw >= pw * 1.8) continue; // fiducial keep-out
+        const e = (mw - pw) / 2;
+        if (e < R.maskExpMin - 0.005 || e > R.maskExpMax + 0.005) {
+          n++;
+          if (n <= 6) fail("MASK_EXPANSION", `Mască ${m.w.toFixed(2)}×${m.h.toFixed(2)} pe pad ${p.w.toFixed(2)}×${p.h.toFixed(2)} mm: expansiune ${e.toFixed(3)} mm/latură (cerut ${R.maskExpMin}–${R.maskExpMax}).`, { x: p.x, y: p.y, layer: "top_mask" });
+        }
+      }
+      if (n) failed.set("MASK_EXPANSION", `${n} pad-uri cu expansiunea măștii în afara ${R.maskExpMin}–${R.maskExpMax} mm.`);
+      else note("MASK_EXPANSION", "Expansiunea măștii este conformă.");
+    }
+    if (smt && paste && smdPads.length) {
+      let bad = 0, miss = 0;
+      for (const p of smdPads) {
+        const m = near(mask, p.x, p.y);
+        if (m && Math.min(m.w, m.h) >= Math.min(p.w, p.h) * 1.8) continue; // fiducial
+        const s = near(paste, p.x, p.y);
+        if (!s) { miss++; if (miss <= 6) fail("PASTE_MISSING_PAD", `Pad ${p.w.toFixed(2)}×${p.h.toFixed(2)} mm fără deschidere de pastă.`, { x: p.x, y: p.y, layer: "top_paste" }); continue; }
+        const r = (s.w * s.h) / (p.w * p.h);
+        if (r < R.pasteRatioMin || r > R.pasteRatioMax) {
+          bad++;
+          if (bad <= 6) fail("PASTE_SIZE", `Pastă ${s.w.toFixed(2)}×${s.h.toFixed(2)} pe pad ${p.w.toFixed(2)}×${p.h.toFixed(2)} mm (${Math.round(r * 100)}% din arie; cerut ${Math.round(R.pasteRatioMin * 100)}–${Math.round(R.pasteRatioMax * 100)}%).`, { x: p.x, y: p.y, layer: "top_paste" });
+        }
+      }
+      if (bad) failed.set("PASTE_SIZE", `${bad} deschideri de pastă nereduse față de pad.`); else note("PASTE_SIZE", "Pasta este redusă corect față de pad-uri.");
+      if (miss) failed.set("PASTE_MISSING_PAD", `${miss} pad-uri SMD fără pastă.`); else note("PASTE_MISSING_PAD", "Toate pad-urile SMD au pastă.");
+    }
+    if (holes.length) {
+      const vias = holes.filter((h) => h.d > 0.05 && h.d < R.viaMaxDetect);
+      const wrong = [...new Set(vias.filter((h) => Math.abs(h.d - R.viaDiameter) > R.viaTol).map((h) => h.d.toFixed(3)))];
+      if (wrong.length) { const h = vias.find((v) => v.d.toFixed(3) === wrong[0])!; fail("VIA_DIAMETER", `Via-uri de Ø ${wrong.join(", ")} mm (cerut ${R.viaDiameter} ±${R.viaTol} mm).`, { x: h.x, y: h.y, layer: "drill" }); }
+      else note("VIA_DIAMETER", vias.length ? `${vias.length} via-uri de Ø ${R.viaDiameter} mm.` : "Nu există via-uri.");
+    }
+    const fab = one("fabrication");
+    const fabLines = fab ? fab.primitives.filter((p) => p.t === "line" && !p.clear).length : 0;
+    if (!fab) fail("FAB_CONTENT", "Lipsește stratul FAB (desen și tabel de găurire, secțiune transversală).");
+    else if (fabLines < R.fabMinLines) fail("FAB_CONTENT", `FAB conține doar ${fabLines} linii${fabLines === 0 ? " (doar aperturi, fără informații)" : ""} — lipsesc tabelul de găurire / secțiunea transversală / notele.`, { layer: "fabrication" });
+    else note("FAB_CONTENT", `FAB cu ${fabLines} linii desenate (verificați manual tabelul și secțiunea).`);
   }
 
   // Teacher-defined rules: generic geometric checks, scored like built-in rules.
