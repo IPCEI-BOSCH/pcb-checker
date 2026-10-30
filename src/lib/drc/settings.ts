@@ -35,6 +35,18 @@ export interface RuleValues {
   silkMinTextHeight: number;
   /** Minimum silkscreen text stroke width (mm). */
   silkMinStroke: number;
+  /** Solder mask expansion per side over SMD pads (mm) — calibrated on Seria A 2025. */
+  maskExpMin: number;
+  maskExpMax: number;
+  /** Paste/pad area ratio for SMD pads — paste must be reduced, not equal or larger than the pad. */
+  pasteRatioMin: number;
+  pasteRatioMax: number;
+  /** Required via drill diameter (mm) and tolerance; holes below viaMaxDetect are treated as vias. */
+  viaDiameter: number;
+  viaTol: number;
+  viaMaxDetect: number;
+  /** Minimum drawn lines on FAB (drill chart, stack-up, notes). */
+  fabMinLines: number;
 }
 
 export type AppliesTo = "ALL" | "SMT" | "THT";
@@ -89,6 +101,11 @@ export const RULE_LINKS: Record<string, (keyof RuleValues)[]> = {
   MISSING_PASTE: [],
   STENCIL_RATIO: ["stencilT", "stencilMinAR", "stencilMinAreaRatio"],
   STENCIL_WINDOWPANE: ["windowpaneArea"],
+  MASK_EXPANSION: ["maskExpMin", "maskExpMax"],
+  PASTE_SIZE: ["pasteRatioMin", "pasteRatioMax"],
+  PASTE_MISSING_PAD: [],
+  VIA_DIAMETER: ["viaDiameter", "viaTol", "viaMaxDetect"],
+  FAB_CONTENT: ["fabMinLines"],
 };
 
 export const GENERAL_FIELDS: (keyof RuleValues)[] = ["passScore", "reserveScore", "criticalScoreCap"];
@@ -250,7 +267,7 @@ export const DEFAULT_SETTINGS: Settings = {
     edgeClearance: 1.0,
     outlineMaxWidth: 0.2,
     minTrace: 0.38,
-    minClearance: 0.3,
+    minClearance: 0.35,
     minHole: 0.3,
     maxHole: 3.2,
     annularRing: 0.15,
@@ -265,6 +282,14 @@ export const DEFAULT_SETTINGS: Settings = {
     maskDuplicateRatio: 0.5,
     silkMinTextHeight: 1.0,
     silkMinStroke: 0.15,
+    maskExpMin: 0.04,
+    maskExpMax: 0.2,
+    pasteRatioMin: 0.4,
+    pasteRatioMax: 0.95,
+    viaDiameter: 0.4,
+    viaTol: 0.03,
+    viaMaxDetect: 0.9,
+    fabMinLines: 300,
   },
   penalties: {
     MISSING_LAYER: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 20 },
@@ -290,6 +315,11 @@ export const DEFAULT_SETTINGS: Settings = {
     STENCIL_RATIO: { points: 5, severity: "warning", enabled: true, smtOnly: true, perIssue: 1, cap: 15 },
     STENCIL_WINDOWPANE: { points: 0, severity: "info", enabled: true, smtOnly: true, perIssue: 0, cap: 0 },
     SILK_TEXT_SIZE: { points: 2, severity: "warning", enabled: false, smtOnly: false, perIssue: 0, cap: 2 },
+    MASK_EXPANSION: { points: 3, severity: "warning", enabled: true, smtOnly: false, perIssue: 0.25, cap: 6 },
+    PASTE_SIZE: { points: 3, severity: "warning", enabled: true, smtOnly: true, perIssue: 0.25, cap: 6 },
+    PASTE_MISSING_PAD: { points: 3, severity: "warning", enabled: true, smtOnly: true, perIssue: 0.5, cap: 6 },
+    VIA_DIAMETER: { points: 3, severity: "warning", enabled: true, smtOnly: false, perIssue: 0, cap: 3 },
+    FAB_CONTENT: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 0, cap: 5 },
   },
   cam: {
     panelCols: 7,
@@ -348,6 +378,14 @@ export const RULE_FIELDS: Record<keyof RuleValues, FieldMeta> = {
   stencilMinAR: { label: "Aspect Ratio minim", unit: "", group: "Stencil IPC-7525B", step: 0.05 },
   stencilMinAreaRatio: { label: "Area Ratio minim", unit: "", group: "Stencil IPC-7525B", step: 0.01 },
   windowpaneArea: { label: "Arie pad termic (segmentare)", unit: "mm²", group: "Stencil IPC-7525B", step: 0.5 },
+  maskExpMin: { label: "Expansiune mască minimă / latură", unit: "mm", group: "Fiduciali & mască", step: 0.01 },
+  maskExpMax: { label: "Expansiune mască maximă / latură", unit: "mm", group: "Fiduciali & mască", step: 0.01 },
+  pasteRatioMin: { label: "Raport arie pastă/pad minim", unit: "", group: "Stencil IPC-7525B", step: 0.05 },
+  pasteRatioMax: { label: "Raport arie pastă/pad maxim", unit: "", group: "Stencil IPC-7525B", step: 0.05 },
+  viaDiameter: { label: "Diametru via cerut", unit: "mm", group: "Găurire", step: 0.01 },
+  viaTol: { label: "Toleranță diametru via", unit: "mm", group: "Găurire", step: 0.005 },
+  viaMaxDetect: { label: "Găuri sub care se consideră via", unit: "mm", group: "Găurire", step: 0.05 },
+  fabMinLines: { label: "Linii minime pe FAB (tabel găurire, secțiune)", unit: "buc", group: "Fiduciali & mască", step: 10 },
 };
 
 export const CAM_FIELDS: Record<keyof CamValues, FieldMeta> = {
