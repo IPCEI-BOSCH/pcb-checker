@@ -20,15 +20,27 @@ export interface Aperture {
   h: number; // mm
 }
 
+/** Analytic parameters of a G02/G03 arc that produced this polyline segment. */
+export interface ArcParams {
+  cx: number;
+  cy: number;
+  r: number;
+  a0: number; // start angle (rad)
+  a1: number; // end angle (rad)
+  cw: boolean;
+}
+
 export type Primitive =
-  | { t: "line"; x1: number; y1: number; x2: number; y2: number; w: number; clear?: boolean }
-  | { t: "flash"; x: number; y: number; shape: ApertureShape; w: number; h: number; clear?: boolean }
-  | { t: "region"; pts: [number, number][]; clear?: boolean };
+  | { t: "line"; x1: number; y1: number; x2: number; y2: number; w: number; clear?: boolean; arc?: ArcParams; net?: string; refdes?: string }
+  | { t: "flash"; x: number; y: number; shape: ApertureShape; w: number; h: number; clear?: boolean; net?: string; refdes?: string; fn?: string }
+  | { t: "region"; pts: [number, number][]; clear?: boolean; net?: string; refdes?: string };
 
 export interface Hole {
   x: number;
   y: number;
   d: number;
+  /** Slotted hole (G85 / M15-M16 milling): end point of the slot. */
+  slot?: { x2: number; y2: number };
 }
 
 export interface Layer {
@@ -39,8 +51,8 @@ export interface Layer {
   warnings: string[];
   /** Excellon coordinate format actually used (int:dec). */
   fmt?: { int: number; dec: number; inch?: boolean };
-  /** Forensic metadata (integrity module only): aperture definitions in order, CAD header lines, ZIP entry mtime. */
-  meta?: { apertures?: string[]; header?: string[]; mtime?: number | undefined };
+  /** Forensic metadata (integrity module only): aperture definitions in order, CAD header lines, ZIP entry mtime, drill tool order. */
+  meta?: { apertures?: string[]; header?: string[]; mtime?: number | undefined; toolOrder?: number[] };
 }
 
 export interface BBox {
