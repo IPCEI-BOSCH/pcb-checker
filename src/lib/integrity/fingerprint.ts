@@ -2,9 +2,9 @@ import type { Layer } from "@/lib/gerber/types";
 import { outlineBBox } from "@/lib/gerber/parser";
 import { extractTextBlocks } from "@/lib/silk/extract";
 
-export const FP_VERSION = 4;
+export const FP_VERSION = 5;
 /** Bump when similarityDetail changes so cached pair scores are recomputed. */
-export const PAIR_VERSION = 5;
+export const PAIR_VERSION = 6;
 
 type P2 = [number, number];
 /** [midX, midY, angle 0..180°, width, length, layer 0=top 1=bottom] */
@@ -31,7 +31,21 @@ export interface Fingerprint {
   centroid?: P2;
   /** v4: board outline size (mm). */
   board?: P2 | undefined;
+  /** v5: small plated holes (≤0.65 mm) with copper on both layers — routing decisions, not schematic. */
+  vias?: P2[];
+  /** v5: technical metadata (staff only). */
+  forensic?: Forensic;
 }
+
+export interface Forensic {
+  apertureSignature: string[];
+  cadHeader: string[];
+  projectId?: string;
+  zipMin?: number;
+  zipMax?: number;
+}
+
+export interface ForensicFlags { identicalApertureOrder: boolean; sameProjectId: boolean; closeZipTimestamps: boolean; apertureOrderPct?: number }
 
 /** Automatic pre-classification — replaces the generic "undecided" state. */
 export type PairClass = "copiere_trasee" | "obfuscare" | "copie_partiala" | "inspectie" | "independent";
@@ -54,6 +68,14 @@ export interface SimilarityDetail {
   /** v5: best 3x3 zone routing match. */
   routeZoneMax?: number;
   cls?: PairClass;
+  /** v6: overlapped vias %. */
+  viaMatch?: number;
+  /** v6: routing ignoring the copper layer (TOP↔BOTTOM swap). */
+  routingCrossLayer?: number;
+  layerSwapDetected?: boolean;
+  /** v6: best 5x5 overlapping window, in A's centred frame [x0,y0,x1,y1] mm. */
+  bestZoneRect?: [number, number, number, number];
+  forensicFlags?: ForensicFlags;
   zoneMax?: number;
   zones?: number;
   partial?: boolean;
@@ -115,7 +137,27 @@ export function fingerprint(layers: Layer[]): Fingerprint {
       }
     }
   }
-  const holes = layers.filter((l) => l.kind === "drill").flatMap((l) => l.holes);
+  const allHoles = layers.filter((l) => l.kind === "drill").flatMap((l) => l.holes);
+  // v5: vias = small holes with copper nearby on BOTH layers.
+  const near = (kind: string) => {
+    const pts: P2[] = [];
+    for (const l of copper) if (l.kind === kind) for (const p of l.primitives) {
+      if (p.clear) continue;
+      if (p.t === "flash") pts.push([p.x, p.y]); else if (p.t === "line") pts.push([p.x1, p.y1], [p.x2, p.y2]);
+    }
+    return index(pts, 1);
+  };
+  const nT = near("top_copper"), nB = near("bottom_copper");
+  const hasNear = (m: Map<string, P2[]>, x: number, y: number, r: number) => {
+    const cx = Math.floor(x), cy = Math.floor(y);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const q of m.get(`${cx + i},${cy + j}`) ?? []) if (Math.hypot(q[0] - x, q[1] - y) <= r) return true;
+    return false;
+  };
+  const viaList: P2[] = [];
+  const holes = allHoles.filter((h) => {
+    if (h.d <= 0.65 && hasNear(nT, h.x, h.y, h.d / 2 + 0.3) && hasNear(nB, h.x, h.y, h.d / 2 + 0.3)) { viaList.push([h.x, h.y]); return false; }
+    return true;
+  });
   const sample = sub(pts, 400);
   const dist = new Array(DIST_BINS).fill(0);
   for (let i = 0; i < sample.length; i++)
@@ -153,6 +195,32 @@ export function fingerprint(layers: Layer[]): Fingerprint {
     segs: sub(segFull, 1000).map(([x, y, a, w, l, ly]) => [r2(x - ox), r2(y - oy), Math.round(a), r2(w), r2(l), ly]),
     centroid: [ox, oy],
     board: okBox ? [r2(ob!.maxX - ob!.minX), r2(ob!.maxY - ob!.minY)] : undefined,
+    vias: sub(viaList, 300).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
+    forensic: forensicOf(layers),
+  };
+}
+
+function forensicOf(layers: Layer[]): Forensic {
+  const cu = ["top_copper", "bottom_copper"];
+  const apertureSignature = layers.filter((l) => cu.includes(l.kind)).sort((a, b) => cu.indexOf(a.kind) - cu.indexOf(b.kind)).flatMap((l) => l.meta?.apertures ?? []).slice(0, 300);
+  const src = layers.find((l) => l.kind === "top_copper") ?? layers.find((l) => l.meta?.header?.length);
+  const cadHeader = src?.meta?.header ?? [];
+  const pid = layers.flatMap((l) => l.meta?.header ?? []).find((h) => h.startsWith("%TF.ProjectId"));
+  const times = layers.map((l) => l.meta?.mtime).filter((t): t is number => typeof t === "number" && t > 0);
+  return { apertureSignature, cadHeader, projectId: pid?.replace(/^%TF\.ProjectId,?/, "").replace(/\*%?$/, "") || undefined, zipMin: times.length ? Math.min(...times) : undefined, zipMax: times.length ? Math.max(...times) : undefined };
+}
+
+export function forensicFlags(a?: Forensic, b?: Forensic): ForensicFlags {
+  const sa = a?.apertureSignature ?? [], sb = b?.apertureSignature ?? [];
+  let same = 0; const n = Math.max(sa.length, sb.length);
+  for (let i = 0; i < Math.min(sa.length, sb.length); i++) if (sa[i] === sb[i]) same++;
+  const pct = n ? same / n : 0;
+  const close = (x?: number, y?: number) => x != null && y != null && Math.abs(x - y) < 5 * 60_000;
+  return {
+    identicalApertureOrder: n >= 4 && pct >= 0.9,
+    apertureOrderPct: Math.round(pct * 1000) / 10,
+    sameProjectId: !!a?.projectId && a.projectId === b?.projectId,
+    closeZipTimestamps: close(a?.zipMin, b?.zipMin) || close(a?.zipMax, b?.zipMax),
   };
 }
 
@@ -270,8 +338,8 @@ function zoneMatch(a: P2[], bt: P2[], tol: number) {
  * loose = centre line only (position ±0.4 mm, direction ±10°, same layer) — immune to trace-width camouflage;
  * exact = also width ±25%. Also returns the best 3x3 zone match (partial / module copy).
  */
-function traceMatch(a: Seg[], b: Seg[], t: Tf, dx: number, dy: number) {
-  const out = { loose: 0, exact: 0, zoneMax: 0, zones: 0 };
+function traceMatch(a: Seg[], b: Seg[], t: Tf, dx: number, dy: number, anyLayer = false) {
+  const out = { loose: 0, exact: 0, zoneMax: 0, zones: 0, rect: undefined as [number, number, number, number] | undefined };
   if (!a.length || !b.length) return out;
   const tol = 0.4;
   const m = new Map<string, number[]>();
@@ -288,7 +356,7 @@ function traceMatch(a: Seg[], b: Seg[], t: Tf, dx: number, dy: number) {
       for (const k of m.get(`${cx + i},${cy + j}`) ?? []) {
         const q = a[k]!; const da = Math.abs(q[2] - ang); const dA = Math.min(da, 180 - da);
         if (Math.abs(q[0] - x) > tol || Math.abs(q[1] - y) > tol || dA > 10) continue;
-        if (q[5] != null && s[5] != null && q[5] !== s[5]) continue;
+        if (!anyLayer && q[5] != null && s[5] != null && q[5] !== s[5]) continue;
         loose = true;
         if (Math.abs(q[3] - s[3]) <= 0.25 * Math.max(q[3], s[3], 0.1)) { exact = true; break; }
       }
@@ -299,12 +367,18 @@ function traceMatch(a: Seg[], b: Seg[], t: Tf, dx: number, dy: number) {
   out.loose = hitL / den; out.exact = hitE / den;
   const xs = pieces.map((p) => p.x), ys = pieces.map((p) => p.y);
   const x0 = Math.min(...xs), x1 = Math.max(...xs) + 1e-6, y0 = Math.min(...ys), y1 = Math.max(...ys) + 1e-6;
-  const tot = new Array(9).fill(0), hit = new Array(9).fill(0);
-  for (const p of pieces) {
-    const z = Math.min(2, Math.floor(((p.x - x0) / (x1 - x0)) * 3)) + 3 * Math.min(2, Math.floor(((p.y - y0) / (y1 - y0)) * 3));
-    tot[z] += p.l; if (p.ok) hit[z] += p.l;
+  // v6: 5x5 windows of 1/3 board size overlapping by 50% — a copied block on a 3x3 border is not diluted.
+  const ww = (x1 - x0) / 3, wh = (y1 - y0) / 3;
+  const minLen = Math.max(10, 0.06 * wb);
+  for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
+    const wx0 = x0 + (i * ww) / 2, wy0 = y0 + (j * wh) / 2, wx1 = wx0 + ww, wy1 = wy0 + wh;
+    let tot = 0, hit = 0;
+    for (const p of pieces) if (p.x >= wx0 && p.x < wx1 && p.y >= wy0 && p.y < wy1) { tot += p.l; if (p.ok) hit += p.l; }
+    if (tot < minLen) continue;
+    const f = hit / tot;
+    if (f > out.zoneMax) { out.zoneMax = f; out.rect = [r2(wx0), r2(wy0), r2(wx1), r2(wy1)]; }
+    if (f >= 0.85) out.zones++;
   }
-  for (let z = 0; z < 9; z++) if (tot[z] >= Math.max(10, 0.06 * wb)) { const f = hit[z] / tot[z]; out.zoneMax = Math.max(out.zoneMax, f); if (f >= 0.85) out.zones++; }
   return out;
 }
 
@@ -338,9 +412,15 @@ export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDeta
   const comps = matchFrac(index(compA, 0.6), compA.length, compB, 0.6);
   const zm = zoneMatch(a.padPts!, tr(b.padPts), 0.25);
   const hasSegs = (a.segs?.length ?? 0) >= 5 && (b.segs?.length ?? 0) >= 5;
-  const tm = hasSegs ? traceMatch(a.segs!, b.segs!, al.t, al.dx, al.dy) : { loose: copper, exact: copper, zoneMax: zm.max, zones: zm.good };
+  const tm = hasSegs ? traceMatch(a.segs!, b.segs!, al.t, al.dx, al.dy) : { loose: copper, exact: copper, zoneMax: zm.max, zones: zm.good, rect: undefined };
+  const cross = hasSegs ? traceMatch(a.segs!, b.segs!, al.t, al.dx, al.dy, true).loose : tm.loose;
+  const va = a.vias ?? [], vb = tr(b.vias);
+  const hasVias = va.length >= 3 && vb.length >= 3;
+  const viaMatch = hasVias ? matchFrac(index(va, 0.25), va.length, vb, 0.25) : 0;
+  const ff = forensicFlags(a.forensic, b.forensic);
   const schema = 0.4 * comps + 0.35 * al.score + 0.25 * holes;
-  const routing = tm.loose;
+  const routing = hasVias ? 0.85 * tm.loose + 0.15 * viaMatch : tm.loose;
+  const layerSwapDetected = cross - tm.loose >= 0.2 && cross >= 0.7;
   // Routing dominates: same schematic alone (same theme) must not look like a copy.
   const s = hasSilk
     ? 0.45 * routing + 0.15 * tm.exact + 0.2 * schema + 0.1 * silk + 0.1 * global
@@ -348,7 +428,7 @@ export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDeta
   const total = Math.round(Math.max(0, Math.min(1, s)) * 1000) / 10;
   const pct = (v: number) => Math.round(v * 1000) / 10;
   const partial = routing < 0.75 && tm.zones >= 1 && tm.zoneMax >= 0.9 && (zm.max >= 0.85 || !hasSegs);
-  const cls: PairClass = routing >= 0.75
+  const cls: PairClass = layerSwapDetected ? "obfuscare" : routing >= 0.75
     ? (hasSilk && silk < 0.2 ? "obfuscare" : "copiere_trasee")
     : partial ? "copie_partiala"
     : routing >= 0.4 ? "inspectie" : "independent";
@@ -356,6 +436,7 @@ export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDeta
     total, pads: pct(al.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global),
     comps: pct(comps), traces: pct(routing), schema: pct(schema), routing: pct(routing), routingExact: pct(tm.exact), routeZoneMax: pct(tm.zoneMax),
     cls, zoneMax: pct(zm.max), zones: tm.zones, partial,
+    viaMatch: hasVias ? pct(viaMatch) : undefined, routingCrossLayer: pct(cross), layerSwapDetected, bestZoneRect: tm.rect, forensicFlags: ff,
     transform: { rot: al.t.rot, mirror: al.t.mirror, dx: al.dx, dy: al.dy }, verdict: verdictOf(total),
   };
 }
