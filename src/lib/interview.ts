@@ -22,22 +22,24 @@ export function generateInterviewQuestions(report: DrcReport): InterviewQuestion
   const issues = report.issues ?? [];
   const byCode = (c: string) => issues.find((i) => i.code === c);
   const nets = report.nets ?? [];
-  const viaNet = nets.reduce((best, n) => (n.vias > (best?.vias ?? -1) ? n : best), null as (typeof nets)[number] | null);
+  const viaNet = nets.reduce((best, n) => (n.holeIds.length > (best?.holeIds.length ?? -1) ? n : best), null as (typeof nets)[number] | null);
+  const bbCenter = (b: { minX: number; minY: number; maxX: number; maxY: number }) => ({ x: r1((b.minX + b.maxX) / 2), y: r1((b.minY + b.maxY) / 2) });
 
   // 1) Vias / layer transitions — anchored on the net with the most vias.
-  if (viaNet && viaNet.vias > 0) {
+  if (viaNet && viaNet.holeIds.length > 0) {
+    const c = bbCenter(viaNet.boundingBox);
     out.push({
       id: "vias",
-      question: `Net-ul „${viaNet.name}” are ${viaNet.vias} treceri între straturi (via-uri). Explică de ce fiecare via introduce o inductanță parazită și cum ai fi putut reduce numărul lor pe acest net.`,
-      answer: `Fiecare via ≈ 0,5–1 nH inductanță serie + discontinuitate de impedanță; pe trasee de alimentare/semnal rapid se evită prin rutare pe un singur strat, reordonarea componentelor sau via-uri multiple în paralel pentru curenți mari. Pe placa studentului: ${viaNet.vias} via-uri pe „${viaNet.name}”.`,
-      x: viaNet.x ?? undefined,
-      y: viaNet.y ?? undefined,
+      question: `Net-ul „${viaNet.name}” are ${viaNet.holeIds.length} treceri între straturi (via-uri). Explică de ce fiecare via introduce o inductanță parazită și cum ai fi putut reduce numărul lor pe acest net.`,
+      answer: `Fiecare via ≈ 0,5–1 nH inductanță serie + discontinuitate de impedanță; pe trasee de alimentare/semnal rapid se evită prin rutare pe un singur strat, reordonarea componentelor sau via-uri multiple în paralel pentru curenți mari. Pe placa studentului: ${viaNet.holeIds.length} via-uri pe „${viaNet.name}” (lungime totală ${r1(viaNet.totalLengthMm)} mm, rezistență estimată ${r1(viaNet.estimatedResistanceMilliohm)} mΩ).`,
+      x: c.x,
+      y: c.y,
     });
   }
 
   // 2) Trace width vs. current — anchored on the thinnest trace issue or the clearance rule.
   const widthIssue = byCode("TRACE_WIDTH") ?? byCode("MIN_CLEARANCE");
-  const minW = report.stats?.minTraceWidth;
+  const minW = report.stats?.minTrace;
   out.push({
     id: "width",
     question: minW != null
