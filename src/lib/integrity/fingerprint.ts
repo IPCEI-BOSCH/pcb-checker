@@ -96,6 +96,18 @@ export interface SimilarityDetail {
   /** v6: best 5x5 overlapping window, in A's centred frame [x0,y0,x1,y1] mm. */
   bestZoneRect?: [number, number, number, number] | undefined;
   forensicFlags?: ForensicFlags;
+  /** v7: geometric routing match before topological blending. */
+  routingGeo?: number;
+  /** v7: topological routing signature match (rubber-band invariant) 0..100. */
+  topological?: number;
+  /** v7: CAD export-order correlation (LCS over flash/drill/aperture sequences) 0..100. */
+  cadSequence?: number;
+  /** v7: scale factor A/B tested for scale camouflage. */
+  scaleFactor?: number;
+  /** v7: routing match improved >18% after scale normalization. */
+  scaleCamouflage?: boolean;
+  /** v7: which camouflage was detected. */
+  obfuscationSubtype?: "layer_swap" | "scalare_artificiala";
   zoneMax?: number;
   zones?: number;
   partial?: boolean;
