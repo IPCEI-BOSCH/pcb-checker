@@ -2,12 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Database, GitCompareArrows, HardDriveDownload, Eye, FileSpreadsheet, FolderInput, Play, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Database, GitCompareArrows, HardDriveDownload, Eye, FileSpreadsheet, FolderInput, Play, ReceiptText, Trash2 } from "lucide-react";
 import { backupYear } from "@/lib/backup";
 import { VersionDiffDialog, type VersionEntry } from "@/components/VersionDiff";
 import type { DrcReport } from "@/lib/drc/engine";
 import { deleteSeries, deleteStudents, deleteYear, emptySeries, setArchived } from "@/lib/purge";
 import { logAudit } from "@/lib/data";
+import { printSubmissionReceipt } from "@/lib/receipt";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -108,7 +109,7 @@ function History() {
       const st = await supabase.from("students").select("*").in("group_id", ids).order("full_name");
       if (st.error) throw st.error;
       const sids = st.data.map((x) => x.id);
-      const subs = sids.length ? await supabase.from("submissions").select("id, student_id, zip_path, drc_score, blocking_count, review_status, created_at").eq("kind", "OFFICIAL").in("student_id", sids).order("created_at", { ascending: false }) : { data: [] };
+      const subs = sids.length ? await supabase.from("submissions").select("id, student_id, zip_path, drc_score, blocking_count, review_status, created_at, revision, file_name, zip_sha256, report_sha256, late_days, report").eq("kind", "OFFICIAL").in("student_id", sids).order("created_at", { ascending: false }) : { data: [] };
       const last = new Map<string, NonNullable<typeof subs.data>[number]>();
       for (const x of subs.data ?? []) if (!last.has(x.student_id)) last.set(x.student_id, x);
       return st.data.map((x) => ({ ...x, sub: last.get(x.id) }));
@@ -302,6 +303,13 @@ function History() {
                       <TableCell>{r.grade_final ?? "—"}</TableCell>
                       <TableCell className="whitespace-nowrap text-right">
                         <Button size="sm" variant="secondary" onClick={() => { setAutoCheck(true); setOpen(r.id); }}><Eye className="mr-1 h-4 w-4" /> Gerber</Button>
+                        {r.sub && (
+                          <Button size="sm" variant="ghost" aria-label={`Recipisă de predare pentru ${r.full_name}`} title="Dovada oficială de predare (SHA-256)" onClick={() => {
+                            const rep = r.sub!.report as DrcReport | null;
+                            const verdict = rep?.verdict === "admis" ? "ADMIS" : rep?.verdict === "rezerve" ? "REZERVE" : rep?.verdict === "respins" ? "RESPINS" : rep?.wouldPass ? "ADMIS" : "RESPINS";
+                            printSubmissionReceipt({ student: r.full_name, group: groupName.get(r.group_id) ?? "", series: seriesName.get(seriesOfGroup.get(r.group_id) ?? "") ?? "", subject: "P1 / P1-DCE", variant: r.variant, submittedAt: r.sub!.created_at, score: r.sub!.drc_score != null ? Number(r.sub!.drc_score) : null, verdict, zipSha256: r.sub!.zip_sha256, reportSha256: r.sub!.report_sha256, fileName: r.sub!.file_name, revision: r.sub!.revision, lateDays: r.sub!.late_days });
+                          }}><ReceiptText className="h-4 w-4" /></Button>
+                        )}
                         <Button size="sm" variant="ghost" aria-label={`Compară versiunile lui ${r.full_name}`} title="Compară vizual 2 versiuni (Visual Diff)" onClick={() => void openDiff(r.id, r.full_name)}><GitCompareArrows className="h-4 w-4" /></Button>
                         <Button size="sm" variant="ghost" onClick={() => { setAutoCheck(false); setOpen(open === r.id ? null : r.id); }}>{open === r.id ? "Închide" : "Fișiere"}</Button>
                         {canManage && (r.status === "archived"
