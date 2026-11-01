@@ -840,6 +840,253 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     else note("FAB_CONTENT", `FAB cu ${fabLines} linii desenate (verificați manual tabelul și secțiunea).`);
   }
 
+  // === ERR_54 – ERR_62: reguli industriale DFM ===
+
+  // ERR_60 — contur închis și valid (CRITIC): buclă poligonală continuă, fără auto-intersecții.
+  if (outline) {
+    const segs = outline.primitives.filter((p): p is Extract<Primitive, { t: "line" }> => p.t === "line" && !p.clear);
+    if (segs.length < 3) fail("OUTLINE_OPEN_OR_INVALID", "Conturul plăcii are mai puțin de 3 segmente — nu formează o buclă închisă.", { layer: "outline" });
+    else {
+      const tol = Math.max(0.01, R.outlineGapTol);
+      const key = (x: number, y: number) => `${Math.round(x / tol)},${Math.round(y / tol)}`;
+      const parentK = new Map<string, string>();
+      const findK = (a: string): string => { let r = a; while (parentK.get(r) !== r) r = parentK.get(r)!; parentK.set(a, r); return r; };
+      const deg = new Map<string, number>();
+      for (const s of segs) {
+        const a = key(s.x1, s.y1), b = key(s.x2, s.y2);
+        for (const k of [a, b]) { if (!parentK.has(k)) parentK.set(k, k); deg.set(k, (deg.get(k) ?? 0) + 1); }
+        parentK.set(findK(a), findK(b));
+      }
+      // The board outline is the largest connected component; dimension text is separate.
+      const compLen = new Map<string, number>();
+      for (const s of segs) {
+        const r = findK(key(s.x1, s.y1));
+        compLen.set(r, (compLen.get(r) ?? 0) + Math.hypot(s.x2 - s.x1, s.y2 - s.y1));
+      }
+      const main = [...compLen.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const mainSegs = segs.filter((s) => findK(key(s.x1, s.y1)) === main);
+      const openEnds = [...deg.entries()].filter(([k, d]) => findK(k) === main && d % 2 === 1).length;
+      let crosses = 0;
+      for (let i = 0; i < mainSegs.length && crosses < 3; i++)
+        for (let j = i + 1; j < mainSegs.length; j++) {
+          const A = mainSegs[i]!, B = mainSegs[j]!;
+          if (key(A.x1, A.y1) === key(B.x1, B.y1) || key(A.x1, A.y1) === key(B.x2, B.y2) || key(A.x2, A.y2) === key(B.x1, B.y1) || key(A.x2, A.y2) === key(B.x2, B.y2)) continue;
+          if (segmentsCross(A.x1, A.y1, A.x2, A.y2, B.x1, B.y1, B.x2, B.y2)) crosses++;
+        }
+      if (openEnds || crosses)
+        fail("OUTLINE_OPEN_OR_INVALID", `Conturul nu este o buclă închisă: ${openEnds} capete libere${crosses ? `, ${crosses} auto-intersecții` : ""} (toleranță ${tol} mm). Frezarea CNC nu este posibilă.`, { layer: "outline" });
+      else note("OUTLINE_OPEN_OR_INVALID", `Contur închis și continuu (${mainSegs.length} segmente).`);
+    }
+  }
+
+  // ERR_54 — punte de mască prea subțire (sliver) între deschideri adiacente
+  {
+    let n = 0;
+    for (const mLayer of [mask, one("bottom_mask")].filter(Boolean) as Layer[]) {
+      const { hits } = clearanceScan(mLayer, R.minMaskSliver);
+      for (const h of hits) {
+        if (h.gap <= 0.005 || h.gap >= R.minMaskSliver - 0.001) continue;
+        n++;
+        if (n <= 6) fail("SOLDER_MASK_SLIVER", `Punte de mască de ${h.gap.toFixed(3)} mm între două deschideri (min ${R.minMaskSliver} mm).`, { x: h.x, y: h.y, layer: mLayer.kind });
+      }
+    }
+    if (n) failed.set("SOLDER_MASK_SLIVER", `${n} punți de mască sub ${R.minMaskSliver} mm.`);
+    else note("SOLDER_MASK_SLIVER", "Punțile de mască dintre deschideri sunt suficient de late.");
+  }
+
+  // ERR_55 — unghiuri interioare ascuțite între trasee conectate (acid traps)
+  {
+    let n = 0;
+    for (const layer of [top, bottom].filter(Boolean) as Layer[]) {
+      const segs = layer.primitives.filter((p): p is Extract<Primitive, { t: "line" }> => p.t === "line" && !p.clear && p.w > 0 && p.w <= R.acidTrapMaxWidth + 0.001);
+      const nodes = new Map<string, { x: number; y: number; dx: number; dy: number }[]>();
+      const key = (x: number, y: number) => `${Math.round(x * 100)},${Math.round(y * 100)}`;
+      for (const s of segs) {
+        const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
+        if (len < 0.01) continue;
+        const ux = (s.x2 - s.x1) / len, uy = (s.y2 - s.y1) / len;
+        const a = key(s.x1, s.y1), b = key(s.x2, s.y2);
+        nodes.set(a, [...(nodes.get(a) ?? []), { x: s.x1, y: s.y1, dx: ux, dy: uy }]);
+        nodes.set(b, [...(nodes.get(b) ?? []), { x: s.x2, y: s.y2, dx: -ux, dy: -uy }]);
+      }
+      for (const list of nodes.values()) {
+        for (let a = 0; a < list.length; a++)
+          for (let b = a + 1; b < list.length; b++) {
+            const A = list[a]!, B = list[b]!;
+            const dot = Math.max(-1, Math.min(1, A.dx * B.dx + A.dy * B.dy));
+            const ang = (Math.acos(dot) * 180) / Math.PI;
+            if (ang < R.minTraceAngleDeg - 0.5) {
+              n++;
+              if (n <= 6) fail("ACID_TRAPS", `Unghi interior de ${ang.toFixed(0)}° între trasee la (${A.x.toFixed(2)}, ${A.y.toFixed(2)}) — capcană de acid (min ${R.minTraceAngleDeg}°).`, { x: A.x, y: A.y, layer: layer.kind });
+            }
+          }
+      }
+    }
+    if (n) failed.set("ACID_TRAPS", `${n} unghiuri ascuțite sub ${R.minTraceAngleDeg}°.`);
+    else note("ACID_TRAPS", "Nu există unghiuri ascuțite între trasee.");
+  }
+
+  // ERR_56 — insule de cupru moarte și gâtuiri ale planului de masă
+  {
+    let islands = 0, necks = 0;
+    for (const layer of [top, bottom].filter(Boolean) as Layer[]) {
+      const dark = layer.primitives.filter((p): p is Extract<Primitive, { t: "region" }> => p.t === "region" && !p.clear);
+      if (!dark.length) continue;
+      const flashes = layer.primitives.filter((p): p is Extract<Primitive, { t: "flash" }> => p.t === "flash" && !p.clear);
+      const lines = layer.primitives.filter((p): p is Extract<Primitive, { t: "line" }> => p.t === "line" && !p.clear);
+      for (const r of dark) {
+        const area = polyArea(r.pts);
+        const connected =
+          flashes.some((f) => pointInPoly(f.x, f.y, r.pts)) ||
+          holes.some((h) => pointInPoly(h.x, h.y, r.pts)) ||
+          lines.some((l) => pointInPoly(l.x1, l.y1, r.pts) || pointInPoly(l.x2, l.y2, r.pts));
+        if (!connected && area > R.islandMinArea) {
+          islands++;
+          if (islands <= 5) { const b = primitiveBBox(r); fail("COPPER_ISLANDS", `Insulă de cupru neconectată de ${area.toFixed(1)} mm² la (${((b.minX + b.maxX) / 2).toFixed(1)}, ${((b.minY + b.maxY) / 2).toFixed(1)}).`, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, layer: layer.kind }); }
+        } else if (connected) {
+          const wEst = (2 * area) / Math.max(1, polyPerimeter(r.pts));
+          if (wEst < R.pourNeckMin - 0.001) {
+            necks++;
+            if (necks <= 5) { const b = primitiveBBox(r); fail("COPPER_ISLANDS", `Plan de masă cu gâtuire estimată ${wEst.toFixed(2)} mm (min ${R.pourNeckMin} mm).`, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, layer: layer.kind }); }
+          }
+        }
+      }
+    }
+    if (islands || necks) failed.set("COPPER_ISLANDS", `${islands} insule moarte, ${necks} gâtuiri sub ${R.pourNeckMin} mm.`);
+    else note("COPPER_ISLANDS", "Planurile de masă nu au insule moarte sau gâtuiri critice.");
+  }
+
+  // ERR_57 — pad cu gaură îngropat în plan plin, fără izolare termică (thermal relief)
+  {
+    let n = 0;
+    let pours = 0;
+    for (const layer of [top, bottom].filter(Boolean) as Layer[]) {
+      const dark = layer.primitives.filter((p): p is Extract<Primitive, { t: "region" }> => p.t === "region" && !p.clear);
+      if (!dark.length) continue;
+      pours += dark.length;
+      const clears = layer.primitives.filter((p) => p.clear);
+      const holedPads = layer.primitives.filter((p): p is Extract<Primitive, { t: "flash" }> => p.t === "flash" && !p.clear && holes.some((h) => Math.hypot(h.x - p.x, h.y - p.y) < 0.05));
+      for (const pad of holedPads) {
+        if (!dark.some((r) => pointInPoly(pad.x, pad.y, r.pts))) continue;
+        const reach = Math.max(pad.w, pad.h) / 2 + 0.35;
+        const relieved = clears.some((c) => { const b = primitiveBBox(c); return b.minX <= pad.x + reach && b.maxX >= pad.x - reach && b.minY <= pad.y + reach && b.maxY >= pad.y - reach; });
+        if (!relieved) {
+          n++;
+          if (n <= 6) fail("THERMAL_RELIEF_MISSING", `Pad cu gaură la (${pad.x.toFixed(2)}, ${pad.y.toFixed(2)}) conectat direct la planul de masă, fără thermal relief.`, { x: pad.x, y: pad.y, layer: layer.kind });
+        }
+      }
+    }
+    if (n) failed.set("THERMAL_RELIEF_MISSING", `${n} pad-uri fără izolare termică în plan.`);
+    else note("THERMAL_RELIEF_MISSING", pours ? "Pad-urile din planuri au izolare termică." : "Nu există planuri de masă.");
+  }
+
+  // ERR_58 — asimetrie termică între pad-urile aceluiași pasiv mic (tombstoning), doar SMT
+  if (smt && top) {
+    const topLines = top.primitives.filter((p): p is Extract<Primitive, { t: "line" }> => p.t === "line" && !p.clear);
+    const small = topPads.filter((p) => p.w * p.h < R.tombstonePadArea && !holes.some((h) => Math.hypot(h.x - p.x, h.y - p.y) < 0.05) && pasteAps.some((a) => Math.hypot(a.x - p.x, a.y - p.y) < 0.15));
+    const mass = (p: Extract<Primitive, { t: "flash" }>) => {
+      let m = 0;
+      for (const l of topLines) {
+        const d = ptSegDist(p.x, p.y, l.x1, l.y1, l.x2, l.y2) - l.w / 2;
+        if (d < R.tombstoneRadius) m += l.w * Math.min(Math.hypot(l.x2 - l.x1, l.y2 - l.y1), 2 * R.tombstoneRadius);
+      }
+      for (const f of topPads) if (f !== p && Math.hypot(f.x - p.x, f.y - p.y) < R.tombstoneRadius) m += f.w * f.h;
+      return m;
+    };
+    let n = 0;
+    for (let i = 0; i < small.length; i++)
+      for (let j = i + 1; j < small.length; j++) {
+        const a = small[i]!, b = small[j]!;
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d < 0.3 || d > 3) continue;
+        const m1 = mass(a), m2 = mass(b);
+        const lo = Math.min(m1, m2), hi = Math.max(m1, m2);
+        if (hi > 0.02 && hi / Math.max(lo, 0.005) > R.tombstoneRatio) {
+          n++;
+          if (n <= 5) fail("TOMBSTONING_ASYMMETRY", `Pad-uri la ${d.toFixed(2)} mm cu masă termică în raport ${(hi / Math.max(lo, 0.005)).toFixed(1)}:1 (max ${R.tombstoneRatio}:1) — risc de tombstoning.`, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, layer: "top_copper" });
+        }
+      }
+    if (n) failed.set("TOMBSTONING_ASYMMETRY", `${n} perechi de pad-uri cu asimetrie termică.`);
+    else note("TOMBSTONING_ASYMMETRY", "Pad-urile pasivelor mici sunt echilibrate termic.");
+  }
+
+  // ERR_59 — gardă minimă în jurul găurilor de montaj (NPTH) față de cupru
+  {
+    const mount = holes.filter((h) => h.d >= R.npthMinDiameter);
+    if (mount.length) {
+      const caps = [top, bottom].filter(Boolean).flatMap((l) => (l as Layer).primitives.map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c));
+      let n = 0;
+      for (const h of mount) {
+        const hc: Capsule = { ax: h.x, ay: h.y, bx: h.x, by: h.y, r: h.d / 2, b: { minX: h.x - h.d / 2, maxX: h.x + h.d / 2, minY: h.y - h.d / 2, maxY: h.y + h.d / 2 }, i: 0 };
+        let best = Infinity;
+        for (const c of caps) {
+          if (hc.b.maxX < c.b.minX - R.npthCopperClearance || hc.b.minX > c.b.maxX + R.npthCopperClearance || hc.b.maxY < c.b.minY - R.npthCopperClearance || hc.b.minY > c.b.maxY + R.npthCopperClearance) continue;
+          const g = gapBetween(hc, c);
+          if (g < best) best = g;
+        }
+        if (best < R.npthCopperClearance - 0.001) {
+          n++;
+          if (n <= 6) fail("NPTH_CLEARANCE", `Gaură de montaj Ø${h.d.toFixed(2)} mm la ${Math.max(0, best).toFixed(2)} mm de cupru (min ${R.npthCopperClearance} mm).`, { x: h.x, y: h.y, layer: "drill" });
+        }
+      }
+      if (n) failed.set("NPTH_CLEARANCE", `${n} găuri de montaj prea aproape de cupru.`);
+      else note("NPTH_CLEARANCE", `${mount.length} găuri de montaj, toate cu gardă suficientă.`);
+    } else note("NPTH_CLEARANCE", "Nu există găuri de montaj (NPTH).");
+  }
+
+  // ERR_61 — capete de traseu rămase în aer (antene / cioturi de rutare)
+  {
+    let n = 0;
+    for (const layer of [top, bottom].filter(Boolean) as Layer[]) {
+      const segs = layer.primitives.filter((p): p is Extract<Primitive, { t: "line" }> => p.t === "line" && !p.clear && p.w > 0);
+      if (!segs.length) continue;
+      const flashes = layer.primitives.filter((p): p is Extract<Primitive, { t: "flash" }> => p.t === "flash" && !p.clear);
+      const dark = layer.primitives.filter((p): p is Extract<Primitive, { t: "region" }> => p.t === "region" && !p.clear);
+      const deg = new Map<string, { n: number; x: number; y: number }>();
+      const key = (x: number, y: number) => `${Math.round(x * 100)},${Math.round(y * 100)}`;
+      for (const s of segs) {
+        for (const [px, py] of [[s.x1, s.y1], [s.x2, s.y2]] as const) {
+          const k = key(px, py);
+          const e = deg.get(k) ?? { n: 0, x: px, y: py };
+          e.n++;
+          deg.set(k, e);
+        }
+      }
+      for (const v of deg.values()) {
+        if (v.n !== 1) continue;
+        // endpoint on another segment's body (T-junction) is connected, not dangling
+        if (segs.some((s) => ptSegDist(v.x, v.y, s.x1, s.y1, s.x2, s.y2) < 0.02 && Math.hypot(v.x - s.x1, v.y - s.y1) > 0.02 && Math.hypot(v.x - s.x2, v.y - s.y2) > 0.02)) continue;
+        if (flashes.some((f) => pointInFlash(v.x, v.y, f, 0.05))) continue;
+        if (holes.some((h) => Math.hypot(h.x - v.x, h.y - v.y) < 0.15)) continue;
+        if (dark.some((r) => pointInPoly(v.x, v.y, r.pts))) continue;
+        n++;
+        if (n <= 8) fail("DANGLING_TRACES", `Capăt de traseu în aer la (${v.x.toFixed(2)}, ${v.y.toFixed(2)}) — nu se termină în pad, via sau plan.`, { x: v.x, y: v.y, layer: layer.kind });
+      }
+    }
+    if (n) failed.set("DANGLING_TRACES", `${n} capete de traseu în aer.`);
+    else note("DANGLING_TRACES", "Toate traseele se termină în pad-uri, via-uri sau planuri.");
+  }
+
+  // ERR_62 — gaură care secționează un traseu fără pad (CRITIC)
+  {
+    const copperFlashes = [top, bottom].filter(Boolean).flatMap((l) => (l as Layer).primitives.filter((p) => p.t === "flash" && !p.clear)) as Extract<Primitive, { t: "flash" }>[];
+    const copperLines = [top, bottom].filter(Boolean).flatMap((l) => (l as Layer).primitives.filter((p) => p.t === "line" && !p.clear)) as Extract<Primitive, { t: "line" }>[];
+    const regionBoxes = [top, bottom].filter(Boolean).flatMap((l) => (l as Layer).primitives.filter((p) => p.t === "region" && !p.clear)).map((p) => primitiveBBox(p));
+    let n = 0;
+    for (const h of holes) {
+      if (h.d >= R.npthMinDiameter) continue;
+      const onPad = copperFlashes.some((p) => pointInFlash(h.x, h.y, p, 0.02)) || regionBoxes.some((b) => pointInBBox(h.x, h.y, b));
+      if (onPad) continue;
+      const cut = copperLines.find((l) => ptSegDist(h.x, h.y, l.x1, l.y1, l.x2, l.y2) < l.w / 2 + h.d / 2 - 0.001);
+      if (cut) {
+        n++;
+        if (n <= 6) fail("DRILL_ON_TRACE_NO_PAD", `Gaură Ø${h.d.toFixed(2)} mm la (${h.x.toFixed(2)}, ${h.y.toFixed(2)}) secționează un traseu fără pad — traseul va fi întrerupt.`, { x: h.x, y: h.y, layer: "drill" });
+      }
+    }
+    if (n) failed.set("DRILL_ON_TRACE_NO_PAD", `${n} găuri secționează trasee fără pad.`);
+    else note("DRILL_ON_TRACE_NO_PAD", "Nicio gaură nu taie trasee fără pad.");
+  }
+
   // Teacher-defined rules: generic geometric checks, scored like built-in rules.
   for (const cr of settings.customRules ?? []) {
     if (!cr.enabled || !cr.code) continue;
