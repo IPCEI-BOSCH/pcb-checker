@@ -214,7 +214,25 @@ function SelfCheck() {
         <p className="text-sm text-destructive">Predarea oficială devine disponibilă după eliminarea tuturor erorilor blocante.</p>
       )}
 
-      {current && <DrcReportView report={current.report} layers={current.layers} meta={{ student: st.file_prefix ?? st.email ?? undefined, group: st.groups?.name ?? undefined, series: st.groups?.series?.name ?? undefined, archive: current.fileName ?? undefined }} />}
+      {current && <OrcadExportGuide codes={[...new Set([...current.report.issues.map((i) => i.code), ...current.report.rules.filter((r) => !r.passed).map((r) => r.code)])]} />}
+
+      {!!pins.data?.length && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-base">Observații de la profesor pe placă ({pins.data.length})</CardTitle></CardHeader>
+          <CardContent className="space-y-1.5">
+            {pins.data.map((p, i) => (
+              <button key={p.id} onClick={() => setFocusPoint({ x: Number(p.x), y: Number(p.y) })} className="flex w-full items-center gap-2 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-warning font-mono text-[11px] font-bold text-black" style={{ transform: "rotate(45deg)" }}><span style={{ transform: "rotate(-45deg)" }}>{i + 1}</span></span>
+                <span className="min-w-0 flex-1 truncate">{p.note}</span>
+                <span className="font-mono text-xs text-muted-foreground">({Number(p.x).toFixed(1)}, {Number(p.y).toFixed(1)}) mm</span>
+              </button>
+            ))}
+            <p className="text-xs text-muted-foreground">Click pe o observație → vizualizatorul face zoom direct pe coordonata indicată.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {current && <DrcReportView report={current.report} layers={current.layers} meta={{ student: st.file_prefix ?? st.email ?? undefined, group: st.groups?.name ?? undefined, series: st.groups?.series?.name ?? undefined, archive: current.fileName ?? undefined }} pins={(pins.data ?? []).map((p, i) => ({ x: Number(p.x), y: Number(p.y), label: String(i + 1), title: p.note }))} focusPoint={focusPoint} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -238,17 +256,30 @@ function SelfCheck() {
           <CardHeader className="pb-3"><CardTitle className="text-base">Predări oficiale ({officials.length})</CardTitle></CardHeader>
           <CardContent className="space-y-1.5">
             {!officials.length && <p className="text-sm text-muted-foreground">Nicio predare oficială.</p>}
-            {officials.map((s) => (
-              <button key={s.id} onClick={() => openPast(s)} className="w-full rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono">v{s.revision} · {new Date(s.created_at).toLocaleString("ro-RO")}</span>
-                  <Badge variant={s.review_status === "approved" ? "default" : s.review_status === "rejected" ? "destructive" : "secondary"}>
-                    {s.review_status === "approved" ? "Aprobat fabricație" : s.review_status === "rejected" ? "Respins" : "În evaluare"}
-                  </Badge>
+            {officials.map((s) => {
+              const rep = s.report as unknown as DrcReport | null;
+              const verdict = rep?.verdict === "admis" ? "ADMIS" : rep?.verdict === "rezerve" ? "REZERVE" : rep?.verdict === "respins" ? "RESPINS" : rep?.wouldPass ? "ADMIS" : "RESPINS";
+              return (
+                <div key={s.id} className="rounded-md border border-border px-3 py-2 text-sm">
+                  <button onClick={() => openPast(s)} className="flex w-full items-center justify-between text-left hover:underline">
+                    <span className="font-mono">v{s.revision} · {new Date(s.created_at).toLocaleString("ro-RO")}</span>
+                    <Badge variant={s.review_status === "approved" ? "default" : s.review_status === "rejected" ? "destructive" : "secondary"}>
+                      {s.review_status === "approved" ? "Aprobat fabricație" : s.review_status === "rejected" ? "Respins" : "În evaluare"}
+                    </Badge>
+                  </button>
+                  {s.late_days ? <div className="mt-1 text-xs text-warning">Predat cu {s.late_days} {s.late_days === 1 ? "zi" : "zile"} întârziere.</div> : null}
+                  {s.review_reason && <div className="mt-1 text-xs text-muted-foreground">Motiv: {s.review_reason}</div>}
+                  <div className="mt-1.5 flex gap-1.5">
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => printSubmissionReceipt({ student: st.full_name, group: st.groups?.name ?? "", series: st.groups?.series?.name ?? "", subject: "P1 / P1-DCE", variant: s.variant, submittedAt: s.created_at, score: s.drc_score != null ? Number(s.drc_score) : null, verdict, zipSha256: s.zip_sha256, reportSha256: s.report_sha256, fileName: s.file_name, revision: s.revision, lateDays: s.late_days })}>
+                      <ReceiptText className="mr-1 h-3.5 w-3.5" /> Recipisă SHA-256
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setContest({ submissionId: s.id }); setContestMsg(""); }}>
+                      <MessageSquareWarning className="mr-1 h-3.5 w-3.5" /> Cere reevaluare
+                    </Button>
+                  </div>
                 </div>
-                {s.review_reason && <div className="mt-1 text-xs text-muted-foreground">Motiv: {s.review_reason}</div>}
-              </button>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </div>
