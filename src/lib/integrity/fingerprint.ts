@@ -219,6 +219,8 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   const okBox = ob && ob.maxX - ob.minX > 3 && ob.maxY - ob.minY > 3 && ob.maxX - ob.minX < 300;
   const ox = okBox ? (ob!.minX + ob!.maxX) / 2 : cx, oy = okBox ? (ob!.minY + ob!.maxY) / 2 : cy;
   const silk = [...extractTextBlocks(layers.find((l) => l.kind === "top_silk")), ...extractTextBlocks(layers.find((l) => l.kind === "bottom_silk"))];
+  const padPtsC = sub(pts, 400).map(([x, y]) => [r2(x - ox), r2(y - oy)] as P2);
+  const rms = Math.sqrt(padPtsC.reduce((a, p) => a + p[0] * p[0] + p[1] * p[1], 0) / (padPtsC.length || 1));
   return {
     v: FP_VERSION,
     pads: pts.length,
@@ -227,7 +229,7 @@ export function fingerprint(layers: Layer[]): Fingerprint {
     drill: norm(drill),
     radial: norm(radial),
     copperLen,
-    padPts: sub(pts, 400).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
+    padPts: padPtsC,
     holePts: sub(holes, 400).map((h) => [r2(h.x - ox), r2(h.y - oy), r2(h.d)]),
     copperPts: sub(segs, 600).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
     silkPts: silk.slice(0, 150).map((b) => [r2(b.x - ox), r2(b.y - oy)]),
