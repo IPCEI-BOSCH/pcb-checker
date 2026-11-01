@@ -69,6 +69,7 @@ function Review() {
   const [pinFocus, setPinFocus] = useState<{ x: number; y: number } | null>(null);
   const [extFor, setExtFor] = useState<{ id: string; name: string; current: string | null } | null>(null);
   const [extValue, setExtValue] = useState("");
+  const [reqFor, setReqFor] = useState<{ id: string; name: string } | null>(null);
 
   const s = structure.data;
   const visibleGroups = useMemo(() => {
@@ -397,7 +398,7 @@ function Review() {
                             : <div className="font-medium text-foreground">{st.full_name}</div>}
                           <div className="font-mono text-[11px] text-muted-foreground">{st.file_prefix ?? st.email}</div>
                           {!!requests.data?.get(st.id) && (
-                            <Badge variant="outline" className="mt-1 gap-1 border-warning text-[10px] text-warning"><MessageSquareWarning className="h-3 w-3" /> {requests.data.get(st.id)} {requests.data.get(st.id) === 1 ? "cerere" : "cereri"} de reevaluare</Badge>
+                            <button onClick={() => setReqFor({ id: st.id, name: st.full_name })}><Badge variant="outline" className="mt-1 gap-1 border-warning text-[10px] text-warning"><MessageSquareWarning className="h-3 w-3" /> {requests.data.get(st.id)} {requests.data.get(st.id) === 1 ? "cerere" : "cereri"} de reevaluare</Badge></button>
                           )}
                           {st.deadline_extension_until && <Badge variant="outline" className="mt-1 text-[10px]">Derogare până la {new Date(st.deadline_extension_until).toLocaleString("ro-RO", { dateStyle: "short", timeStyle: "short" })}</Badge>}
                           {st.status === "pending" && (
