@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { UnifiedRules } from "@/components/UnifiedRules";
+import { GoldenSuitePanel } from "@/components/GoldenSuitePanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -215,6 +216,7 @@ function RulesPage() {
               )}
             </CardContent>
           </Card>
+          <GoldenSuitePanel />
           <div id="rule-sandbox" className="scroll-mt-4">
             <h2 className="mb-2 text-lg font-semibold text-foreground">Testare pe proiecte înainte de activare</h2>
             {current.data && <RuleSandbox seriesId={seriesId} baseline={current.data} candidate={draft} userId={user.id} onActivate={(x) => save(x)} />}
