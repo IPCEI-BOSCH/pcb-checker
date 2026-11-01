@@ -14,7 +14,7 @@ import type { Layer } from "@/lib/gerber/types";
 import { cn } from "@/lib/utils";
 
 export function DrcReportView({ report, layers, meta }: { report: DrcReport; layers: Layer[] | null; meta?: EvaluationMeta }) {
-  const [cad] = useState<CadTool>("orcad");
+  const [cad, setCad] = useState<CadTool>("orcad");
   const [focus, setFocus] = useState<number | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const locate = (code: string) => {
@@ -49,7 +49,24 @@ export function DrcReportView({ report, layers, meta }: { report: DrcReport; lay
 
       {report.rules.some((r) => !r.passed) && (
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base">De ce ai pierdut puncte și ce trebuie să repari</CardTitle></CardHeader>
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">De ce ai pierdut puncte și ce trebuie să repari</CardTitle>
+              <div className="flex gap-1 rounded-md border border-border p-0.5" role="tablist" aria-label="Instrument CAD">
+                {(Object.keys(CAD_LABELS) as CadTool[]).map((t) => (
+                  <button
+                    key={t}
+                    role="tab"
+                    aria-selected={cad === t}
+                    onClick={() => setCad(t)}
+                    className={cn("rounded px-2 py-1 text-xs", cad === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                  >
+                    {t === "orcad" ? "OrCAD" : t === "altium" ? "Altium" : "KiCad"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </CardHeader>
           <CardContent className="space-y-3">
             {report.rules.filter((r) => !r.passed).sort((a, b) => Number(!!b.critical) - Number(!!a.critical) || b.penalty - a.penalty).map((r) => {
               const c = (report.customCatalog?.[r.code] ?? CATALOG[r.code]) as (typeof CATALOG)[string] | undefined;

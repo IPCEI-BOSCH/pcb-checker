@@ -47,6 +47,24 @@ export interface RuleValues {
   viaMaxDetect: number;
   /** Minimum drawn lines on FAB (drill chart, stack-up, notes). */
   fabMinLines: number;
+  /** Minimum solder-mask bridge (sliver) between two adjacent mask openings (mm). */
+  minMaskSliver: number;
+  /** Minimum interior angle between connected trace segments (degrees) — acid traps. */
+  minTraceAngleDeg: number;
+  /** Maximum trace width for which acute angles count as acid traps (mm). */
+  acidTrapMaxWidth: number;
+  /** Minimum area of a dead copper island to report (mm²). */
+  islandMinArea: number;
+  /** Minimum neck width of a copper pour (mm). */
+  pourNeckMin: number;
+  /** Tombstoning check: maximum SMD pad area considered (mm²), comparison radius (mm), max asymmetry ratio. */
+  tombstonePadArea: number;
+  tombstoneRadius: number;
+  tombstoneRatio: number;
+  /** Minimum clearance from a mounting (NPTH) hole edge to any copper (mm). */
+  npthCopperClearance: number;
+  /** Maximum gap between consecutive outline segment endpoints for a closed loop (mm). */
+  outlineGapTol: number;
 }
 
 export type AppliesTo = "ALL" | "SMT" | "THT";
@@ -106,6 +124,15 @@ export const RULE_LINKS: Record<string, (keyof RuleValues)[]> = {
   PASTE_MISSING_PAD: [],
   VIA_DIAMETER: ["viaDiameter", "viaTol", "viaMaxDetect"],
   FAB_CONTENT: ["fabMinLines"],
+  SOLDER_MASK_SLIVER: ["minMaskSliver"],
+  ACID_TRAPS: ["minTraceAngleDeg", "acidTrapMaxWidth"],
+  COPPER_ISLANDS: ["islandMinArea", "pourNeckMin"],
+  THERMAL_RELIEF_MISSING: [],
+  TOMBSTONING_ASYMMETRY: ["tombstonePadArea", "tombstoneRadius", "tombstoneRatio"],
+  NPTH_CLEARANCE: ["npthMinDiameter", "npthCopperClearance"],
+  OUTLINE_OPEN_OR_INVALID: ["outlineGapTol"],
+  DANGLING_TRACES: [],
+  DRILL_ON_TRACE_NO_PAD: ["npthMinDiameter"],
 };
 
 export const GENERAL_FIELDS: (keyof RuleValues)[] = ["passScore", "reserveScore", "criticalScoreCap"];
@@ -290,6 +317,16 @@ export const DEFAULT_SETTINGS: Settings = {
     viaTol: 0.03,
     viaMaxDetect: 0.9,
     fabMinLines: 300,
+    minMaskSliver: 0.08,
+    minTraceAngleDeg: 85,
+    acidTrapMaxWidth: 0.5,
+    islandMinArea: 1.0,
+    pourNeckMin: 0.2,
+    tombstonePadArea: 1.8,
+    tombstoneRadius: 0.6,
+    tombstoneRatio: 3,
+    npthCopperClearance: 0.6,
+    outlineGapTol: 0.05,
   },
   penalties: {
     MISSING_LAYER: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 20 },
@@ -320,6 +357,15 @@ export const DEFAULT_SETTINGS: Settings = {
     PASTE_MISSING_PAD: { points: 3, severity: "warning", enabled: true, smtOnly: true, perIssue: 0.5, cap: 6 },
     VIA_DIAMETER: { points: 3, severity: "warning", enabled: true, smtOnly: false, perIssue: 0, cap: 3 },
     FAB_CONTENT: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 0, cap: 5 },
+    SOLDER_MASK_SLIVER: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    ACID_TRAPS: { points: 3, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 10 },
+    COPPER_ISLANDS: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 10 },
+    THERMAL_RELIEF_MISSING: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 10 },
+    TOMBSTONING_ASYMMETRY: { points: 3, severity: "warning", enabled: true, smtOnly: true, perIssue: 1, cap: 9 },
+    NPTH_CLEARANCE: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 15 },
+    OUTLINE_OPEN_OR_INVALID: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 20, critical: true },
+    DANGLING_TRACES: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 2, cap: 15 },
+    DRILL_ON_TRACE_NO_PAD: { points: 15, severity: "blocking", enabled: true, smtOnly: false, perIssue: 2, cap: 25, critical: true },
   },
   cam: {
     panelCols: 7,
@@ -386,6 +432,16 @@ export const RULE_FIELDS: Record<keyof RuleValues, FieldMeta> = {
   viaTol: { label: "Toleranță diametru via", unit: "mm", group: "Găurire", step: 0.005 },
   viaMaxDetect: { label: "Găuri sub care se consideră via", unit: "mm", group: "Găurire", step: 0.05 },
   fabMinLines: { label: "Linii minime pe FAB (tabel găurire, secțiune)", unit: "buc", group: "Fiduciali & mască", step: 10 },
+  minMaskSliver: { label: "Punte de mască minimă (sliver)", unit: "mm", group: "Fiduciali & mască", step: 0.01, help: "Distanța minimă între două deschideri de mască adiacente" },
+  minTraceAngleDeg: { label: "Unghi minim între trasee (acid trap)", unit: "°", group: "Cupru", step: 1, help: "Unghiuri interioare mai ascuțite rețin soluția de corodare" },
+  acidTrapMaxWidth: { label: "Lățime maximă traseu pentru acid trap", unit: "mm", group: "Cupru", step: 0.05 },
+  islandMinArea: { label: "Arie minimă insulă de cupru raportată", unit: "mm²", group: "Cupru", step: 0.1 },
+  pourNeckMin: { label: "Gâtuire minimă plan de masă", unit: "mm", group: "Cupru", step: 0.02 },
+  tombstonePadArea: { label: "Arie maximă pad SMD pentru tombstoning", unit: "mm²", group: "Stencil IPC-7525B", step: 0.1 },
+  tombstoneRadius: { label: "Rază comparare masă termică (tombstoning)", unit: "mm", group: "Stencil IPC-7525B", step: 0.1 },
+  tombstoneRatio: { label: "Raport maxim asimetrie termică", unit: ":1", group: "Stencil IPC-7525B", step: 0.5 },
+  npthCopperClearance: { label: "Gardă gaură de montaj față de cupru", unit: "mm", group: "Găurire", step: 0.05, help: "Previne scurtcircuitul cu capul șurubului M3" },
+  outlineGapTol: { label: "Toleranță închidere contur", unit: "mm", group: "Geometrie", step: 0.01 },
 };
 
 export const CAM_FIELDS: Record<keyof CamValues, FieldMeta> = {

@@ -2,7 +2,7 @@ import JSZip from "jszip";
 import { classifyLayer, layerBBox, outlineBBox, parseExcellon, parseGerber } from "./parser";
 import type { BBox, Layer } from "./types";
 
-const SKIP = /\.(pdf|png|jpg|jpeg|md|html?|csv|xlsx?|kicad_\w+|pos|rpt|zip|log|json|bak|gbrjob|txt)$/i;
+const SKIP = /\.(pdf|png|jpg|jpeg|md|html?|csv|xlsx?|kicad_\w+|pos|rpt|zip|log|json|bak|gbrjob)$/i;
 
 export type DrillFormat = "auto" | "2:5" | "2:4" | "2:3" | "3:3";
 
@@ -31,7 +31,11 @@ export async function loadGerberZip(data: Blob | ArrayBuffer, opts: { drillForma
     ? { int: +opts.drillFormat.split(":")[0]!, dec: +opts.drillFormat.split(":")[1]! }
     : undefined;
   for (const d of drills) {
-    try { const l = parseExcellon(d.base, d.text, box, forced); l.meta = { mtime: d.mtime }; layers.push(l); }
+    try {
+      const l = parseExcellon(d.base, d.text, box, forced);
+      l.meta = { ...l.meta, mtime: d.mtime };
+      layers.push(l);
+    }
     catch (e) { layers.push({ fileName: d.base, kind: "drill", primitives: [], holes: [], warnings: [`Eroare parsare: ${(e as Error).message}`] }); }
   }
   return layers;
