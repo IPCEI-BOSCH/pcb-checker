@@ -149,11 +149,18 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   let copperLen = 0;
   const segs: [number, number, number][] = [];
   const segFull: [number, number, number, number, number, number][] = [];
+  // v7: consecutive-flash distance sequence in file order (CAD export-order forensic).
+  const flashSeq: number[] = [];
+  let lastFlash: P2 | null = null;
   for (const l of copper) {
     const ly = l.kind === "bottom_copper" ? 1 : 0;
     for (const p of l.primitives) {
       if (p.clear) continue;
-      if (p.t === "flash") pts.push([p.x, p.y]);
+      if (p.t === "flash") {
+        pts.push([p.x, p.y]);
+        if (lastFlash && flashSeq.length < 400) flashSeq.push(Math.round(Math.hypot(p.x - lastFlash[0], p.y - lastFlash[1]) / 0.2));
+        lastFlash = [p.x, p.y];
+      }
       else if (p.t === "line") {
         const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1);
         copperLen += len;
