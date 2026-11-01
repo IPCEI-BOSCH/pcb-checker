@@ -24,6 +24,22 @@ export function DrcReportView({ report, layers, meta, pins, onPinRequest, focusP
     viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  // Speed-grading: tastele 1–9 focalizează eroarea #n din listă.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
+      const n = Number(e.key);
+      if (!Number.isInteger(n) || n < 1 || n > 9) return;
+      const iss = report.issues[n - 1];
+      if (!iss) return;
+      setFocus(n - 1);
+      if (iss.x != null) viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [report.issues]);
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">

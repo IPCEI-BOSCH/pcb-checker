@@ -574,3 +574,39 @@ function Review() {
     </div>
   );
 }
+
+/** Open re-evaluation requests of one student, with resolve action for staff. */
+function ReviewRequestsList({ studentId, onDone }: { studentId: string; onDone: () => void }) {
+  const { user } = useAuth();
+  const q = useQuery({
+    queryKey: ["review_requests_list", studentId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("review_requests").select("*").eq("student_id", studentId).order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  if (q.isLoading) return <p className="text-sm text-muted-foreground">Se încarcă…</p>;
+  if (!q.data?.length) return <p className="text-sm text-muted-foreground">Nicio cerere de reevaluare.</p>;
+  return (
+    <div className="space-y-2">
+      {q.data.map((r) => (
+        <div key={r.id} className="rounded-md border border-border p-3 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString("ro-RO")}</span>
+            <Badge variant={r.status === "open" ? "secondary" : "outline"}>{r.status === "open" ? "Deschisă" : "Rezolvată"}</Badge>
+          </div>
+          <p className="mt-1">{r.message}</p>
+          {r.status === "open" && (
+            <Button size="sm" variant="outline" className="mt-2" onClick={async () => {
+              const { error } = await supabase.from("review_requests").update({ status: "resolved", resolved_by: user.id, resolved_at: new Date().toISOString() }).eq("id", r.id);
+              if (error) return void toast.error(error.message);
+              onDone();
+              q.refetch();
+            }}>Marchează rezolvată</Button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
