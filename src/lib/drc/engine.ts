@@ -29,6 +29,20 @@ export interface RuleResult {
   detail: string;
 }
 
+/** Electrical connectivity graph exported after the Union-Find pass (ERR net map). */
+export interface NetSummary {
+  netId: number;
+  name: string;
+  primitiveIds: { top_copper: number[]; bottom_copper: number[] };
+  holeIds: number[];
+  totalLengthMm: number;
+  minWidthMm: number | null;
+  maxWidthMm: number | null;
+  boundingBox: BBox;
+  /** R = (ρ_Cu / t) · Σ(L/w), ρ = 1.68e-8 Ω·m, t = 35 µm → 0.48 mΩ per square. */
+  estimatedResistanceMilliohm: number;
+}
+
 export interface DrcReport {
   version: 1;
   variant: Variant;
@@ -47,6 +61,8 @@ export interface DrcReport {
   customCatalog?: Record<string, { err: string; category: string; what: string; why: string; fix: string }> | undefined;
   /** Text blocks found on the silkscreen (geometry only; reading is done on demand). */
   silkText?: { blocks: SilkBlock[]; read?: Record<number, { text: string; confidence: number }>; mirrored?: boolean; nameFound?: boolean | null } | undefined;
+  /** Connectivity graph (copper nets) built by Union-Find across TOP/BOTTOM and vias. */
+  nets?: NetSummary[] | undefined;
 }
 
 export const RULES = {
@@ -93,6 +109,15 @@ export const TITLES: Record<string, string> = {
   PASTE_MISSING_PAD: "Pastă lipsă pe pad-uri SMD",
   VIA_DIAMETER: "Diametru via (0.4 mm)",
   FAB_CONTENT: "Conținut strat FAB",
+  SOLDER_MASK_SLIVER: "Punte de mască prea subțire (sliver)",
+  ACID_TRAPS: "Unghiuri ascuțite între trasee (acid traps)",
+  COPPER_ISLANDS: "Insule de cupru / gâtuiri plan de masă",
+  THERMAL_RELIEF_MISSING: "Pad fără izolare termică în planul de masă",
+  TOMBSTONING_ASYMMETRY: "Asimetrie termică pad-uri (tombstoning)",
+  NPTH_CLEARANCE: "Gardă găuri de montaj față de cupru",
+  OUTLINE_OPEN_OR_INVALID: "Contur deschis sau invalid (CRITIC)",
+  DANGLING_TRACES: "Capete de traseu în aer (antene)",
+  DRILL_ON_TRACE_NO_PAD: "Gaură pe traseu fără pad (CRITIC)",
 };
 
 // code -> [penalty, severity when failing, SMT only]
