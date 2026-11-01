@@ -195,6 +195,50 @@ export type Database = {
           },
         ]
       }
+      exam_tokens: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          group_id: string
+          id: string
+          label: string | null
+          used_at: string | null
+          used_by: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by: string
+          expires_at: string
+          group_id: string
+          id?: string
+          label?: string | null
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          group_id?: string
+          id?: string
+          label?: string | null
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exam_tokens_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       grade_audit_logs: {
         Row: {
           changed_by: string
@@ -262,6 +306,7 @@ export type Database = {
       groups: {
         Row: {
           created_at: string
+          exam_mode: boolean
           id: string
           is_archived: boolean
           name: string
@@ -270,6 +315,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          exam_mode?: boolean
           id?: string
           is_archived?: boolean
           name: string
@@ -278,6 +324,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          exam_mode?: boolean
           id?: string
           is_archived?: boolean
           name?: string
@@ -1102,6 +1149,10 @@ export type Database = {
       is_staff: { Args: { _uid: string }; Returns: boolean }
       manages_series: {
         Args: { _series: string; _uid: string }
+        Returns: boolean
+      }
+      redeem_exam_token: {
+        Args: { _code: string; _student: string }
         Returns: boolean
       }
       set_role: {
