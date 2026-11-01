@@ -1123,6 +1123,8 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   const blockingCount = rules.filter((r) => !r.passed && r.severity === "blocking").length;
   const verdict: DrcReport["verdict"] = blockingCount || criticalCount || score < R.reserveScore ? "respins" : score >= R.passScore ? "admis" : "rezerve";
 
+  const nets = buildNets(top, bottom, holes);
+
   return {
     version: 1,
     variant,
@@ -1145,6 +1147,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     issues: issues.sort((a, b) => sevRank(a.severity) - sevRank(b.severity)),
     customCatalog: Object.keys(customCatalog).length ? customCatalog : undefined,
     silkText: silkBlocks.length ? { blocks: silkBlocks } : undefined,
+    nets,
   };
 }
 
