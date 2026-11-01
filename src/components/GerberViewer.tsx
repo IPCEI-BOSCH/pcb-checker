@@ -17,9 +17,9 @@ interface Props {
   cad?: CadTool;
   onSelectIssue?: (i: number) => void;
   /** Harta de neturi din raportul DRC (Union-Find) — activează Sonda X-Ray. */
-  nets?: NetSummary[];
+  nets?: NetSummary[] | undefined;
   /** Clearance-ul minim configurat — pentru verdictul verde/roșu al șublerului. */
-  minClearance?: number;
+  minClearance?: number | undefined;
 }
 
 type LayerState = { visible: boolean; opacity: number };
