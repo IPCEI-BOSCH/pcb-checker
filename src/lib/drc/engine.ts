@@ -1334,16 +1334,6 @@ function evalCustomRule(
   }
 }
 
-/** Ray-casting point-in-polygon for region primitives (coverage checks). */
-function pointInPoly(x: number, y: number, pts: [number, number][]): boolean {
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const [xi, yi] = pts[i]!, [xj, yj] = pts[j]!;
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
 function sevRank(s: Severity) {
   return s === "blocking" ? 0 : s === "warning" ? 1 : 2;
 }

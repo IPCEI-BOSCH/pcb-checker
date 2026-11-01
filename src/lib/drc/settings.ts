@@ -191,7 +191,7 @@ export type CustomCheckType =
   | "copper_coverage_ratio"
   | "required_silk_aspect";
 
-export type CustomLayer = "top_copper" | "bottom_copper" | "top_mask" | "top_silk" | "top_paste" | "outline" | "drill" | "fabrication";
+export type CustomLayer = "top_copper" | "bottom_copper" | "top_mask" | "top_silk" | "bottom_silk" | "top_paste" | "outline" | "drill" | "fabrication";
 
 export type CustomCategory = "STRUCT" | "MECH" | "DRILL" | "COPPER" | "SOLDERMASK" | "STENCIL" | "SILKSCREEN";
 
@@ -232,7 +232,7 @@ export interface CustomRule {
   /** Second layer for cross_layer_clearance. */
   layer2?: CustomLayer;
   /** Board region (mm, absolute coords) for required_silk_aspect; default = whole board. */
-  region?: { x: number; y: number; w: number; h: number };
+  region?: { x: number; y: number; w: number; h: number } | undefined;
 }
 
 export const CHECK_TYPES: Record<CustomCheckType, { label: string; unit: string; layers: CustomLayer[]; help: string }> = {
