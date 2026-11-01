@@ -3,8 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, Play, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, GitCompareArrows, Play, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { VersionDiffDialog, type VersionEntry } from "@/components/VersionDiff";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit } from "@/lib/data";
 import { loadGerberZip } from "@/lib/gerber/load";
@@ -51,6 +52,7 @@ function Review() {
   const [variantFilter, setVariantFilter] = useState<"ALL" | "SMT" | "THT">("ALL");
   const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
   const [view, setView] = useState<{ name: string; report: DrcReport; layers: Layer[] | null; meta?: import("@/lib/drc/evaluationSheet").EvaluationMeta } | null>(null);
+  const [diffFor, setDiffFor] = useState<{ name: string; versions: VersionEntry[] } | null>(null);
   const [reject, setReject] = useState<{ sub: Sub; name: string } | null>(null);
   const [reason, setReason] = useState("");
   const [importOpen, setImportOpen] = useState(false);
