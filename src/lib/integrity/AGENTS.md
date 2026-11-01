@@ -16,3 +16,10 @@
 - Fingerprints carry staff-only `forensic` metadata (aperture order, CAD header, ZIP mtimes) collected by `loadGerberZip` into `layer.meta`; pairs get `forensicFlags` — indicators only, never alert triggers.
 - Layer-swap camouflage = cross-layer routing ≥70% and ≥20 pts above same-layer routing → class `obfuscare`.
 - Partial copy uses 5x5 half-overlapping windows; `bestZoneRect` (A's centred frame) drives the viewer's Diff mode zone and zoom.
+
+## v7 (FP 6 / PAIR 7)
+- Scale camouflage: RMS pad-cloud ratio λ∈[0.85,1.15], |λ−1|>0.015 → re-align with B scaled by λ; routing gain >18% → class `obfuscare`, subtype `scalare_artificiala`, `scaleFactor` recorded.
+- Rubber-band invariance: `topo` signature (length quantiles, length-weighted angle histogram, junction/via density — all scale/rotation invariant); `topological` ≥60% blends 50/50 with the geometric Chamfer score into `routing` (`routingGeo` keeps the pure geometric value).
+- CAD export-order forensic: `flashSeq` (consecutive D03 distances, 0.2 mm bins) + `drillSeq` (diameter/count per tool) + aperture order → `cadSequenceScore` (LCS); ≥85% sets `forensicFlags.identicalCadSequence` — indicator only, never an alert trigger.
+- `/insights` "Harta Clusterelor" (`IntegrityNetwork.tsx`): nodes coloured by group, sized by DRC score; edge thickness ∝ routing, dashed orange = camouflage; source→copy arrows from `inferDirection` (self-check chronology: first appearance + iteration count + score growth) — hint, not proof.
+- A4 evidence sheet prints 3 offscreen captures (overlay, Diff, `bestZoneRect` zoom), the full metric table (schema/geometric/topological/CAD-sequence/D₄ transform/Z robust) and both students' attempt chronologies; `printDiff` toggle removed (captures are always all three).

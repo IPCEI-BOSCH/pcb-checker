@@ -184,7 +184,6 @@ export function IntegrityOverlayViewer({ a, b, detail, adj, historyA, historyB }
   const [pan, setPan] = useState<[number, number]>([0, 0]);
   const [extra, setExtra] = useState<Tf>(ID);
   const [cross, setCross] = useState<[number, number] | null>(null);
-  const [printDiff, setPrintDiff] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const drag = useRef<[number, number] | null>(null);
@@ -373,7 +372,6 @@ ${imgZone ? `<p style="font-size:11px">Captura 3: zoom pe fereastra critică (zo
         <label className="flex items-center gap-1 text-xs"><Switch checked={hidePours} onCheckedChange={setHidePours} aria-label="Ascunde planurile de masă" />Ascunde planurile de masă</label>
         <Button size="sm" variant="ghost" onClick={() => { setZoom(1); setPan([0, 0]); setExtra(ID); }} aria-label="Resetează vederea"><RotateCcw className="h-4 w-4" /></Button>
         <Button size="sm" variant="outline" onClick={zoomZone} disabled={!detail.bestZoneRect}><ScanSearch className="mr-1 h-4 w-4" />Zoom pe zona suspectă</Button>
-        <label className="flex items-center gap-1 text-xs"><Switch checked={printDiff} onCheckedChange={setPrintDiff} aria-label="Fișa folosește modul Diff" />Fișă: Diff</label>
         <Button size="sm" variant="outline" onClick={() => void print()} disabled={!da || !db}><Printer className="mr-1 h-4 w-4" />Fișă A4</Button>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -411,7 +409,7 @@ ${imgZone ? `<p style="font-size:11px">Captura 3: zoom pe fereastra critică (zo
         <div className="flex items-center gap-3 text-sm"><span className="truncate">{a.name}</span><Slider value={[mix]} min={0} max={100} step={5} onValueChange={(v) => setMix(v[0] ?? 50)} aria-label="Amestec" /><span className="truncate">{b.name}</span></div>
       )}
       <p className="text-xs text-muted-foreground">
-        {CLASS_LABEL[classOf(detail)]}{detail.layerSwapDetected ? " (inversare TOP↔BOTTOM)" : ""} · Cross-layer {detail.routingCrossLayer ?? "—"}% · Via-uri {detail.viaMatch ?? "—"}% · Rutare {detail.routing ?? detail.traces ?? "—"}% (exactă {detail.routingExact ?? "—"}%) · Schemă {detail.schema ?? "—"}% · Pad-uri {detail.pads}% · Găuri {detail.holes}% · Text {detail.silk}%. Rotița = zoom, trage = deplasare.
+        {CLASS_LABEL[classOf(detail)]}{detail.layerSwapDetected ? " (inversare TOP↔BOTTOM)" : ""}{detail.scaleCamouflage ? ` (scalare artificială ×${detail.scaleFactor})` : ""} · Cross-layer {detail.routingCrossLayer ?? "—"}% · Via-uri {detail.viaMatch ?? "—"}% · Rutare {detail.routing ?? detail.traces ?? "—"}% (geometric {detail.routingGeo ?? "—"}% · exactă {detail.routingExact ?? "—"}%) · Topologic {detail.topological ?? "—"}% · Ordine CAD {detail.cadSequence ?? "—"}% · Schemă {detail.schema ?? "—"}% · Pad-uri {detail.pads}% · Găuri {detail.holes}% · Text {detail.silk}%. Rotița = zoom, trage = deplasare.
       </p>
     </div>
   );
