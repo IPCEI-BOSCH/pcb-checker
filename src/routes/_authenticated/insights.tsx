@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { IntegrityOverlayViewer } from "@/components/IntegrityOverlayViewer";
+import { IntegrityClusters } from "@/components/IntegrityClusters";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const Route = createFileRoute("/_authenticated/insights")({
@@ -37,7 +38,7 @@ export const Route = createFileRoute("/_authenticated/insights")({
   component: Insights,
 });
 
-type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; zipPath: string | null; report: DrcReport | null; score: number | null };
+type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; zipPath: string | null; report: DrcReport | null; score: number | null; submittedAt?: string | null };
 type Review = { student_a: string; student_b: string; status: "false_positive" | "discuss" | "confirmed"; note: string | null };
 type Pair = { a: Row; b: Row; d: SimilarityDetail; adj?: Adjusted };
 type Alert = { id: string; student_id: string; other_student_id: string; similarity: number; adjusted: number; status: string; created_at: string; detail: SimilarityDetail };
@@ -52,14 +53,14 @@ async function fetchRows(seriesIds: string[]): Promise<Row[]> {
   const st = await supabase.from("students").select("id, full_name, theme_name, theme_number, group_id").in("group_id", [...gmap.keys()]);
   const ids = (st.data ?? []).map((s) => s.id);
   const subs = ids.length ? await supabase.from("submissions").select("id, student_id, zip_path, report, drc_score, created_at").eq("kind", "OFFICIAL").in("student_id", ids).order("created_at", { ascending: false }) : { data: [] };
-  const latest = new Map<string, { id: string; zip_path: string | null; report: unknown; drc_score: number | null }>();
+  const latest = new Map<string, { id: string; zip_path: string | null; report: unknown; drc_score: number | null; created_at: string }>();
   for (const s of subs.data ?? []) if (!latest.has(s.student_id)) latest.set(s.student_id, s);
   return (st.data ?? []).map((s) => {
     const sub = latest.get(s.id);
     return {
       studentId: s.id, submissionId: sub?.id ?? null, name: s.full_name, seriesId: gmap.get(s.group_id)!,
       theme: [s.theme_number, s.theme_name].filter(Boolean).join(" ") || "—",
-      zipPath: sub?.zip_path ?? null, report: (sub?.report as DrcReport) ?? null, score: sub?.drc_score ?? null,
+      zipPath: sub?.zip_path ?? null, report: (sub?.report as DrcReport) ?? null, score: sub?.drc_score ?? null, submittedAt: sub?.created_at ?? null,
     };
   });
 }
@@ -358,6 +359,7 @@ function Insights() {
   };
 
   const [overlay, setOverlay] = useState<Pair | null>(null);
+  const [pairView, setPairView] = useState<"pairs" | "clusters">("pairs");
 
   return (
     <div className="space-y-4">
@@ -499,6 +501,11 @@ function Insights() {
                 </div>
               )}
 
+              <div className="flex gap-2">
+                <Button size="sm" variant={pairView === "pairs" ? "default" : "outline"} onClick={() => setPairView("pairs")}>Perechi</Button>
+                <Button size="sm" variant={pairView === "clusters" ? "default" : "outline"} onClick={() => setPairView("clusters")}>Grupuri / Clustere</Button>
+              </div>
+              {pairView === "clusters" ? <IntegrityClusters pairs={pairs} fps={fps} onOpen={(p) => setOverlay(p as Pair)} /> : <>
               {belowOnly && <p className="text-sm text-muted-foreground">Nicio pereche nu depășește pragul. Mai jos sunt cele mai asemănătoare 15 perechi, doar ca reper.</p>}
               <Table>
                 <TableHeader><TableRow><TableHead>Proiect</TableHead><TableHead>Seamănă cu</TableHead><TableHead>Detaliu</TableHead><TableHead className="text-right">Similaritate</TableHead><TableHead>Decizie</TableHead><TableHead /></TableRow></TableHeader>
@@ -540,6 +547,7 @@ function Insights() {
                   {!pairs.length && <TableRow><TableCell colSpan={6} className="text-muted-foreground">{pairsBusy ? "Se compară…" : fps.size ? "Nu există perechi de comparat în seria aleasă." : "Apasă „Calculează amprentele lipsă”."}</TableCell></TableRow>}
                 </TableBody>
               </Table>
+              </>}
             </CardContent>
           </Card>
         </>
