@@ -10,6 +10,9 @@ import { REMEDIES, type CadTool } from "@/lib/drc/remedies";
 
 const Pcb3D = lazy(() => import("./Pcb3DViewer").then((m) => ({ default: m.Pcb3DViewer })));
 
+/** Pin de comentariu spatial (X,Y) — observația profesorului pe placa studentului. */
+export interface BoardPin { x: number; y: number; label: string; title?: string | undefined }
+
 interface Props {
   layers: Layer[];
   issues: DrcIssue[];
@@ -20,6 +23,12 @@ interface Props {
   nets?: NetSummary[] | undefined;
   /** Clearance-ul minim configurat — pentru verdictul verde/roșu al șublerului. */
   minClearance?: number | undefined;
+  /** Adnotări spațiale (profesor → student), desenate ca pin-uri numerotate. */
+  pins?: BoardPin[] | undefined;
+  /** Click dreapta pe placă (coordonate mm) — adaugă pin de comentariu. */
+  onPinRequest?: ((x: number, y: number) => void) | undefined;
+  /** Centrează și mărește vederea pe un punct (ex. pin selectat din listă). */
+  focusPoint?: { x: number; y: number } | null | undefined;
 }
 
 type LayerState = { visible: boolean; opacity: number };
@@ -63,7 +72,7 @@ function primGap(a: Primitive, b: Primitive): number | null {
   return d - A.r - B.r;
 }
 
-export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIssue, nets, minClearance = 0.35 }: Props) {
+export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIssue, nets, minClearance = 0.35, pins, onPinRequest, focusPoint }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -247,6 +256,14 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
+  // Zoom direct pe un punct cerut din afară (pin de comentariu, întrebare de interviu).
+  useEffect(() => {
+    if (!focusPoint) return;
+    const scale = Math.max(view.scale, Math.min(size.w, size.h) / 10);
+    setView({ scale, ox: size.w / 2 - focusPoint.x * scale, oy: size.h / 2 + focusPoint.y * scale });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPoint]);
+
   // Tastatură: X = Sondă Net, M = Șubler
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -383,7 +400,25 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
       ctx.textAlign = "center";
       ctx.fillText(String(i + 1), x, y - 11);
     });
-  }, [sorted, state, view, size, issues, focus, hover, toScreen, ruler, cursor, snapInfo, tool, probeSet, probeNet]);
+
+    // Pin-uri de comentariu (profesor → student): romb chihlimbar numerotat.
+    pins?.forEach((p, i) => {
+      const [x, y] = toScreen(p.x, p.y);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = "#f5a623";
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      ctx.fillRect(-6, -6, 12, 12);
+      ctx.strokeRect(-6, -6, 12, 12);
+      ctx.restore();
+      ctx.fillStyle = "#000";
+      ctx.font = "bold 9px JetBrains Mono, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(String(i + 1), x, y + 3);
+    });
+  }, [sorted, state, view, size, issues, focus, hover, toScreen, ruler, cursor, snapInfo, tool, probeSet, probeNet, pins]);
 
   const hitIssue = (px: number, py: number) => {
     for (let i = issues.length - 1; i >= 0; i--) {
@@ -458,6 +493,12 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
           style={{ width: size.w, height: size.h }}
           className={tool !== "none" ? "cursor-cell touch-none" : "cursor-crosshair touch-none"}
           onWheel={onWheel}
+          onContextMenu={(e) => {
+            if (!onPinRequest) return;
+            e.preventDefault();
+            const rect = canvasRef.current!.getBoundingClientRect();
+            onPinRequest((e.clientX - rect.left - view.ox) / view.scale, (view.oy - (e.clientY - rect.top)) / view.scale);
+          }}
           onMouseDown={(e) => (drag.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy, moved: false })}
           onMouseMove={(e) => {
             const rect = canvasRef.current!.getBoundingClientRect();
