@@ -4,7 +4,7 @@ import { createSpreadsheet } from "@/lib/sheets.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Calculator, CloudDownload, CloudUpload, Download, Link2, Lock, Printer, Upload } from "lucide-react";
+import { Calculator, CloudDownload, CloudUpload, Download, History, Link2, Lock, Printer, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit, seriesLabel } from "@/lib/data";
@@ -38,6 +38,8 @@ import { GradebookFilters, applyFilters, EMPTY_FILTERS, type GbFilters } from "@
 import { GradebookTable } from "@/components/GradebookTable";
 import { GradebookBulkBar } from "@/components/GradebookBulkBar";
 import { StudentInspectionDrawer } from "@/components/StudentInspectionDrawer";
+import { GradebookAuditDrawer } from "@/components/GradebookAuditDrawer";
+import { GradebookStats } from "@/components/GradebookStats";
 import { printOfficialSheet } from "@/components/GradebookOfficialPrint";
 import { pullGradebook, pushGradebook } from "@/lib/sheets.functions";
 import { Button } from "@/components/ui/button";
@@ -115,6 +117,7 @@ function Gradebook() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [inspect, setInspect] = useState<GradeRow | null>(null);
   const [finalScope, setFinalScope] = useState<GradeRow[] | null>(null);
+  const [auditOpen, setAuditOpen] = useState(false);
   const filtered = useMemo(() => applyFilters(data, filters), [data, filters]);
   const selectedRows = useMemo(() => data.filter((r) => selected.has(r.studentId)), [data, selected]);
   const groupNames = useMemo(() => [...new Set(data.map((r) => r.groupName))].sort(), [data]);
@@ -124,6 +127,14 @@ function Gradebook() {
     enabled: canEdit,
     queryFn: async () => {
       const { count } = await supabase.from("integrity_alerts").select("id", { count: "exact", head: true }).eq("status", "new");
+      return count ?? 0;
+    },
+  });
+  const openRequests = useQuery({
+    queryKey: ["gb-review-requests"],
+    enabled: canEdit,
+    queryFn: async () => {
+      const { count } = await supabase.from("review_requests").select("id", { count: "exact", head: true }).eq("status", "open");
       return count ?? 0;
     },
   });
@@ -346,6 +357,15 @@ function Gradebook() {
 
       <GradebookKpis k={kpis} alerts={alerts.data ?? null} />
 
+      <GradebookStats rows={filtered} />
+
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setAuditOpen(true)}><History className="mr-1 h-4 w-4" /> Istoric Modificări (Audit Log)</Button>
+          {!!openRequests.data && <Badge variant="outline" className="border-warning text-warning">{openRequests.data} {openRequests.data === 1 ? "cerere" : "cereri"} de reevaluare deschise — vezi Evaluare</Badge>}
+        </div>
+      )}
+
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-2 pb-3">
           <CardTitle className="text-base">Situație ({data.length} studenți)</CardTitle>
@@ -371,6 +391,7 @@ function Gradebook() {
         onPrint={() => print(selectedRows)}
       />
       <StudentInspectionDrawer row={inspect} onClose={() => setInspect(null)} />
+      <GradebookAuditDrawer rows={data} open={auditOpen} onClose={() => setAuditOpen(false)} />
 
       <Dialog open={weightsOpen} onOpenChange={setWeightsOpen}>
         <DialogContent className="max-w-md">

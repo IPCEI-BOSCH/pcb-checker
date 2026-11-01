@@ -36,3 +36,9 @@
 - Anti-plagiarism lives in `src/lib/integrity` (browser fingerprints, cached pair scores, staff-only alerts) — see its AGENTS.md.
 - Silkscreen text is found geometrically (`src/lib/silk/extract.ts`, stroke clustering) inside DRC; reading the text is on-demand via AI (`src/lib/ai/silk-ai.functions.ts`) on a rendered contact sheet — no images stored, credits spent only when asked.
 - Platform services (Google Drive/Sheets, AI) go through `src/lib/platform.server.ts`, which uses Lovable gateways when their keys exist and direct APIs otherwise; self-hosting files live in `selfhost/`, `install.sh`, `Dockerfile` — keeps the app runnable without Lovable.
+- Deadlines live in `deadlines` (group row overrides series row); `deadlineState` (`src/lib/deadlines.ts`) decides open/late/closed, per-student `students.deadline_extension_until` extends only the hard deadline — enforced in `/self-check` before the OFFICIAL insert.
+- Official submissions carry `zip_sha256`/`report_sha256`/`late_days`; the A4 receipt (`src/lib/receipt.ts`) prints them — never recompute hashes from storage, use the stored ones.
+- Spatial annotations (`review_annotations`, `src/lib/annotations.ts`) render as pins in `GerberViewer` via the `pins`/`onPinRequest`/`focusPoint` props (right-click adds, `DrcReportView` passes through) — staff write via `can_manage_group`, students read their own.
+- Oral interview questions are deterministic from `DrcReport` (`src/lib/interview.ts`); the grade writes `students.grade_interview` with optimistic locking (update guarded by the previously read value) and logs to `grade_audit_logs`.
+- Every manual grade write (`updateStudentGradeField`, `bulkUpdateGrades`, `applyManualChanges`) also inserts `grade_audit_logs` rows — the audit drawer in `/gradebook` is read-only.
+- Student re-evaluation requests live in `review_requests` (student inserts own, staff resolve); open counts badge `/review` rows and `/gradebook`.

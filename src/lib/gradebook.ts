@@ -18,7 +18,7 @@ export const AUTO_COLUMNS = [
 ] as const;
 
 /** Columns owned by the teacher — never written by the platform. */
-export const MANUAL_COLUMNS = ["Nota schema", "Nota documentatie", "Nota finala", "Observatii"] as const;
+export const MANUAL_COLUMNS = ["Nota schema", "Nota documentatie", "Nota interviu", "Nota finala", "Observatii"] as const;
 
 /** Platform-owned link columns, placed after the manual block so existing sheets keep their column layout. */
 export const LINK_COLUMNS = ["Folder Google Drive", "Fisiere dosar proiect", "Puncte dosare (Proiect+Fabricatie)"] as const;
@@ -45,6 +45,7 @@ export interface GradeRow {
   submittedAt: string;
   gradeSchema: number | null;
   gradeDoc: number | null;
+  gradeInterview: number | null;
   gradeFinal: number | null;
   notes: string;
   driveFolderId: string | null;
@@ -75,6 +76,7 @@ export function rowToArray(r: GradeRow): (string | number | null)[] {
     r.submittedAt,
     r.gradeSchema,
     r.gradeDoc,
+    r.gradeInterview,
     r.gradeFinal,
     r.notes,
     driveFolderUrl(r.driveFolderId),
@@ -155,6 +157,7 @@ export async function fetchGradeRows(seriesId: string | null): Promise<GradeRow[
         submittedAt: sub ? new Date(sub.created_at).toLocaleString("ro-RO") : "",
         gradeSchema: st.grade_schema != null ? Number(st.grade_schema) : null,
         gradeDoc: st.grade_doc != null ? Number(st.grade_doc) : null,
+        gradeInterview: st.grade_interview != null ? Number(st.grade_interview) : null,
         gradeFinal: st.grade_final != null ? Number(st.grade_final) : null,
         notes: st.teacher_notes ?? "",
         driveFolderId: st.drive_folder_id ?? null,
@@ -193,7 +196,7 @@ export function exportYearWorkbook(rows: GradeRow[], yearName: string, seriesTab
 export interface ManualChange {
   studentId: string;
   fullName: string;
-  field: "gradeSchema" | "gradeDoc" | "gradeFinal" | "notes";
+  field: "gradeSchema" | "gradeDoc" | "gradeInterview" | "gradeFinal" | "notes";
   label: string;
   from: string;
   to: string;
@@ -203,6 +206,7 @@ export interface ManualChange {
 const MANUAL_FIELDS = [
   { col: "Nota schema", field: "gradeSchema", db: "grade_schema", numeric: true },
   { col: "Nota documentatie", field: "gradeDoc", db: "grade_doc", numeric: true },
+  { col: "Nota interviu", field: "gradeInterview", db: "grade_interview", numeric: true },
   { col: "Nota finala", field: "gradeFinal", db: "grade_final", numeric: true },
   { col: "Observatii", field: "teacherNotes", db: "teacher_notes", numeric: false },
 ] as const;
@@ -228,7 +232,7 @@ export function diffManualColumns(matrix: (string | number | null)[][], rows: Gr
       if (ci < 0) continue;
       const raw = line[ci];
       if (f.numeric) {
-        const current = f.field === "gradeSchema" ? row.gradeSchema : f.field === "gradeDoc" ? row.gradeDoc : row.gradeFinal;
+        const current = f.field === "gradeSchema" ? row.gradeSchema : f.field === "gradeDoc" ? row.gradeDoc : f.field === "gradeInterview" ? row.gradeInterview : row.gradeFinal;
         const next = raw === "" || raw == null ? null : Number(String(raw).replace(",", "."));
         if (next != null && Number.isNaN(next)) continue;
         if ((current ?? null) === (next ?? null)) continue;
@@ -262,9 +266,18 @@ export function diffManualColumns(matrix: (string | number | null)[][], rows: Gr
 const DB_FIELD: Record<ManualChange["field"], string> = {
   gradeSchema: "grade_schema",
   gradeDoc: "grade_doc",
+  gradeInterview: "grade_interview",
   gradeFinal: "grade_final",
   notes: "teacher_notes",
 };
+
+/** Writes one row per changed cell into grade_audit_logs (best effort — never blocks the grade write). */
+async function auditGradeChanges(logs: { student_id: string; field: string; old_value: string | null; new_value: string | null }[]) {
+  if (!logs.length) return;
+  const { data: u } = await supabase.auth.getUser();
+  if (!u.user) return;
+  await supabase.from("grade_audit_logs").insert(logs.map((l) => ({ ...l, changed_by: u.user!.id })));
+}
 
 export async function applyManualChanges(changes: ManualChange[]) {
   const byStudent = new Map<string, Record<string, number | string | null>>();
@@ -277,6 +290,7 @@ export async function applyManualChanges(changes: ManualChange[]) {
     const { error } = await supabase.from("students").update(patch as never).eq("id", studentId);
     if (error) throw error;
   }
+  await auditGradeChanges(changes.map((c) => ({ student_id: c.studentId, field: DB_FIELD[c.field], old_value: c.from === "—" ? null : c.from, new_value: c.to === "—" ? null : c.to })));
   return byStudent.size;
 }
 
@@ -317,9 +331,9 @@ export function proposeFinalGrades(rows: GradeRow[], w: FinalWeights): ManualCha
   return out;
 }
 
-export type GradeField = "grade_schema" | "grade_doc" | "grade_final" | "teacher_notes";
-export const GRADE_FIELD_KEY: Record<GradeField, "gradeSchema" | "gradeDoc" | "gradeFinal" | "notes"> = {
-  grade_schema: "gradeSchema", grade_doc: "gradeDoc", grade_final: "gradeFinal", teacher_notes: "notes",
+export type GradeField = "grade_schema" | "grade_doc" | "grade_interview" | "grade_final" | "teacher_notes";
+export const GRADE_FIELD_KEY: Record<GradeField, "gradeSchema" | "gradeDoc" | "gradeInterview" | "gradeFinal" | "notes"> = {
+  grade_schema: "gradeSchema", grade_doc: "gradeDoc", grade_interview: "gradeInterview", grade_final: "gradeFinal", teacher_notes: "notes",
 };
 
 /** Parses a 1.00–10.00 grade ("9,5" ok); empty -> null; invalid -> undefined. */
@@ -333,15 +347,24 @@ export function parseGrade(raw: string): number | null | undefined {
 
 export async function updateStudentGradeField(studentId: string, field: GradeField, value: number | string | null) {
   const v = field === "teacher_notes" ? (String(value ?? "").trim() || null) : value;
+  const { data: cur } = await supabase.from("students").select(field).eq("id", studentId).single();
+  const oldV = cur ? String((cur as Record<string, unknown>)[field] ?? "") : null;
   const { data, error } = await supabase.from("students").update({ [field]: v } as never).eq("id", studentId).select("id");
   if (error) throw error;
   if (!data?.length) throw new Error("Nu ai drept de editare pentru acest student.");
+  await auditGradeChanges([{ student_id: studentId, field, old_value: oldV || null, new_value: v == null ? null : String(v) }]);
 }
 
 export async function bulkUpdateGrades(studentIds: string[], patch: Partial<Record<GradeField, number | string | null>>) {
   if (!studentIds.length) return 0;
+  const fields = Object.keys(patch) as GradeField[];
+  const { data: cur } = await supabase.from("students").select("*").in("id", studentIds);
+  const oldBy = new Map((cur ?? []).map((r) => [r.id as string, r as unknown as Record<string, unknown>]));
   const { data, error } = await supabase.from("students").update(patch as never).in("id", studentIds).select("id");
   if (error) throw error;
+  await auditGradeChanges((data ?? []).flatMap((r) =>
+    fields.map((f) => ({ student_id: r.id, field: f, old_value: oldBy.get(r.id)?.[f] != null ? String(oldBy.get(r.id)![f]) : null, new_value: patch[f] != null ? String(patch[f]) : null })),
+  ));
   return data?.length ?? 0;
 }
 

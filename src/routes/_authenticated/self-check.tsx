@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Send, Upload } from "lucide-react";
+import { MessageSquareWarning, ReceiptText, Send, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchMyStudent } from "@/lib/data";
@@ -11,9 +11,15 @@ import { loadGerberZip } from "@/lib/gerber/load";
 import { runDrc, type DrcReport } from "@/lib/drc/engine";
 import type { Layer } from "@/lib/gerber/types";
 import { DrcReportView } from "@/components/DrcReportView";
+import { OrcadExportGuide } from "@/components/OrcadExportGuide";
+import { fetchDeadline, deadlineState } from "@/lib/deadlines";
+import { printSubmissionReceipt, sha256Hex } from "@/lib/receipt";
+import { fetchAnnotations } from "@/lib/annotations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/self-check")({
   head: () => ({
@@ -35,9 +41,13 @@ function SelfCheck() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastFile = useRef<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const [current, setCurrent] = useState<Current | null>(null);
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
+  const [contest, setContest] = useState<{ submissionId: string } | null>(null);
+  const [contestMsg, setContestMsg] = useState("");
 
   const student = useQuery({ queryKey: ["my-student", user.id], queryFn: () => fetchMyStudent(user.id) });
   const history = useQuery({
@@ -62,9 +72,11 @@ function SelfCheck() {
     );
   }
   const st = student.data;
+  const pins = useQuery({ queryKey: ["my-annotations", st.id], queryFn: () => fetchAnnotations(st.id) });
 
   const run = async (file: File) => {
     if (!/\.zip$/i.test(file.name)) return void toast.error("Încarcă o arhivă .zip cu fișierele Gerber și Excellon.");
+    lastFile.current = file;
     try {
       setBusy("Se parsează straturile…");
       const layers = await loadGerberZip(file);
@@ -121,6 +133,17 @@ function SelfCheck() {
 
   const submitOfficial = async () => {
     if (!current) return;
+    setBusy("Se verifică termenul-limită…");
+    // Deadline enforcement: hard deadline blocks the button, soft deadline records lateness.
+    const dl = await fetchDeadline(st.groups?.series_id ?? null, st.group_id);
+    const ds = deadlineState(dl, st.deadline_extension_until);
+    if (ds.phase === "closed") {
+      setBusy(null);
+      return void toast.error(`Termenul dur de predare a expirat${ds.hard ? ` (${ds.hard.toLocaleString("ro-RO")})` : ""}. Doar profesorul îți poate acorda o derogare individuală.`);
+    }
+    setBusy("Se semnează criptografic predarea…");
+    const zipHash = lastFile.current ? await sha256Hex(lastFile.current) : null;
+    const reportHash = await sha256Hex(JSON.stringify(current.report));
     setBusy("Se trimite predarea oficială…");
     const revision = (history.data?.filter((h) => h.kind === "OFFICIAL").length ?? 0) + 1;
     const { data: inserted, error } = await supabase.from("submissions").insert({
@@ -134,9 +157,13 @@ function SelfCheck() {
       drc_score: current.report.score,
       blocking_count: current.report.blockingCount,
       report: current.report as never,
+      zip_sha256: zipHash,
+      report_sha256: reportHash,
+      late_days: ds.lateDays || null,
     }).select("id").single();
     setBusy(null);
     if (error) return void toast.error(error.message);
+    if (ds.phase === "late") toast.warning(`Predare cu ${ds.lateDays} ${ds.lateDays === 1 ? "zi" : "zile"} întârziere${ds.penalty ? ` — penalizare ${ds.penalty} puncte` : ""}.`);
     // Background integrity check (results visible to staff only).
     if (inserted && current.layers) {
       const layers = current.layers;
@@ -187,7 +214,25 @@ function SelfCheck() {
         <p className="text-sm text-destructive">Predarea oficială devine disponibilă după eliminarea tuturor erorilor blocante.</p>
       )}
 
-      {current && <DrcReportView report={current.report} layers={current.layers} meta={{ student: st.file_prefix ?? st.email ?? undefined, group: st.groups?.name ?? undefined, series: st.groups?.series?.name ?? undefined, archive: current.fileName ?? undefined }} />}
+      {current && <OrcadExportGuide codes={[...new Set([...current.report.issues.map((i) => i.code), ...current.report.rules.filter((r) => !r.passed).map((r) => r.code)])]} />}
+
+      {!!pins.data?.length && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-base">Observații de la profesor pe placă ({pins.data.length})</CardTitle></CardHeader>
+          <CardContent className="space-y-1.5">
+            {pins.data.map((p, i) => (
+              <button key={p.id} onClick={() => setFocusPoint({ x: Number(p.x), y: Number(p.y) })} className="flex w-full items-center gap-2 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-warning font-mono text-[11px] font-bold text-black" style={{ transform: "rotate(45deg)" }}><span style={{ transform: "rotate(-45deg)" }}>{i + 1}</span></span>
+                <span className="min-w-0 flex-1 truncate">{p.note}</span>
+                <span className="font-mono text-xs text-muted-foreground">({Number(p.x).toFixed(1)}, {Number(p.y).toFixed(1)}) mm</span>
+              </button>
+            ))}
+            <p className="text-xs text-muted-foreground">Click pe o observație → vizualizatorul face zoom direct pe coordonata indicată.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {current && <DrcReportView report={current.report} layers={current.layers} meta={{ student: st.file_prefix ?? st.email ?? undefined, group: st.groups?.name ?? undefined, series: st.groups?.series?.name ?? undefined, archive: current.fileName ?? undefined }} pins={(pins.data ?? []).map((p, i) => ({ x: Number(p.x), y: Number(p.y), label: String(i + 1), title: p.note }))} focusPoint={focusPoint} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -211,20 +256,50 @@ function SelfCheck() {
           <CardHeader className="pb-3"><CardTitle className="text-base">Predări oficiale ({officials.length})</CardTitle></CardHeader>
           <CardContent className="space-y-1.5">
             {!officials.length && <p className="text-sm text-muted-foreground">Nicio predare oficială.</p>}
-            {officials.map((s) => (
-              <button key={s.id} onClick={() => openPast(s)} className="w-full rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono">v{s.revision} · {new Date(s.created_at).toLocaleString("ro-RO")}</span>
-                  <Badge variant={s.review_status === "approved" ? "default" : s.review_status === "rejected" ? "destructive" : "secondary"}>
-                    {s.review_status === "approved" ? "Aprobat fabricație" : s.review_status === "rejected" ? "Respins" : "În evaluare"}
-                  </Badge>
+            {officials.map((s) => {
+              const rep = s.report as unknown as DrcReport | null;
+              const verdict = rep?.verdict === "admis" ? "ADMIS" : rep?.verdict === "rezerve" ? "REZERVE" : rep?.verdict === "respins" ? "RESPINS" : rep?.wouldPass ? "ADMIS" : "RESPINS";
+              return (
+                <div key={s.id} className="rounded-md border border-border px-3 py-2 text-sm">
+                  <button onClick={() => openPast(s)} className="flex w-full items-center justify-between text-left hover:underline">
+                    <span className="font-mono">v{s.revision} · {new Date(s.created_at).toLocaleString("ro-RO")}</span>
+                    <Badge variant={s.review_status === "approved" ? "default" : s.review_status === "rejected" ? "destructive" : "secondary"}>
+                      {s.review_status === "approved" ? "Aprobat fabricație" : s.review_status === "rejected" ? "Respins" : "În evaluare"}
+                    </Badge>
+                  </button>
+                  {s.late_days ? <div className="mt-1 text-xs text-warning">Predat cu {s.late_days} {s.late_days === 1 ? "zi" : "zile"} întârziere.</div> : null}
+                  {s.review_reason && <div className="mt-1 text-xs text-muted-foreground">Motiv: {s.review_reason}</div>}
+                  <div className="mt-1.5 flex gap-1.5">
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => printSubmissionReceipt({ student: st.full_name, group: st.groups?.name ?? "", series: st.groups?.series?.name ?? "", subject: "P1 / P1-DCE", variant: s.variant, submittedAt: s.created_at, score: s.drc_score != null ? Number(s.drc_score) : null, verdict, zipSha256: s.zip_sha256, reportSha256: s.report_sha256, fileName: s.file_name, revision: s.revision, lateDays: s.late_days })}>
+                      <ReceiptText className="mr-1 h-3.5 w-3.5" /> Recipisă SHA-256
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setContest({ submissionId: s.id }); setContestMsg(""); }}>
+                      <MessageSquareWarning className="mr-1 h-3.5 w-3.5" /> Cere reevaluare
+                    </Button>
+                  </div>
                 </div>
-                {s.review_reason && <div className="mt-1 text-xs text-muted-foreground">Motiv: {s.review_reason}</div>}
-              </button>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!contest} onOpenChange={(o) => !o && setContest(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Cerere de reevaluare / clarificare</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Mesajul ajunge la asistentul grupei tale și la titularul de curs, semnalat în Evaluare și Catalog.</p>
+          <Textarea placeholder="Ex.: Am refăcut rutarea după observații, vă rog reevaluarea predării v2…" value={contestMsg} onChange={(e) => setContestMsg(e.target.value)} rows={4} />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setContest(null)}>Renunță</Button>
+            <Button disabled={!contestMsg.trim()} onClick={async () => {
+              const { error } = await supabase.from("review_requests").insert({ student_id: st.id, submission_id: contest!.submissionId, message: contestMsg.trim() });
+              if (error) return void toast.error(error.message);
+              toast.success("Cererea de reevaluare a fost trimisă.");
+              setContest(null);
+            }}>Trimite cererea</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

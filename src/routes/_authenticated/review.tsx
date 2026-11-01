@@ -1,9 +1,9 @@
 import { fetchSettings } from "@/lib/drc/settings";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, GitCompareArrows, Play, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, GitCompareArrows, MessageSquareWarning, Play, Timer, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { VersionDiffDialog, type VersionEntry } from "@/components/VersionDiff";
 import { useAuth } from "@/lib/auth";
@@ -14,10 +14,15 @@ import { exportSituatie, fetchSituatieRows, runBatchDrc } from "@/lib/situatie";
 import type { Layer } from "@/lib/gerber/types";
 import { DrcReportView } from "@/components/DrcReportView";
 import { ZipImportDialog } from "@/components/ZipImportDialog";
+import { DeadlinesCard } from "@/components/DeadlinesCard";
+import { InterviewPanel } from "@/components/InterviewPanel";
+import { addAnnotation, deleteAnnotation, fetchAnnotations } from "@/lib/annotations";
+import { setExtension } from "@/lib/deadlines";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,7 +56,7 @@ function Review() {
   const [studentId, setStudentId] = useState<string>(ALL);
   const [variantFilter, setVariantFilter] = useState<"ALL" | "SMT" | "THT">("ALL");
   const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
-  const [view, setView] = useState<{ name: string; report: DrcReport; layers: Layer[] | null; meta?: import("@/lib/drc/evaluationSheet").EvaluationMeta } | null>(null);
+  const [view, setView] = useState<{ name: string; studentId: string; submissionId: string; report: DrcReport; layers: Layer[] | null; meta?: import("@/lib/drc/evaluationSheet").EvaluationMeta } | null>(null);
   const [diffFor, setDiffFor] = useState<{ name: string; versions: VersionEntry[] } | null>(null);
   const [reject, setReject] = useState<{ sub: Sub; name: string } | null>(null);
   const [reason, setReason] = useState("");
@@ -59,6 +64,12 @@ function Review() {
   const [showArchived, setShowArchived] = useState(false);
   const [delStudent, setDelStudent] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pinDraft, setPinDraft] = useState<{ x: number; y: number } | null>(null);
+  const [pinNote, setPinNote] = useState("");
+  const [pinFocus, setPinFocus] = useState<{ x: number; y: number } | null>(null);
+  const [extFor, setExtFor] = useState<{ id: string; name: string; current: string | null } | null>(null);
+  const [extValue, setExtValue] = useState("");
+  const [reqFor, setReqFor] = useState<{ id: string; name: string } | null>(null);
 
   const s = structure.data;
   const visibleGroups = useMemo(() => {
@@ -103,6 +114,55 @@ function Review() {
       return { st, official: all.find((x) => x.kind === "OFFICIAL") ?? null, selfCount: all.filter((x) => x.kind === "SELF_CHECK").length };
     });
   const rows = studentId === ALL ? allRows : allRows.filter((r) => r.st.id === studentId);
+
+  // Open re-evaluation requests per student (badge in the table).
+  const requests = useQuery({
+    queryKey: ["review_requests", scopeGroupIds.join(",")],
+    enabled: !!data.data?.students.length,
+    queryFn: async () => {
+      const ids = data.data!.students.map((x) => x.id);
+      const m = new Map<string, number>();
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data: rr } = await supabase.from("review_requests").select("student_id").eq("status", "open").in("student_id", ids.slice(i, i + 150));
+        for (const r of rr ?? []) m.set(r.student_id, (m.get(r.student_id) ?? 0) + 1);
+      }
+      return m;
+    },
+  });
+
+  // Spatial annotations for the student open in the viewer dialog.
+  const annots = useQuery({
+    queryKey: ["annotations", view?.studentId],
+    enabled: !!view,
+    queryFn: () => fetchAnnotations(view!.studentId),
+  });
+
+  // Speed-grading keyboard: J/K = next/previous student, A = approve, R = request redo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
+      if (view || reject || delStudent || extFor || pinDraft) return;
+      const k = e.key.toLowerCase();
+      if (k === "j" || k === "k") {
+        if (!allRows.length) return;
+        const i = allRows.findIndex((r) => r.st.id === studentId);
+        const n = k === "j" ? (i < 0 ? 0 : Math.min(allRows.length - 1, i + 1)) : (i < 0 ? allRows.length - 1 : Math.max(0, i - 1));
+        setStudentId(allRows[n]!.st.id);
+        e.preventDefault();
+      } else if (k === "a" || k === "r") {
+        const cur = allRows.find((r) => r.st.id === studentId) ?? (allRows.length === 1 ? allRows[0] : null);
+        if (!cur?.official) return;
+        if (k === "a") void setStatus(cur.official, "approved");
+        else { setReason(cur.official.review_reason ?? ""); setReject({ sub: cur.official, name: cur.st.full_name }); }
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows, studentId, view, reject, delStudent, extFor, pinDraft]);
+
   const kpi = {
     total: rows.length,
     smt: rows.filter((r) => r.st.variant === "SMT").length,
@@ -201,7 +261,7 @@ function Review() {
       // Always re-evaluate with the current parser/settings so the viewer and the report agree.
       const report = runDrc(layers, variant, await fetchSettings(sid));
       const seriesName = s?.series.find((x) => x.id === sid)?.name;
-      setView({ name, report, layers, meta: {
+      setView({ name, studentId: sub.student_id, submissionId: sub.id, report, layers, meta: {
         student: name, group: st ? groupName.get(st.group_id) : undefined, series: seriesName,
         theme: st ? `${st.theme_name ?? ""}${st.theme_number != null ? ` (N${st.theme_number})` : ""}`.trim() || undefined : undefined,
         submittedAt: `${new Date(sub.created_at).toLocaleString("ro-RO")} · v${sub.revision} (${variant})`,
@@ -227,7 +287,7 @@ function Review() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Evaluare grupe</h1>
-          <p className="text-sm text-muted-foreground">An universitar → serie (sau toate) → grupă (sau toate) → student.</p>
+          <p className="text-sm text-muted-foreground">An universitar → serie (sau toate) → grupă (sau toate) → student. Scurtături: <kbd className="rounded border border-border px-1 font-mono text-xs">J</kbd>/<kbd className="rounded border border-border px-1 font-mono text-xs">K</kbd> studentul următor/anterior, <kbd className="rounded border border-border px-1 font-mono text-xs">A</kbd> aprobă, <kbd className="rounded border border-border px-1 font-mono text-xs">R</kbd> solicită refacere, <kbd className="rounded border border-border px-1 font-mono text-xs">1</kbd>–<kbd className="rounded border border-border px-1 font-mono text-xs">9</kbd> focalizează eroarea #n în vizualizator.</p>
         </div>
         {canManage && <Button variant="secondary" onClick={() => setImportOpen(true)}><FolderInput className="mr-2 h-4 w-4" /> Importă proiecte din ZIP</Button>}
       </div>
@@ -272,6 +332,10 @@ function Review() {
       </div>
 
       {!visibleGroups.length && s && <p className="text-sm text-muted-foreground">Nu ai încă grupe atribuite.</p>}
+
+      {(seriesId && seriesId !== ALL) || (groupId && groupId !== ALL) ? (
+        <DeadlinesCard seriesId={groupId && groupId !== ALL ? null : seriesId} groupId={groupId && groupId !== ALL ? groupId : null} userId={user.id} canEdit={canManage} />
+      ) : null}
 
       {scopeGroupIds.length > 0 && (
         <>
@@ -333,6 +397,10 @@ function Review() {
                             ? <button type="button" className="text-left font-medium text-foreground underline-offset-2 hover:underline" onClick={() => openReport(st.full_name, official, st.variant, sid, st)}>{st.full_name}</button>
                             : <div className="font-medium text-foreground">{st.full_name}</div>}
                           <div className="font-mono text-[11px] text-muted-foreground">{st.file_prefix ?? st.email}</div>
+                          {!!requests.data?.get(st.id) && (
+                            <button onClick={() => setReqFor({ id: st.id, name: st.full_name })}><Badge variant="outline" className="mt-1 gap-1 border-warning text-[10px] text-warning"><MessageSquareWarning className="h-3 w-3" /> {requests.data.get(st.id)} {requests.data.get(st.id) === 1 ? "cerere" : "cereri"} de reevaluare</Badge></button>
+                          )}
+                          {st.deadline_extension_until && <Badge variant="outline" className="mt-1 text-[10px]">Derogare până la {new Date(st.deadline_extension_until).toLocaleString("ro-RO", { dateStyle: "short", timeStyle: "short" })}</Badge>}
                           {st.status === "pending" && (
                             <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => approveStudent(st.id)}>Validează înscrierea</Button>
                           )}
@@ -377,6 +445,7 @@ function Review() {
                           )}
                           {canManage && (
                             <div className="mt-1 flex justify-end gap-1">
+                              <Button size="sm" variant="ghost" aria-label={`Derogare termen pentru ${st.full_name}`} title="Derogare individuală de la termenul dur" onClick={() => { setExtFor({ id: st.id, name: st.full_name, current: st.deadline_extension_until }); setExtValue(st.deadline_extension_until ? new Date(st.deadline_extension_until).toISOString().slice(0, 16) : ""); }}><Timer className="mr-1 h-4 w-4" /> Derogare</Button>
                               {st.status === "archived" ? (
                                 <Button size="sm" variant="ghost" aria-label={`Dezarhivează proiectul ${st.full_name}`} onClick={() => archiveStudent(st.id, st.full_name, false)}><ArchiveRestore className="mr-1 h-4 w-4" /> Dezarhivează</Button>
                               ) : (
@@ -425,13 +494,119 @@ function Review() {
       <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
         <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
           <DialogHeader><DialogTitle>Gerber & DRC — {view?.name}</DialogTitle></DialogHeader>
-          {view && <DrcReportView report={view.report} layers={view.layers} meta={view.meta ?? { student: view.name }} />}
+          {view && (
+            <>
+              <DrcReportView
+                report={view.report}
+                layers={view.layers}
+                meta={view.meta ?? { student: view.name }}
+                pins={(annots.data ?? []).map((p, i) => ({ x: Number(p.x), y: Number(p.y), label: String(i + 1), title: p.note }))}
+                onPinRequest={view.layers ? (x, y) => { setPinDraft({ x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }); setPinNote(""); } : undefined}
+                focusPoint={pinFocus}
+              />
+              <Card>
+                <CardHeader className="pb-3"><CardTitle className="text-base">Adnotări pe placă ({annots.data?.length ?? 0})</CardTitle></CardHeader>
+                <CardContent className="space-y-1.5 text-sm">
+                  <p className="text-xs text-muted-foreground">Click dreapta pe placă → pin de comentariu la coordonata respectivă. Studentul vede pin-ii în Self-Check și poate face zoom direct pe ei.</p>
+                  {(annots.data ?? []).map((p, i) => (
+                    <div key={p.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5">
+                      <span className="font-mono text-xs text-muted-foreground">#{i + 1} ({Number(p.x).toFixed(1)}, {Number(p.y).toFixed(1)})</span>
+                      <button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => setPinFocus({ x: Number(p.x), y: Number(p.y) })}>{p.note}</button>
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive" onClick={async () => { await deleteAnnotation(p.id); qc.invalidateQueries({ queryKey: ["annotations", view.studentId] }); }}>Șterge</Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <InterviewPanel report={view.report} studentId={view.studentId} studentName={view.name} canGrade={canManage || has("instructor")} onFocusPoint={(x, y) => setPinFocus({ x, y })} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pinDraft} onOpenChange={(o) => !o && setPinDraft(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Pin comentariu la ({pinDraft?.x}, {pinDraft?.y}) mm</DialogTitle></DialogHeader>
+          <Textarea placeholder="Ex.: Mută acest condensator de decuplare mai aproape de pinul de alimentare…" value={pinNote} onChange={(e) => setPinNote(e.target.value)} rows={3} autoFocus />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPinDraft(null)}>Renunță</Button>
+            <Button disabled={!pinNote.trim()} onClick={async () => {
+              try {
+                await addAnnotation({ student_id: view!.studentId, submission_id: view!.submissionId, x: pinDraft!.x, y: pinDraft!.y, note: pinNote.trim(), created_by: user.id });
+                qc.invalidateQueries({ queryKey: ["annotations", view!.studentId] });
+                setPinDraft(null);
+                toast.success("Pin adăugat — studentul îl vede în Self-Check.");
+              } catch (e) { toast.error((e as Error).message); }
+            }}>Salvează pin-ul</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!extFor} onOpenChange={(o) => !o && setExtFor(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Derogare termen — {extFor?.name}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Studentul poate preda oficial până la această dată chiar dacă termenul dur a trecut.</p>
+          <Input type="datetime-local" value={extValue} onChange={(e) => setExtValue(e.target.value)} aria-label="Derogare până la" />
+          <DialogFooter>
+            <Button variant="ghost" onClick={async () => { await setExtension(extFor!.id, null); setExtFor(null); qc.invalidateQueries({ queryKey: ["review"] }); toast.success("Derogarea a fost retrasă."); }}>Retrage derogarea</Button>
+            <Button disabled={!extValue} onClick={async () => {
+              try {
+                await setExtension(extFor!.id, new Date(extValue).toISOString());
+                await logAudit(user.id, "DEADLINE_EXTENSION", "student", extFor!.id, { until: extValue });
+                setExtFor(null);
+                qc.invalidateQueries({ queryKey: ["review"] });
+                toast.success("Derogarea a fost acordată.");
+              } catch (e) { toast.error((e as Error).message); }
+            }}>Acordă derogarea</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {diffFor && <VersionDiffDialog studentName={diffFor.name} versions={diffFor.versions} open onClose={() => setDiffFor(null)} />}
 
+      <Dialog open={!!reqFor} onOpenChange={(o) => !o && setReqFor(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Cereri de reevaluare — {reqFor?.name}</DialogTitle></DialogHeader>
+          {reqFor && <ReviewRequestsList studentId={reqFor.id} onDone={() => qc.invalidateQueries({ queryKey: ["review_requests"] }) } />}
+        </DialogContent>
+      </Dialog>
+
       <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => { qc.invalidateQueries({ queryKey: ["review"] }); qc.invalidateQueries({ queryKey: ["structure"] }); }} />
+    </div>
+  );
+}
+
+/** Open re-evaluation requests of one student, with resolve action for staff. */
+function ReviewRequestsList({ studentId, onDone }: { studentId: string; onDone: () => void }) {
+  const { user } = useAuth();
+  const q = useQuery({
+    queryKey: ["review_requests_list", studentId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("review_requests").select("*").eq("student_id", studentId).order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+  if (q.isLoading) return <p className="text-sm text-muted-foreground">Se încarcă…</p>;
+  if (!q.data?.length) return <p className="text-sm text-muted-foreground">Nicio cerere de reevaluare.</p>;
+  return (
+    <div className="space-y-2">
+      {q.data.map((r) => (
+        <div key={r.id} className="rounded-md border border-border p-3 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString("ro-RO")}</span>
+            <Badge variant={r.status === "open" ? "secondary" : "outline"}>{r.status === "open" ? "Deschisă" : "Rezolvată"}</Badge>
+          </div>
+          <p className="mt-1">{r.message}</p>
+          {r.status === "open" && (
+            <Button size="sm" variant="outline" className="mt-2" onClick={async () => {
+              const { error } = await supabase.from("review_requests").update({ status: "resolved", resolved_by: user.id, resolved_at: new Date().toISOString() }).eq("id", r.id);
+              if (error) return void toast.error(error.message);
+              onDone();
+              q.refetch();
+            }}>Marchează rezolvată</Button>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
