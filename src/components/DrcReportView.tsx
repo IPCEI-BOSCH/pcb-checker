@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Crosshair, FileText, Info, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { openEvaluationSheet, type EvaluationMeta } from "@/lib/drc/evaluationSheet";
