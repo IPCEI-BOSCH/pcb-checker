@@ -39,6 +39,8 @@ export interface Layer {
   warnings: string[];
   /** Excellon coordinate format actually used (int:dec). */
   fmt?: { int: number; dec: number; inch?: boolean };
+  /** Forensic metadata (integrity module only): aperture definitions in order, CAD header lines, ZIP entry mtime. */
+  meta?: { apertures?: string[]; header?: string[]; mtime?: number | undefined };
 }
 
 export interface BBox {
