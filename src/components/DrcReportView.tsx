@@ -109,7 +109,7 @@ export function DrcReportView({ report, layers, meta }: { report: DrcReport; lay
             <span className="text-xs text-muted-foreground">Ghid remediere: {CAD_LABELS[cad]}</span>
           </CardHeader>
           <CardContent>
-            <GerberViewer layers={layers} issues={report.issues} focus={focus} cad={cad} onSelectIssue={setFocus} />
+            <GerberViewer layers={layers} issues={report.issues} focus={focus} cad={cad} onSelectIssue={setFocus} nets={report.nets} minClearance={report.rulesMinClearance} />
           </CardContent>
         </Card>
       )}

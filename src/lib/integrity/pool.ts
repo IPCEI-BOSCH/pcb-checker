@@ -3,7 +3,7 @@ import { fingerprint, similarityDetail, type Fingerprint, type SimilarityDetail 
 
 type Job = { resolve: (r: never) => void; reject: (e: Error) => void };
 
-export function createIntegrityPool(size = Math.min(4, Math.max(1, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1))) {
+export function createIntegrityPool(size = Math.max(2, Math.min(globalThis.navigator?.hardwareConcurrency || 4, 6))) {
   const workers: Worker[] = [];
   const jobs = new Map<number, Job>();
   let next = 0, rr = 0;
