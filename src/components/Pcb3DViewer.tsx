@@ -69,9 +69,12 @@ function boardOutline(layers: Layer[]): [number, number][] {
   return best.length >= 3 ? best : [[0, 0], [40, 0], [40, 40], [0, 40]];
 }
 
+/** Păstrează doar valorile finite — geometria NaN omoară întreaga scenă (bounding sphere NaN). */
+const fin = (...v: number[]) => v.every((x) => Number.isFinite(x));
+
 function shapeFrom(pts: [number, number][], cx: number, cy: number): THREE.Shape {
   const s = new THREE.Shape();
-  pts.forEach(([x, y], i) => (i ? s.lineTo(x - cx, y - cy) : s.moveTo(x - cx, y - cy)));
+  pts.filter(([x, y]) => fin(x, y)).forEach(([x, y], i) => (i ? s.lineTo(x - cx, y - cy) : s.moveTo(x - cx, y - cy)));
   s.closePath();
   return s;
 }
@@ -184,9 +187,11 @@ export function Pcb3DViewer({ layers, issues }: Props) {
             copperItems(layer).map((it, i) => {
               const p = it.p;
               if (p.t === "line") {
+                if (!fin(p.x1, p.y1, p.x2, p.y2, p.w) || p.w <= 0) return null;
                 const [x1, y1] = P(p.x1, p.y1);
                 const [x2, y2] = P(p.x2, p.y2);
                 const len = Math.hypot(x2 - x1, y2 - y1);
+                if (len <= 0) return null;
                 const ang = Math.atan2(y2 - y1, x2 - x1);
                 return (
                   <mesh key={`${side}-${i}`} position={[(x1 + x2) / 2, (y1 + y2) / 2, z]} rotation={[0, 0, ang]}>
@@ -196,6 +201,7 @@ export function Pcb3DViewer({ layers, issues }: Props) {
                 );
               }
               if (p.t === "flash") {
+                if (!fin(p.x, p.y, p.w, p.h) || p.w <= 0 || p.h <= 0) return null;
                 const [x, y] = P(p.x, p.y);
                 return (
                   <mesh key={`${side}-${i}`} position={[x, y, z]}>
