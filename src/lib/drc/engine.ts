@@ -1246,13 +1246,102 @@ function evalCustomRule(
           const d = edgeDist(p.x, p.y) - Math.max(p.w, p.h) / 2;
           if (d < v - 1e-6) hits.push({ x: p.x, y: p.y, msg: `Pad la ${f(d)} mm de margine (min ${v} mm).` });
         } else if (p.t === "line") {
-          const d = Math.min(edgeDist(p.x1, p.y1), edgeDist(p.x2, p.y2)) - p.w / 2;
+          const d = Math.min(edgeDist(p.x1, p.x2), edgeDist(p.x2, p.y2)) - p.w / 2;
           if (d < v - 1e-6) hits.push({ x: p.x1, y: p.y1, msg: `Linie la ${f(d)} mm de margine (min ${v} mm).` });
         }
       }
       return report(hits, `Toate elementele la ≥ ${v} mm de margine.`);
     }
+    case "layer_primitive_count": {
+      const n = kind === "drill" ? holes.length : prims.length;
+      const max = cr.value2 ?? null;
+      if (n < v) fail(cr.code, `Stratul ${kind} are ${n} elemente (minimul cerut: ${v}).`, { layer: kind });
+      else if (max != null && max > 0 && n > max) fail(cr.code, `Stratul ${kind} are ${n} elemente (maximul cerut: ${max}).`, { layer: kind });
+      else note(cr.code, `${n} elemente pe ${kind} — în intervalul cerut (${v}${max ? `–${max}` : "+"}).`);
+      return;
+    }
+    case "feature_dimension_range": {
+      const lo = v - tol, hi = (cr.value2 && cr.value2 > 0 ? cr.value2 : Infinity) + tol;
+      const hits: { x: number; y: number; msg: string }[] = [];
+      const hiTxt = cr.value2 && cr.value2 > 0 ? String(cr.value2) : "∞";
+      if (kind === "drill") {
+        for (const h of holes) if (h.d < lo || h.d > hi) hits.push({ x: h.x, y: h.y, msg: `Gaură Ø${f(h.d)} mm în afara intervalului [${v}, ${hiTxt}] mm.` });
+      } else {
+        for (const p of prims) {
+          if (p.t === "line" && (p.w < lo || p.w > hi)) hits.push({ x: (p.x1 + p.x2) / 2, y: (p.y1 + p.y2) / 2, msg: `Linie de ${f(p.w)} mm în afara intervalului [${v}, ${hiTxt}] mm.` });
+          else if (p.t === "flash" && (Math.min(p.w, p.h) < lo || Math.min(p.w, p.h) > hi)) hits.push({ x: p.x, y: p.y, msg: `Pad cu latura ${f(Math.min(p.w, p.h))} mm în afara intervalului [${v}, ${hiTxt}] mm.` });
+        }
+      }
+      return report(hits, `Toate elementele sunt în intervalul [${v}, ${hiTxt}] mm.`);
+    }
+    case "cross_layer_clearance": {
+      if (!cr.layer2) return note(cr.code, "Regula nu are al doilea strat configurat.");
+      const prims2 = layers.filter((l) => l.kind === (cr.layer2 as LayerKind)).flatMap((l) => l.primitives).filter((p) => !p.clear);
+      if (!prims.length || !prims2.length) return note(cr.code, "Unul dintre cele două straturi lipsește sau este gol.");
+      if (prims.length * prims2.length > 400_000) return note(cr.code, `Prea multe elemente pentru verificare (${prims.length} × ${prims2.length}) — regula nu a fost evaluată.`);
+      const A = prims.map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c);
+      const B = prims2.map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c);
+      const hits: { x: number; y: number; msg: string }[] = [];
+      outer: for (const a of A) {
+        for (const b of B) {
+          if (a.b.minX > b.b.maxX + v || b.b.minX > a.b.maxX + v || a.b.minY > b.b.maxY + v || b.b.minY > a.b.maxY + v) continue;
+          const d = gapBetween(a, b);
+          if (d < v - 1e-6) {
+            hits.push({ x: +((a.ax + b.ax) / 2).toFixed(3), y: +((a.ay + b.ay) / 2).toFixed(3), msg: `Distanță ${f(d)} mm între ${kind} și ${cr.layer2} (min ${v} mm).` });
+            if (hits.length >= 50) break outer;
+          }
+        }
+      }
+      return report(hits, `Toate elementele ${kind} sunt la ≥ ${v} mm de ${cr.layer2}.`);
+    }
+    case "copper_coverage_ratio": {
+      if (!board) return note(cr.code, "Conturul plăcii nu a fost găsit.");
+      const caps = prims.map((p, i) => toCapsule(p, i)).filter((c): c is Capsule => !!c);
+      const regions = prims.filter((p): p is Extract<Primitive, { t: "region" }> => p.t === "region");
+      if (!caps.length && !regions.length)
+        return report([{ x: (board.minX + board.maxX) / 2, y: (board.minY + board.maxY) / 2, msg: `Stratul ${kind} nu conține cupru (0% acoperire, minim ${v}%).` }], "");
+      if (caps.length > 4000) return note(cr.code, `Prea multe elemente (${caps.length}) pentru măsurarea acoperirii — regula nu a fost evaluată.`);
+      const bw = board.maxX - board.minX, bh = board.maxY - board.minY;
+      const step = Math.max(0.25, Math.max(bw, bh) / 250);
+      let total = 0, covered = 0;
+      for (let y = board.minY + step / 2; y < board.maxY; y += step)
+        for (let x = board.minX + step / 2; x < board.maxX; x += step) {
+          total++;
+          let hit = false;
+          for (const c of caps) {
+            if (x < c.b.minX || x > c.b.maxX || y < c.b.minY || y > c.b.maxY) continue;
+            if (ptSegDist(x, y, c.ax, c.ay, c.bx, c.by) <= c.r) { hit = true; break; }
+          }
+          if (!hit) for (const r of regions) if (pointInPoly(x, y, r.pts)) { hit = true; break; }
+          if (hit) covered++;
+        }
+      const ratio = total ? (100 * covered) / total : 0;
+      if (ratio < v - tol)
+        return report([{ x: (board.minX + board.maxX) / 2, y: (board.minY + board.maxY) / 2, msg: `Cuprul de pe ${kind} acoperă ${ratio.toFixed(1)}% din placă (minim ${v}%).` }], "");
+      return note(cr.code, `Acoperirea de cupru pe ${kind}: ${ratio.toFixed(1)}% (minim ${v}%).`);
+    }
+    case "required_silk_aspect": {
+      const blocks = (extras?.silkBlocks ?? []).filter((b) => b.layer === kind);
+      const reg = cr.region;
+      const inRegion = (b: SilkBlock) => !reg || (b.x >= reg.x && b.x <= reg.x + reg.w && b.y >= reg.y && b.y <= reg.y + reg.h);
+      const found = blocks.filter(inRegion);
+      const cx = reg ? reg.x + reg.w / 2 : board ? (board.minX + board.maxX) / 2 : 0;
+      const cy = reg ? reg.y + reg.h / 2 : board ? (board.minY + board.maxY) / 2 : 0;
+      if (!found.length)
+        return report([{ x: cx, y: cy, msg: `Niciun bloc de text pe ${kind} în zona cerută${reg ? ` (${reg.x}, ${reg.y}, ${reg.w}×${reg.h} mm)` : " (toată placa)"}.` }], "");
+      return note(cr.code, `${found.length} ${found.length === 1 ? "bloc de text găsit" : "blocuri de text găsite"} în zona cerută.`);
+    }
   }
+}
+
+/** Ray-casting point-in-polygon for region primitives (coverage checks). */
+function pointInPoly(x: number, y: number, pts: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i]!, [xj, yj] = pts[j]!;
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
 function sevRank(s: Severity) {
