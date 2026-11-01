@@ -163,6 +163,21 @@ function History() {
     finally { setBusy(null); qc.invalidateQueries(); }
   };
 
+  /** Deschide Visual Diff: toate predările/verificările studentului, cronologic. */
+  const openDiff = async (studentId: string, name: string) => {
+    const { data, error } = await supabase.from("submissions").select("id, revision, kind, zip_path, drc_score, report, created_at").eq("student_id", studentId).order("created_at");
+    if (error) return toast.error(error.message);
+    const versions: VersionEntry[] = (data ?? []).map((s) => ({
+      id: s.id,
+      label: `${s.kind === "OFFICIAL" ? "Predare" : "Self-check"} v${s.revision}`,
+      zipPath: s.zip_path,
+      score: s.drc_score,
+      report: (s.report as DrcReport | null) ?? null,
+      createdAt: s.created_at,
+    }));
+    setDiffFor({ name, versions });
+  };
+
   const yearName = years.find((y) => y.id === yearId)?.name ?? "";
   const confirmText = (what: string, action?: () => void) => { if (action) setAsk({ text: what, action }); return false; };
   const delRows = (ids: string[], label: string) => {
@@ -287,6 +302,7 @@ function History() {
                       <TableCell>{r.grade_final ?? "—"}</TableCell>
                       <TableCell className="whitespace-nowrap text-right">
                         <Button size="sm" variant="secondary" onClick={() => { setAutoCheck(true); setOpen(r.id); }}><Eye className="mr-1 h-4 w-4" /> Gerber</Button>
+                        <Button size="sm" variant="ghost" aria-label={`Compară versiunile lui ${r.full_name}`} title="Compară vizual 2 versiuni (Visual Diff)" onClick={() => void openDiff(r.id, r.full_name)}><GitCompareArrows className="h-4 w-4" /></Button>
                         <Button size="sm" variant="ghost" onClick={() => { setAutoCheck(false); setOpen(open === r.id ? null : r.id); }}>{open === r.id ? "Închide" : "Fișiere"}</Button>
                         {canManage && (r.status === "archived"
                           ? <Button size="sm" variant="ghost" aria-label={`Dezarhivează ${r.full_name}`} onClick={() => archRows([r.id], false)}><ArchiveRestore className="h-4 w-4" /></Button>
