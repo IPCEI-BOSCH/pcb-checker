@@ -126,10 +126,3 @@ function PasswordReset({ studentId }: { studentId: string }) {
     </section>
   );
 }
-            </div>
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
-  );
-}
