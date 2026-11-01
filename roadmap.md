@@ -83,10 +83,10 @@
 - [x] Amprente salvate, aliniere rotire/oglindire, scor explicat, decizii, Excel, grupuri, comparație vizuală
 - [x] Alertă automată la predarea oficială + comparații salvate + scor ajustat după serie + proiecte de referință
 
-## Etapa 12 — Self-hosting complet & centru de instalare (în lucru)
-- [ ] Adaptor dual-mode consolidat (cloud/selfhost) + stare deployment în diagnostic
-- [ ] Auth locală email+parolă (self-host), cod de înrolare laborator, resetare parolă student de către cadrul didactic
-- [ ] Wizard /setup în 5 pași (pre-flight, cont admin, structură UPB, integrări, finalizare)
-- [ ] Pagină /selfhost cu 4 taburi: generator config, ghid instalare, manual administrare, diagnostic live
-- [ ] Kit selfhost/: install.sh (A/B/C), install.ps1, pcb-ctl.sh, nginx.conf, docker-compose.yml, schema.sql la zi
-- [ ] selfhost/INSTALL_GUIDE_RO.md + AGENTS.md actualizat
+## Etapa 12 — Self-hosting complet & centru de instalare (livrat)
+- [x] Adaptor dual-mode consolidat (cloud/selfhost) + stare deployment în diagnostic
+- [x] Auth locală email+parolă (self-host), cod de înrolare laborator, resetare parolă student de către cadrul didactic
+- [x] Wizard /setup în 5 pași (pre-flight, cont admin, structură UPB, integrări, finalizare)
+- [x] Pagină /selfhost cu 4 taburi: generator config, ghid instalare, manual administrare, diagnostic live
+- [x] Kit selfhost/: install.sh (A/B/C), install.ps1, pcb-ctl.sh, nginx.conf, docker-compose.yml, schema.sql la zi
+- [x] selfhost/INSTALL_GUIDE_RO.md + AGENTS.md actualizat
