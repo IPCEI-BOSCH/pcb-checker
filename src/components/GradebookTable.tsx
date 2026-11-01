@@ -20,6 +20,7 @@ const COLS: Col[] = [
   { key: "themeName", label: "Tema" }, { key: "variant", label: "Var." }, { key: "revision", label: "Rev.", num: true },
   { key: "drcScore", label: "Scor DRC", num: true }, { key: "designPoints", label: "Pct. DRC", num: true }, { key: "reviewStatus", label: "Status" },
   { key: "gradeSchema", label: "Notă schemă", edit: "grade_schema", num: true }, { key: "gradeDoc", label: "Notă doc.", edit: "grade_doc", num: true },
+  { key: "gradeInterview", label: "Notă interviu", edit: "grade_interview", num: true },
   { key: "gradeFinal", label: "Notă finală", edit: "grade_final", num: true }, { key: "notes", label: "Observații", edit: "teacher_notes" },
   { key: "projectFileCount", label: "Dosar", num: true }, { key: "folderPoints", label: "Pct. dosar", num: true },
 ];
