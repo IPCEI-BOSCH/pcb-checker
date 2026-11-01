@@ -76,23 +76,25 @@ function shapeFrom(pts: [number, number][], cx: number, cy: number): THREE.Shape
   return s;
 }
 
-function CameraButtons({ setView }: { setView: (v: "top" | "bottom" | "iso" | "side") => void }) {
+type ViewName = "top" | "bottom" | "iso" | "side";
+
+/** Expune o funcție de poziționare a camerei către butoanele din afara Canvas-ului. */
+function CamSync({ apiRef }: { apiRef: React.MutableRefObject<((v: ViewName) => void) | null> }) {
   const { camera } = useThree();
-  const apply = (v: "top" | "bottom" | "iso" | "side") => {
-    const d = 70;
-    if (v === "top") camera.position.set(0, 0, d);
-    else if (v === "bottom") camera.position.set(0, 0, -d);
-    else if (v === "side") camera.position.set(d, 0, 2);
-    else camera.position.set(d * 0.6, -d * 0.6, d * 0.6);
-    camera.lookAt(0, 0, 0);
-    camera.up.set(0, 0, v === "side" ? 1 : 0);
-    if (v !== "side") camera.up.set(0, 1, 0);
-    camera.updateProjectionMatrix();
-  };
-  useMemo(() => { (applyRef as { current: typeof apply }).current = apply; }, [camera]);
+  useMemo(() => {
+    apiRef.current = (v: ViewName) => {
+      const d = 70;
+      if (v === "top") camera.position.set(0, 0, d);
+      else if (v === "bottom") camera.position.set(0, 0, -d);
+      else if (v === "side") camera.position.set(d, 0, 2);
+      else camera.position.set(d * 0.6, -d * 0.6, d * 0.6);
+      camera.up.set(0, v === "side" ? 0 : 1, v === "side" ? 1 : 0);
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+    };
+  }, [camera, apiRef]);
   return null;
 }
-const applyRef: { current: (v: "top" | "bottom" | "iso" | "side") => void } = { current: () => {} };
 
 export function Pcb3DViewer({ layers, issues }: Props) {
   const [maskColor, setMaskColor] = useState(MASK_COLORS[0]!.hex);
@@ -100,6 +102,7 @@ export function Pcb3DViewer({ layers, issues }: Props) {
   const [showPins, setShowPins] = useState(true);
   const [finish, setFinish] = useState<"enig" | "hasl">("enig");
   const controlsRef = useRef(null);
+  const camApi = useRef<((v: ViewName) => void) | null>(null);
 
   const geo = useMemo(() => {
     const outline = boardOutline(layers);
