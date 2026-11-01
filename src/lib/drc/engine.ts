@@ -1117,7 +1117,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     customCatalog[cr.code] = { err: cr.code, category: cr.category, what: cr.what, why: cr.why, fix: cr.example ? `${cr.fix}\nExemplu corect: ${cr.example}` : cr.fix };
     if (!ruleApplies(cr, smt)) continue;
     try {
-      evalCustomRule(cr, layers, board, fail, note);
+      evalCustomRule(cr, layers, board, fail, note, { silkBlocks });
     } catch (e) {
       note(cr.code, `Regula nu a putut fi evaluată: ${(e as Error).message}`);
     }
@@ -1182,6 +1182,7 @@ function evalCustomRule(
   board: BBox | null,
   fail: (code: string, message: string, pos?: { x?: number; y?: number; layer?: LayerKind }) => void,
   note: (code: string, d: string) => void,
+  extras?: { silkBlocks?: SilkBlock[] },
 ) {
   const kind = cr.layer as LayerKind;
   const lays = layers.filter((l) => l.kind === kind);
