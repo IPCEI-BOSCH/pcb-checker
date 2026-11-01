@@ -32,12 +32,13 @@ function randHex(bytes: number): string {
   return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function CopyBtn({ text, label = "Copiază" }: { text: string; label?: string }) {
+function CopyBtn({ text, label = "Copiază", disabled = false }: { text: string; label?: string; disabled?: boolean }) {
   const [ok, setOk] = useState(false);
   return (
     <Button
       variant="outline"
       size="sm"
+      disabled={disabled}
       className="h-7 gap-1 text-xs"
       onClick={() => {
         navigator.clipboard.writeText(text).then(() => {
@@ -87,7 +88,12 @@ function ConfigGenerator() {
   const [azureTenant, setAzureTenant] = useState("");
   const [googleSa, setGoogleSa] = useState("");
   const [ollamaUrl, setOllamaUrl] = useState("");
-  const [secrets, setSecrets] = useState(() => ({ pg: randHex(16), jwt: randHex(32), session: randHex(32) }));
+  const [secrets, setSecrets] = useState<{ pg: string; jwt: string; session: string } | null>(null);
+  const [generatedDate, setGeneratedDate] = useState("");
+  useEffect(() => {
+    setSecrets({ pg: randHex(16), jwt: randHex(32), session: randHex(32) });
+    setGeneratedDate(new Date().toISOString().slice(0, 10));
+  }, []);
 
   const base = useMemo(() => {
     if (netMode === "localhost") return "http://localhost:3000";
@@ -96,7 +102,7 @@ function ConfigGenerator() {
   }, [netMode, address]);
 
   const envFile = useMemo(
-    () => `# PCB Checker & CAM — configurație server local (generată ${new Date().toISOString().slice(0, 10)})
+    () => secrets ? `# PCB Checker & CAM — configurație server local (generată ${generatedDate})
 DEPLOYMENT_MODE=selfhost
 VITE_DEPLOYMENT_MODE=selfhost
 PUBLIC_APP_URL=${base}
@@ -136,8 +142,8 @@ OPENAI_BASE_URL=${ollamaUrl}
 AI_MODEL=${ollamaUrl ? "qwen2.5-vl" : "gpt-4.1-mini"}
 
 EXAM_MODE=0
-`,
-    [base, netMode, httpPort, maxUpload, secrets, domains, adminEmail, azureId, azureSecret, azureTenant, googleSa, ollamaUrl],
+` : "",
+    [base, netMode, httpPort, maxUpload, secrets, generatedDate, domains, adminEmail, azureId, azureSecret, azureTenant, googleSa, ollamaUrl],
   );
 
   const composeFile = useMemo(
@@ -241,15 +247,15 @@ volumes:
 
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => download(".env.selfhost", envFile)}>
+          <Button size="sm" disabled={!secrets} onClick={() => download(".env.selfhost", envFile)}>
             <Download className="mr-1 h-3 w-3" /> Descarcă .env
           </Button>
-          <CopyBtn text={envFile} label="Copiază .env" />
+          <CopyBtn text={envFile} label="Copiază .env" disabled={!secrets} />
           <Button size="sm" variant="outline" onClick={() => download("docker-compose.yml", composeFile)}>
             <Download className="mr-1 h-3 w-3" /> docker-compose.yml
           </Button>
         </div>
-        <CodeBlock title=".env.selfhost" code={envFile} />
+        {secrets ? <CodeBlock title=".env.selfhost" code={envFile} /> : <p role="status" className="text-sm text-muted-foreground">Se pregătește configurația…</p>}
         <CodeBlock title="Comanda unică de instalare (pe server)" code={oneLiner} />
         <p className="text-xs text-muted-foreground">
           După clonare, copiază fișierul <code>.env.selfhost</code> descărcat în rădăcina proiectului înainte de a rula instalatorul — sau lasă{" "}

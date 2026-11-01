@@ -1,5 +1,10 @@
 # Roadmap — PCB Checker & CAM
 
+## Corecții vizualizare și inițializare
+- [ ] Vizualizator PCB înaintea explicațiilor, încadrare numai la dimensiuni pozitive și revenire 3D → 2D.
+- [ ] Generator self-host cu inițializare exclusiv în browser, fără diferențe la hidratare.
+- [ ] Actualizare API de validare și verificare autentificată a deschiderii proiectelor.
+
 ## Etapa 1 — Fundație + Self-Check (livrat)
 - [x] Login Microsoft 365, allowlist domenii UPB, primul utilizator = Administrator
 - [x] Roluri: Admin, Manager serie, Îndrumător, Student, Tehnician CAM
