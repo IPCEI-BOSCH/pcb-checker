@@ -39,7 +39,7 @@ export interface AiRuleDraft {
 /** Turns a teacher's free-text request into a complete custom DRC rule. Nothing is saved — the UI previews and tests it first. */
 export const aiCreateRule = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: { prompt: string; existingCodes: string[] }) => {
+  .validator((i: { prompt: string; existingCodes: string[] }) => {
     if (!i.prompt || i.prompt.length > 3000) throw new Error("Cerere invalidă");
     return { prompt: i.prompt, existingCodes: (i.existingCodes ?? []).slice(0, 200) };
   })

@@ -113,6 +113,7 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
   }, [layers]);
 
   const fit = useCallback(() => {
+    if (size.w <= 0 || size.h <= 0) return;
     const w = bounds.maxX - bounds.minX || 40;
     const h = bounds.maxY - bounds.minY || 40;
     const scale = Math.min(size.w / w, size.h / h) * 0.88;
@@ -122,11 +123,17 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: el.clientHeight }));
+    const measure = () => {
+      const w = el.clientWidth, h = el.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      setSize((previous) => previous.w === w && previous.h === h ? previous : { w, h });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-  useEffect(() => fit(), [fit]);
+  }, [view3d]);
+  useEffect(() => { if (!view3d) fit(); }, [fit, view3d]);
 
   const cursorRef = useRef<{ x: number; y: number } | null>(null);
   const applyPair = (p: (typeof PAIRS)[number] | null) => {
@@ -284,7 +291,8 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
     const dpr = window.devicePixelRatio || 1;
     c.width = size.w * dpr;
     c.height = size.h * dpr;
-    const ctx = c.getContext("2d")!;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#0c1410";
     ctx.fillRect(0, 0, size.w, size.h);
@@ -418,7 +426,7 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
       ctx.textAlign = "center";
       ctx.fillText(String(i + 1), x, y + 3);
     });
-  }, [sorted, state, view, size, issues, focus, hover, toScreen, ruler, cursor, snapInfo, tool, probeSet, probeNet, pins]);
+  }, [sorted, state, view, size, issues, focus, hover, toScreen, ruler, cursor, snapInfo, tool, probeSet, probeNet, pins, view3d]);
 
   const hitIssue = (px: number, py: number) => {
     for (let i = issues.length - 1; i >= 0; i--) {
@@ -448,7 +456,7 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
     const prevent = (e: WheelEvent) => e.preventDefault();
     c.addEventListener("wheel", prevent, { passive: false });
     return () => c.removeEventListener("wheel", prevent);
-  }, []);
+  }, [view3d]);
 
   const hovered = hover ? issues[hover.i] : null;
   const zoom = (k: number) => setView((v) => {
@@ -486,8 +494,8 @@ export function GerberViewer({ layers, issues, focus, cad = "orcad", onSelectIss
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[1fr_240px]">
-      <div ref={wrapRef} className="relative h-[520px] overflow-hidden rounded-md border border-border">
+    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <div ref={wrapRef} className="relative h-[520px] min-w-0 overflow-hidden rounded-md border border-border">
         <canvas
           ref={canvasRef}
           style={{ width: size.w, height: size.h }}

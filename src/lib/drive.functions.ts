@@ -89,7 +89,7 @@ export const SLOT_FILES: Record<string, string> = {
 /** Copies a just-uploaded slot / project file from storage to the student's Drive folder, overwriting the old one. */
 export const syncToDrive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ kind: z.enum(["slot", "project"]), id: z.string().uuid() }).parse(d))
+  .validator((d: unknown) => z.object({ kind: z.enum(["slot", "project"]), id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     // RLS read as the caller proves access; only the owner may push.
     const table = data.kind === "slot" ? "student_fabrication_slots" : "project_files";
@@ -116,7 +116,7 @@ export const syncToDrive = createServerFn({ method: "POST" })
 /** Removes a project file from Drive (fabrication slots are only ever overwritten). */
 export const deleteFromDrive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ driveFileId: z.string().min(5).max(200) }).parse(d))
+  .validator((d: unknown) => z.object({ driveFileId: z.string().min(5).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     const { data: own } = await context.supabase.from("project_files").select("id").eq("drive_file_id", data.driveFileId).eq("user_id", context.userId).maybeSingle();
     if (!own) throw new Error("Fără acces.");
@@ -135,7 +135,7 @@ async function assertCam(context: { supabase: { rpc: (f: string, a: Record<strin
 /** Lists what each student's Drive Layout folder contains, for a series or a set of groups. */
 export const listDriveLayouts = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ groupIds: z.array(z.string().uuid()).max(200) }).parse(d))
+  .validator((d: unknown) => z.object({ groupIds: z.array(z.string().uuid()).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertCam(context as never);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -171,7 +171,7 @@ export const listDriveLayouts = createServerFn({ method: "POST" })
 /** Downloads one student's Layout files from Drive (base64) for client-side panelization. */
 export const fetchDriveLayout = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ studentId: z.string().uuid() }).parse(d))
+  .validator((d: unknown) => z.object({ studentId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertCam(context as never);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -209,7 +209,7 @@ export const googleWorkspaceStatus = createServerFn({ method: "POST" })
 /** Creates (or reuses) the Drive folder tree for the given students; staff only. */
 export const ensureDriveFolders = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((i: { studentIds: string[] }) => z.object({ studentIds: z.array(z.string().uuid()).max(500) }).parse(i))
+  .validator((i: { studentIds: string[] }) => z.object({ studentIds: z.array(z.string().uuid()).max(500) }).parse(i))
   .handler(async ({ data, context }) => {
     const { data: staff } = await context.supabase.rpc("is_staff", { _uid: context.userId });
     if (!staff) throw new Error("Forbidden");

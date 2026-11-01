@@ -17,11 +17,22 @@ export function DrcReportView({ report, layers, meta, pins, onPinRequest, focusP
   const [cad, setCad] = useState<CadTool>("orcad");
   const [focus, setFocus] = useState<number | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
+  const revealViewer = () => {
+    const el = viewerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const container = el.closest('[role="dialog"]')?.getBoundingClientRect();
+    const top = container?.top ?? 0;
+    const bottom = container?.bottom ?? window.innerHeight;
+    if (rect.top < top || rect.top + Math.min(rect.height, 200) > bottom) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
   const locate = (code: string) => {
     const i = report.issues.findIndex((x) => x.code === code && x.x != null);
     if (i < 0) return;
     setFocus(i);
-    viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    revealViewer();
   };
 
   // Speed-grading: tastele 1–9 focalizează eroarea #n din listă.
@@ -34,7 +45,7 @@ export function DrcReportView({ report, layers, meta, pins, onPinRequest, focusP
       const iss = report.issues[n - 1];
       if (!iss) return;
       setFocus(n - 1);
-      if (iss.x != null) viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (iss.x != null) revealViewer();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -55,6 +66,16 @@ export function DrcReportView({ report, layers, meta, pins, onPinRequest, focusP
           tone={report.manualReview ? undefined : report.verdict === "rezerve" ? "warn" : report.wouldPass ? "ok" : "bad"}
         />
       </div>
+
+      {layers && (
+        <div ref={viewerRef} className="scroll-mt-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold">Vizualizator PCB</h2>
+            <span className="text-xs text-muted-foreground">Ghid remediere: {CAD_LABELS[cad]}</span>
+          </div>
+          <GerberViewer layers={layers} issues={report.issues} focus={focus} cad={cad} onSelectIssue={setFocus} nets={report.nets} minClearance={report.rulesMinClearance} pins={pins} onPinRequest={onPinRequest} focusPoint={focusPoint} />
+        </div>
+      )}
 
       {!!report.criticalCount && (
         <div role="alert" className="rounded-lg border border-destructive bg-destructive/10 p-4 text-sm text-foreground">
@@ -114,18 +135,6 @@ export function DrcReportView({ report, layers, meta, pins, onPinRequest, focusP
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
-      )}
-
-      {layers && (
-        <Card ref={viewerRef}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-base">Vizualizator PCB</CardTitle>
-            <span className="text-xs text-muted-foreground">Ghid remediere: {CAD_LABELS[cad]}</span>
-          </CardHeader>
-          <CardContent>
-            <GerberViewer layers={layers} issues={report.issues} focus={focus} cad={cad} onSelectIssue={setFocus} nets={report.nets} minClearance={report.rulesMinClearance} pins={pins} onPinRequest={onPinRequest} focusPoint={focusPoint} />
           </CardContent>
         </Card>
       )}
