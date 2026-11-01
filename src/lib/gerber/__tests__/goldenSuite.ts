@@ -13,13 +13,13 @@ const AP = (n: number, def: string) => `%ADD${n}${def}*%\n`;
 const EOF = "M02*\n";
 
 const baseFiles = (opts: { top?: string; bottom?: string; drill?: string; mask?: string; paste?: string; fab?: string; smt?: boolean }): Record<string, string> => {
-  const outline = HDR + AP(10, "C,0.1") + "D10*\n" + "X0Y0D02*\nX60000000Y0D01*\nX60000000Y30000000D01*\nX0Y30000000D01*\nX0Y0D01*\n" + EOF;
+  const outline = HDR + AP(10, "C,0.1") + "D10*\n" + "X0Y0D02*\nX40000000Y0D01*\nX40000000Y30000000D01*\nX0Y30000000D01*\nX0Y0D01*\n" + EOF;
   const files: Record<string, string> = { "BOARD.OUT": outline };
   files["TOP.art"] = opts.top ?? HDR + AP(10, "R,1.3,1.3") + AP(11, "R,1.5,1.5") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\n" + EOF;
   files["BOTTOM.art"] = opts.bottom ?? HDR + AP(10, "R,1.3,1.3") + "D10*\nX15000000Y15000000D03*\n" + EOF;
-  files["DRILL.drl"] = opts.drill ?? "M48\nMETRIC,TZ\nT1C1.000\n%\nT1\nX15Y15\nX30Y15\nM30\n";
+  files["DRILL.drl"] = opts.drill ?? "M48\nMETRIC,TZ\nT1C1.000\n%\nT1\nX15000Y15000\nX30000Y15000\nM30\n";
+  files["SMTOP.art"] = opts.mask ?? HDR + AP(10, "R,1.5,1.5") + AP(11, "R,1.7,1.7") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\n" + EOF;
   if (opts.smt) {
-    files["SMTOP.art"] = opts.mask ?? HDR + AP(10, "R,1.5,1.5") + AP(11, "R,1.7,1.7") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\n" + EOF;
     files["SPTOP.art"] = opts.paste ?? HDR + AP(10, "R,1.2,1.2") + AP(11, "R,1.35,1.35") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\n" + EOF;
     files["FAB.art"] = opts.fab ?? HDR + AP(10, "C,0.1") + "D10*\n" + Array.from({ length: 320 }, (_, i) => `X${(5000000 + i * 150000)}Y5000000D03*`).join("\n") + "\n" + EOF;
   }
