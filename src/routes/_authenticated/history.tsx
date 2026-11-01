@@ -336,6 +336,7 @@ function History() {
         </AlertDialogContent>
       </AlertDialog>
       <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => qc.invalidateQueries()} />
+      {diffFor && <VersionDiffDialog studentName={diffFor.name} versions={diffFor.versions} open onClose={() => setDiffFor(null)} />}
     </div>
   );
 }
