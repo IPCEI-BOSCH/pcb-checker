@@ -269,7 +269,7 @@ export function Pcb3DViewer({ layers, issues }: Props) {
           })}
 
           {/* Găuri: PTH metalizate, NPTH ≥2.8 mm fibră FR4 */}
-          {geo.holes.map((h, i) => {
+          {geo.holes.filter((h) => fin(h.x, h.y, h.d) && h.d > 0).map((h, i) => {
             const [x, y] = P(h.x, h.y);
             const npth = h.d >= 2.8;
             return (
@@ -282,7 +282,7 @@ export function Pcb3DViewer({ layers, issues }: Props) {
 
           {/* Markere 3D pentru erorile DRC */}
           {showPins &&
-            issues.filter((i2) => i2.x != null && i2.y != null).map((i2, idx) => {
+            issues.filter((i2) => i2.x != null && i2.y != null && fin(i2.x, i2.y)).map((i2, idx) => {
               const [x, y] = P(i2.x!, i2.y!);
               const col = i2.severity === "blocking" ? "#ef4444" : i2.severity === "warning" ? "#f5b83d" : "#5aa9e6";
               return (
