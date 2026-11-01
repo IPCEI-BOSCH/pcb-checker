@@ -152,11 +152,13 @@ export const GOLDEN_SUITE: GoldenCase[] = [
     maxMs: 3000,
   },
   {
-    name: "G12 — pastă lipsă pe un pad (ERR_52)",
-    description: "Al doilea pad SMD nu are deschidere în stratul de pastă.",
+    name: "G12 — pastă lipsă pe un pad SMD (ERR_52)",
+    description: "Două pad-uri SMD negăurite; al doilea nu are deschidere în stratul de pastă.",
     files: baseFiles({
       smt: true,
-      paste: HDR + AP(10, "R,1.2,1.2") + "D10*\nX15000000Y15000000D03*\n" + EOF,
+      top: HDR + AP(10, "R,1.3,1.3") + AP(11, "R,1.5,1.5") + AP(12, "R,0.8,1.4") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\nD12*\nX10000000Y25000000D03*\nX20000000Y25000000D03*\n" + EOF,
+      mask: HDR + AP(10, "R,1.5,1.5") + AP(11, "R,1.7,1.7") + AP(12, "R,1.0,1.6") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\nD12*\nX10000000Y25000000D03*\nX20000000Y25000000D03*\n" + EOF,
+      paste: HDR + AP(10, "R,1.2,1.2") + AP(11, "R,1.35,1.35") + AP(12, "R,0.7,1.25") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\nD12*\nX10000000Y25000000D03*\n" + EOF,
     }),
     expect: [{ rule: "PASTE_MISSING_PAD", passed: false }],
     maxMs: 3000,
