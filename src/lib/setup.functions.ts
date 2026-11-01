@@ -58,7 +58,7 @@ export const setupHealth = createServerFn({ method: "GET" }).handler(async () =>
   const checks: { name: string; ok: boolean; detail: string }[] = [];
   let dbOk = true;
   for (const t of tables) {
-    const { error } = await supabaseAdmin.from(t).select("*", { count: "exact", head: true });
+    const { error } = await (supabaseAdmin.from as (t: string) => any)(t).select("*", { count: "exact", head: true });
     if (error) {
       dbOk = false;
       checks.push({ name: `Tabel ${t}`, ok: false, detail: error.message });
