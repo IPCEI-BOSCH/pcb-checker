@@ -341,6 +341,7 @@ function Review() {
                           {official && (
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant="secondary" onClick={() => openReport(st.full_name, official, st.variant, sid, st)}><Eye className="mr-1 h-4 w-4" /> Vizualizează Gerber</Button>
+                              <Button size="sm" variant="outline" aria-label={`Compară versiunile lui ${st.full_name}`} title="Compară vizual 2 versiuni (Visual Diff)" onClick={() => void openDiff(st.id, st.full_name)}><GitCompareArrows className="h-4 w-4" /></Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -412,6 +413,8 @@ function Review() {
           {view && <DrcReportView report={view.report} layers={view.layers} meta={view.meta ?? { student: view.name }} />}
         </DialogContent>
       </Dialog>
+
+      {diffFor && <VersionDiffDialog studentName={diffFor.name} versions={diffFor.versions} open onClose={() => setDiffFor(null)} />}
 
       <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => { qc.invalidateQueries({ queryKey: ["review"] }); qc.invalidateQueries({ queryKey: ["structure"] }); }} />
     </div>
