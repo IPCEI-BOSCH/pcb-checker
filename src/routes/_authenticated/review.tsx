@@ -126,6 +126,21 @@ function Review() {
 
   const setStatus = async (sub: Sub, status: "approved" | "rejected", why?: string) => {
     const { error } = await supabase.from("submissions").update({ review_status: status, review_reason: why ?? null, reviewed_by: user.id, reviewed_at: new Date().toISOString() }).eq("id", sub.id);
+  };
+
+  /** Deschide Visual Diff: toate predările/verificările studentului, cronologic. */
+  const openDiff = async (studentId: string, name: string) => {
+    const { data, error } = await supabase.from("submissions").select("id, revision, kind, zip_path, drc_score, report, created_at").eq("student_id", studentId).order("created_at");
+    if (error) return toast.error(error.message);
+    const versions: VersionEntry[] = (data ?? []).map((s) => ({
+      id: s.id,
+      label: `${s.kind === "OFFICIAL" ? "Predare" : "Self-check"} v${s.revision}`,
+      zipPath: s.zip_path,
+      score: s.drc_score,
+      report: (s.report as DrcReport | null) ?? null,
+      createdAt: s.created_at,
+    }));
+    setDiffFor({ name, versions });
     if (error) return void toast.error(error.message);
     await logAudit(user.id, "PANEL_APPROVAL", "submission", sub.id, { status, reason: why });
     qc.invalidateQueries({ queryKey: ["review"] });
