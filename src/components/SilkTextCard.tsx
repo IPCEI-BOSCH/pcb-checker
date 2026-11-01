@@ -87,10 +87,15 @@ export function SilkTextCard({ report, layers, student, onLocate }: { report: Dr
             <TableBody>
               {blocks.map((b) => {
                 const t = read[b.idx];
+                const local = !t && b.decoded && (b.decodeConfidence ?? 0) >= 0.5;
                 return (
                   <TableRow key={b.idx} className={onLocate ? "cursor-pointer" : undefined} onClick={() => onLocate?.(b.x, b.y)}>
                     <TableCell className="font-mono text-xs">{b.idx}</TableCell>
-                    <TableCell>{t ? (t.text ? <span className={t.confidence < 0.4 ? "text-muted-foreground" : "font-medium"}>{t.text}</span> : <span className="text-muted-foreground">(nu e text)</span>) : <span className="text-muted-foreground">{b.chars} caractere</span>}</TableCell>
+                    <TableCell>
+                      {t ? (t.text ? <span className={t.confidence < 0.4 ? "text-muted-foreground" : "font-medium"}>{t.text}</span> : <span className="text-muted-foreground">(nu e text)</span>)
+                        : local ? <span className="font-medium">{b.decoded} <span className="text-xs text-muted-foreground" title="Citire vectorială locală, fără AI">· local {Math.round((b.decodeConfidence ?? 0) * 100)}%{b.mirrored === true ? " · oglindă" : ""}</span></span>
+                        : <span className="text-muted-foreground">{b.chars} caractere</span>}
+                    </TableCell>
                     <TableCell className="text-xs">{b.layer === "top_silk" ? "TOP" : "BOTTOM"}</TableCell>
                     <TableCell className="text-right">{b.textHeight.toFixed(2)} mm</TableCell>
                     <TableCell className="text-right">{b.stroke.toFixed(2)} mm</TableCell>
