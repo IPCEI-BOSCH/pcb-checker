@@ -46,9 +46,12 @@ function Admin() {
   if (!has("admin", "series_manager")) return <p className="text-sm text-muted-foreground">Acces restricționat.</p>;
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Administrare</h1>
-        <p className="text-sm text-muted-foreground">Serii, grupe, îndrumători, roluri și liste de studenți.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Administrare</h1>
+          <p className="text-sm text-muted-foreground">Serii, grupe, îndrumători, roluri și liste de studenți.</p>
+        </div>
+        <Button asChild variant="outline" size="sm"><Link to="/maintenance">Mentenanță & Arhivare →</Link></Button>
       </div>
       <Tabs defaultValue="structure">
         <TabsList>
