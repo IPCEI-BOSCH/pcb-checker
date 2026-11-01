@@ -126,3 +126,32 @@ export function aiConfig(lovableModel: string) {
     model: env("AI_MODEL") ?? "gpt-4.1-mini",
   };
 }
+
+/**
+ * Air-Gapped Exam Mode (self-hosted, EXAM_MODE=1): the server runs in an isolated lab
+ * network; external services (Google, cloud AI) are expected to be unreachable and the
+ * app degrades gracefully — sync queues for reconnect, AI falls back to a local
+ * Ollama/vLLM endpoint when OPENAI_BASE_URL points to one.
+ */
+export function examMode() {
+  const v = (env("EXAM_MODE") ?? "").toLowerCase();
+  return v === "1" || v === "true" || v === "on";
+}
+
+export function aiConfigured() {
+  return !!env("LOVABLE_API_KEY") || !!env("OPENAI_API_KEY");
+}
+
+/** Service overview for the maintenance panel. */
+export function platformServices() {
+  const ai = aiConfigured();
+  return {
+    examMode: examMode(),
+    google: { drive: googleConfigured("drive"), sheets: googleConfigured("sheets") },
+    ai: {
+      configured: ai,
+      mode: ai ? (env("LOVABLE_API_KEY") ? "lovable" : "openai-compatible") : null,
+      baseURL: ai ? (env("LOVABLE_API_KEY") ? "https://ai.gateway.lovable.dev/v1" : env("OPENAI_BASE_URL") ?? "https://api.openai.com/v1") : null,
+    },
+  };
+}

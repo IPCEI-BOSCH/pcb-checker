@@ -291,7 +291,11 @@ function StdEditor({ code, draft, setDraft, setPenalty }: { code: string; draft:
 function CustomEditor({ rule: r, onChange, onDelete }: { rule: CustomRule; onChange: (p: Partial<CustomRule>) => void; onDelete: () => void }) {
   const meta = CHECK_TYPES[r.checkType];
   const isPad = r.checkType === "min_pad" || r.checkType === "max_pad";
-  const isCount = ["max_holes", "min_holes", "max_primitives", "layer_required"].includes(r.checkType);
+  const isCount = ["max_holes", "min_holes", "max_primitives", "layer_required", "layer_primitive_count", "required_silk_aspect"].includes(r.checkType);
+  const noValue = ["layer_required", "required_silk_aspect"].includes(r.checkType);
+  const hasMax = ["feature_dimension_range", "layer_primitive_count"].includes(r.checkType);
+  const hasLayer2 = r.checkType === "cross_layer_clearance";
+  const hasRegion = r.checkType === "required_silk_aspect";
   return (
     <div className="space-y-5">
       <Section title="Identificare">
@@ -320,9 +324,22 @@ function CustomEditor({ rule: r, onChange, onDelete }: { rule: CustomRule; onCha
               <SelectContent>{meta.layers.map((l) => <SelectItem key={l} value={l}>{LAYER_LABELS[l]}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
-          {r.checkType !== "layer_required" && (
-            <Field label={`Prag${meta.unit ? ` (${meta.unit})` : ""}`} help={meta.unit === "mm" ? `${(r.value / 0.0254).toFixed(1)} mil` : undefined}>
+          {!noValue && (
+            <Field label={`${hasMax ? "Minim" : "Prag"}${meta.unit ? ` (${meta.unit})` : ""}`} help={meta.unit === "mm" ? `${(r.value / 0.0254).toFixed(1)} mil` : undefined}>
               <Input type="number" step="0.01" value={r.value} onChange={(e) => onChange({ value: num(e.target.value) })} className="h-8 font-mono" />
+            </Field>
+          )}
+          {hasMax && (
+            <Field label={`Maxim${meta.unit ? ` (${meta.unit})` : ""}`} help="0 sau gol = fără limită superioară">
+              <Input type="number" step="0.01" value={r.value2 ?? 0} onChange={(e) => onChange({ value2: num(e.target.value) })} className="h-8 font-mono" />
+            </Field>
+          )}
+          {hasLayer2 && (
+            <Field label="Al doilea strat">
+              <Select value={r.layer2 ?? "bottom_copper"} onValueChange={(v) => onChange({ layer2: v as CustomLayer })}>
+                <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.keys(LAYER_LABELS).map((l) => <SelectItem key={l} value={l}>{LAYER_LABELS[l as CustomLayer]}</SelectItem>)}</SelectContent>
+              </Select>
             </Field>
           )}
           {!isCount && (
@@ -336,6 +353,21 @@ function CustomEditor({ rule: r, onChange, onDelete }: { rule: CustomRule; onCha
             </Field>
           )}
         </div>
+        {hasRegion && (
+          <div className="grid gap-3 sm:grid-cols-4">
+            {(["x", "y", "w", "h"] as const).map((k) => (
+              <Field key={k} label={`${k === "w" ? "Lățime" : k === "h" ? "Înălțime" : k.toUpperCase()} (mm)`} help={k === "x" ? "Gol = toată placa" : undefined}>
+                <Input type="number" step="0.5" value={r.region?.[k] ?? ""} onChange={(e) => {
+                  const v = e.target.value === "" ? undefined : num(e.target.value);
+                  const reg = { x: 0, y: 0, w: 0, h: 0, ...(r.region ?? {}) };
+                  if (v === undefined) delete reg[k];
+                  else reg[k] = v;
+                  onChange({ region: Object.keys(reg).length === 4 ? reg as { x: number; y: number; w: number; h: number } : undefined });
+                }} className="h-8 font-mono" />
+              </Field>
+            ))}
+          </div>
+        )}
         {isPad && <label className="flex items-center gap-2 text-sm"><Switch checked={!!r.ignoreHoled} onCheckedChange={(v) => onChange({ ignoreHoled: v })} aria-label="Ignoră pad-urile cu gaură" /> Ignoră pad-urile cu gaură (VIA / THT)</label>}
       </Section>
       <Section title="Punctaj & severitate">

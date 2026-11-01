@@ -15,10 +15,12 @@ import { OrcadExportGuide } from "@/components/OrcadExportGuide";
 import { fetchDeadline, deadlineState } from "@/lib/deadlines";
 import { printSubmissionReceipt, sha256Hex } from "@/lib/receipt";
 import { fetchAnnotations } from "@/lib/annotations";
+import { redeemExamToken } from "@/lib/exam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/self-check")({
@@ -48,6 +50,8 @@ function SelfCheck() {
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [contest, setContest] = useState<{ submissionId: string } | null>(null);
   const [contestMsg, setContestMsg] = useState("");
+  const [examGate, setExamGate] = useState(false);
+  const [examCode, setExamCode] = useState("");
 
   const student = useQuery({ queryKey: ["my-student", user.id], queryFn: () => fetchMyStudent(user.id) });
   const history = useQuery({
@@ -191,7 +195,7 @@ function SelfCheck() {
           </p>
         </div>
         {current && (
-          <Button onClick={submitOfficial} disabled={!!busy || current.report.blockingCount > 0} title={current.report.blockingCount ? "Remediază erorile blocante pentru a preda" : ""}>
+          <Button onClick={() => (st.groups?.exam_mode ? setExamGate(true) : submitOfficial())} disabled={!!busy || current.report.blockingCount > 0} title={current.report.blockingCount ? "Remediază erorile blocante pentru a preda" : ""}>
             <Send className="mr-2 h-4 w-4" /> Trimite pentru evaluare finală
           </Button>
         )}
@@ -283,6 +287,31 @@ function SelfCheck() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={examGate} onOpenChange={(o) => { setExamGate(o); if (!o) setExamCode(""); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Cod de acces examen</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Grupa ta este în mod examen: predarea oficială cere codul unic primit de la profesor în sală.</p>
+          <Input placeholder="XXXX-XXXX" value={examCode} onChange={(e) => setExamCode(e.target.value.toUpperCase())} className="font-mono tracking-widest" maxLength={9} />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setExamGate(false)}>Renunță</Button>
+            <Button disabled={examCode.trim().length < 9 || !!busy} onClick={async () => {
+              setBusy("Se validează codul…");
+              try {
+                const ok = await redeemExamToken(examCode.trim(), st.id);
+                if (!ok) return void toast.error("Cod invalid, expirat sau deja folosit.");
+                setExamGate(false);
+                setExamCode("");
+                await submitOfficial();
+              } catch (e) {
+                toast.error((e as Error).message);
+              } finally {
+                setBusy(null);
+              }
+            }}>Validează și predă</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!contest} onOpenChange={(o) => !o && setContest(null)}>
         <DialogContent>

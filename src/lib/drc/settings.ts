@@ -184,9 +184,14 @@ export type CustomCheckType =
   | "min_holes"
   | "hole_to_edge"
   | "copper_to_edge"
-  | "max_primitives";
+  | "max_primitives"
+  | "layer_primitive_count"
+  | "feature_dimension_range"
+  | "cross_layer_clearance"
+  | "copper_coverage_ratio"
+  | "required_silk_aspect";
 
-export type CustomLayer = "top_copper" | "bottom_copper" | "top_mask" | "top_silk" | "top_paste" | "outline" | "drill" | "fabrication";
+export type CustomLayer = "top_copper" | "bottom_copper" | "top_mask" | "top_silk" | "bottom_silk" | "top_paste" | "outline" | "drill" | "fabrication";
 
 export type CustomCategory = "STRUCT" | "MECH" | "DRILL" | "COPPER" | "SOLDERMASK" | "STENCIL" | "SILKSCREEN";
 
@@ -222,6 +227,12 @@ export interface CustomRule {
   teacherNote?: string;
   /** Example of a correct design, shown to the student. */
   example?: string;
+  /** Upper bound for range/count checks (feature_dimension_range, layer_primitive_count). */
+  value2?: number;
+  /** Second layer for cross_layer_clearance. */
+  layer2?: CustomLayer;
+  /** Board region (mm, absolute coords) for required_silk_aspect; default = whole board. */
+  region?: { x: number; y: number; w: number; h: number } | undefined;
 }
 
 export const CHECK_TYPES: Record<CustomCheckType, { label: string; unit: string; layers: CustomLayer[]; help: string }> = {
@@ -237,6 +248,11 @@ export const CHECK_TYPES: Record<CustomCheckType, { label: string; unit: string;
   hole_to_edge: { label: "Distanță gaură – margine placă", unit: "mm", layers: ["drill"], help: "Marginea găurii prea aproape de contur" },
   copper_to_edge: { label: "Distanță element – margine placă", unit: "mm", layers: ["top_copper", "bottom_copper", "top_silk", "top_paste"], help: "Pad-uri/linii de pe strat prea aproape de contur" },
   max_primitives: { label: "Număr maxim de elemente pe strat", unit: "buc", layers: ["top_copper", "bottom_copper", "top_silk", "top_mask", "top_paste", "fabrication"], help: "Ex.: limită de elemente pe serigrafie" },
+  layer_primitive_count: { label: "Număr elemente pe strat (min–max)", unit: "buc", layers: ["top_copper", "bottom_copper", "top_silk", "top_mask", "top_paste", "drill", "fabrication"], help: "Prag = minim; completați și Maxim pentru interval. Ex.: minim 4 via-uri de masă (strat găurire)" },
+  feature_dimension_range: { label: "Dimensiune element în interval", unit: "mm", layers: ["top_copper", "bottom_copper", "top_silk", "top_mask", "top_paste", "drill"], help: "Lățimea liniilor / latura pad-urilor / diametrul găurilor trebuie să fie între Prag și Maxim" },
+  cross_layer_clearance: { label: "Distanță între două straturi", unit: "mm", layers: ["top_copper", "bottom_copper", "top_silk", "top_mask", "top_paste"], help: "Distanța minimă între elementele stratului ales și cele de pe al doilea strat" },
+  copper_coverage_ratio: { label: "Acoperire cupru minimă (plan de masă)", unit: "%", layers: ["top_copper", "bottom_copper"], help: "Procentul minim din aria plăcii acoperit de cupru pe stratul ales (ex. 35 pentru plan de masă)" },
+  required_silk_aspect: { label: "Text obligatoriu într-o zonă", unit: "", layers: ["top_silk", "bottom_silk"], help: "Eroare dacă nu există niciun bloc de text în zona dată (implicit toată placa)" },
 };
 
 export function blankCustomRule(): CustomRule {
@@ -351,6 +367,7 @@ export const DEFAULT_SETTINGS: Settings = {
     MISSING_PASTE: { points: 10, severity: "blocking", enabled: true, smtOnly: true, perIssue: 0, cap: 10 },
     STENCIL_RATIO: { points: 5, severity: "warning", enabled: true, smtOnly: true, perIssue: 1, cap: 15 },
     STENCIL_WINDOWPANE: { points: 0, severity: "info", enabled: true, smtOnly: true, perIssue: 0, cap: 0 },
+    MIRRORED_TEXT_ORIENTATION: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 10 },
     SILK_TEXT_SIZE: { points: 2, severity: "warning", enabled: false, smtOnly: false, perIssue: 0, cap: 2 },
     MASK_EXPANSION: { points: 3, severity: "warning", enabled: true, smtOnly: false, perIssue: 0.25, cap: 6 },
     PASTE_SIZE: { points: 3, severity: "warning", enabled: true, smtOnly: true, perIssue: 0.25, cap: 6 },
