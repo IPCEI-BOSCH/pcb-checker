@@ -283,6 +283,23 @@ function SelfCheck() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!contest} onOpenChange={(o) => !o && setContest(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Cerere de reevaluare / clarificare</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Mesajul ajunge la asistentul grupei tale și la titularul de curs, semnalat în Evaluare și Catalog.</p>
+          <Textarea placeholder="Ex.: Am refăcut rutarea după observații, vă rog reevaluarea predării v2…" value={contestMsg} onChange={(e) => setContestMsg(e.target.value)} rows={4} />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setContest(null)}>Renunță</Button>
+            <Button disabled={!contestMsg.trim()} onClick={async () => {
+              const { error } = await supabase.from("review_requests").insert({ student_id: st.id, submission_id: contest!.submissionId, message: contestMsg.trim() });
+              if (error) return void toast.error(error.message);
+              toast.success("Cererea de reevaluare a fost trimisă.");
+              setContest(null);
+            }}>Trimite cererea</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
