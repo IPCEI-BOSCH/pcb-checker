@@ -1,9 +1,12 @@
 import type { Layer } from "@/lib/gerber/types";
+import { decodeBlock } from "./ocr";
 
-/** A cluster of silkscreen strokes that looks like a word/label (designator, name, logo text). */
+export type TextLayerKind = "top_silk" | "bottom_silk" | "top_copper" | "bottom_copper";
+
+/** A cluster of strokes that looks like a word/label (designator, name, logo text), on silk or copper. */
 export interface SilkBlock {
   idx: number;
-  layer: "top_silk" | "bottom_silk";
+  layer: TextLayerKind;
   x: number;
   y: number;
   w: number;
@@ -15,6 +18,11 @@ export interface SilkBlock {
   vertical: boolean;
   chars: number;
   segs: number;
+  /** Local vector pre-OCR result (no AI): decoded text, mean glyph confidence and mirror verdict. */
+  decoded?: string;
+  decodeConfidence?: number;
+  /** true = text written mirrored; false = definitely not mirrored; null = cannot decide. */
+  mirrored?: boolean | null;
 }
 
 type Seg = { x1: number; y1: number; x2: number; y2: number; w: number };
