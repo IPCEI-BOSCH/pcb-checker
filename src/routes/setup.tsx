@@ -34,6 +34,7 @@ function SetupWizard() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [setupToken, setSetupToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [seedResult, setSeedResult] = useState<string | null>(null);
@@ -155,6 +156,7 @@ function SetupWizard() {
                 <Input placeholder="Nume complet" value={fullName} onChange={(e) => setFullName(e.target.value)} />
                 <Input placeholder="email@upb.ro / @cetti.ro" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
                 <Input placeholder="Parolă (min. 8 caractere)" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Input placeholder="Cod de instalare (SETUP_TOKEN din .env pe server)" value={setupToken} onChange={(e) => setSetupToken(e.target.value)} />
                 <Button onClick={createAdmin} disabled={busy || fullName.length < 2 || !email.includes("@") || password.length < 8}>
                   {busy ? "Se creează…" : "Creează contul de administrator"}
                 </Button>
