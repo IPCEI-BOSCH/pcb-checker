@@ -39,9 +39,9 @@ function uf(n: number) {
 
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)]! : 0; };
 
-/** Groups silkscreen strokes into glyphs (connected strokes) and glyphs into words (aligned, similar height, small gap). */
+/** Groups strokes into glyphs (connected strokes) and glyphs into words (aligned, similar height, small gap). Works on silk and copper layers. */
 export function extractTextBlocks(layer: Layer | undefined): SilkBlock[] {
-  if (!layer || (layer.kind !== "top_silk" && layer.kind !== "bottom_silk")) return [];
+  if (!layer || (layer.kind !== "top_silk" && layer.kind !== "bottom_silk" && layer.kind !== "top_copper" && layer.kind !== "bottom_copper")) return [];
   const segs: Seg[] = [];
   for (const p of layer.primitives) {
     if (p.clear || p.t !== "line") continue;
@@ -119,10 +119,13 @@ export function extractTextBlocks(layer: Layer | undefined): SilkBlock[] {
     const vertical = gs.length > 1 ? h > w : false;
     const textHeight = gs.length > 1 ? Math.min(w, h) : Math.max(w, h);
     const stroke = median(all.map((s) => s.w));
+    // Local vector pre-OCR: decode glyphs and vote the mirror verdict (asymmetric glyphs only).
+    const dec = gs.length <= 60 ? decodeBlock(gs.map((g) => g.segs)) : null;
     out.push({
-      idx: 0, layer: layer.kind, x: +((minX + maxX) / 2).toFixed(3), y: +((minY + maxY) / 2).toFixed(3),
+      idx: 0, layer: layer.kind as TextLayerKind, x: +((minX + maxX) / 2).toFixed(3), y: +((minY + maxY) / 2).toFixed(3),
       w: +w.toFixed(3), h: +h.toFixed(3), textHeight: +(textHeight + stroke).toFixed(3), stroke: +stroke.toFixed(3),
       vertical, chars: gs.length, segs: all.length,
+      ...(dec && dec.matched ? { decoded: dec.text, decodeConfidence: dec.confidence, mirrored: dec.mirrored } : {}),
     });
   }
   out.sort((a, b) => b.y - a.y || a.x - b.x);
