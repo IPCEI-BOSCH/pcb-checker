@@ -3,7 +3,23 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { googleFetch, aiConfig } from "./platform.server";
 
 
-type Ctx = { supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }> }; userId: string };
+type Ctx = { supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown }>; from: (t: string) => any }; userId: string };
+
+const TAB_RE = /^Setari[\w-]{0,40}$/;
+
+/** Binds the destination: admins any sheet; series managers only the sheet linked to a series they manage. */
+async function assertSheetAllowed(context: Ctx, spreadsheetId: string, tab: string) {
+  if (!/^[A-Za-z0-9_-]{10,120}$/.test(spreadsheetId)) throw new Error("ID foaie invalid");
+  if (!TAB_RE.test(tab)) throw new Error("Numele filei trebuie să înceapă cu „Setari”.");
+  const { data: isAdmin } = await context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" });
+  if (isAdmin) return;
+  const { data: links } = await context.supabase.from("sheet_links").select("series_id").eq("spreadsheet_id", spreadsheetId);
+  for (const l of (links ?? []) as { series_id: string }[]) {
+    const { data: ok } = await context.supabase.rpc("manages_series", { _uid: context.userId, _series: l.series_id });
+    if (ok) return;
+  }
+  throw new Error("Foaia nu este asociată unei serii pe care o gestionați.");
+}
 
 async function assertManager(context: Ctx) {
   const [a, m, c] = await Promise.all([
@@ -37,6 +53,7 @@ export const pushSettingsSheet = createServerFn({ method: "POST" })
   .inputValidator((i: { spreadsheetId: string; tab: string; rows: string[][] }) => i)
   .handler(async ({ data, context }) => {
     await assertManager(context as never);
+    await assertSheetAllowed(context as never, data.spreadsheetId, data.tab);
     await ensureTab(data.spreadsheetId, data.tab);
     const tab = `'${data.tab.replace(/'/g, "''")}'`;
     await sheets(`/spreadsheets/${data.spreadsheetId}/values/${tab}!A:C:clear`, { method: "POST", body: "{}" });
@@ -53,6 +70,7 @@ export const pullSettingsSheet = createServerFn({ method: "POST" })
   .inputValidator((i: { spreadsheetId: string; tab: string }) => i)
   .handler(async ({ data, context }) => {
     await assertManager(context as never);
+    await assertSheetAllowed(context as never, data.spreadsheetId, data.tab);
     const tab = `'${data.tab.replace(/'/g, "''")}'`;
     const res = await sheets(`/spreadsheets/${data.spreadsheetId}/values/${tab}!A1:C500`);
     const values = ((res.values ?? []) as string[][]).slice(1);

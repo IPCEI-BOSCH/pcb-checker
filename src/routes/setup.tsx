@@ -61,7 +61,7 @@ function SetupWizard() {
     setBusy(true);
     setMsg(null);
     try {
-      await createFirstAdmin({ data: { fullName, email, password } });
+      await createFirstAdmin({ data: { fullName, email, password, setupToken } });
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (error) throw new Error("Cont creat, dar autentificarea a eșuat: " + error.message);
       setStep(2);

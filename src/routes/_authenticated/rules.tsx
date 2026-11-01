@@ -93,6 +93,10 @@ function RulesPage() {
       const name = scope === "GLOBAL" ? "Global" : (() => { const x = structure.data?.series.find((x) => x.id === scope); return x ? seriesLabel(x, structure.data?.years) : "Serie"; })();
       const r = await createSheet({ data: { title: `PCB Checker — Setări ${name}`, tabs: [tab] } });
       rememberSheet(r.spreadsheetId);
+      if (seriesId && !link.data) {
+        await supabase.from("sheet_links").insert({ series_id: seriesId, spreadsheet_id: r.spreadsheetId, sheet_name: tab, updated_by: user.id });
+        await link.refetch();
+      }
       await push({ data: { spreadsheetId: r.spreadsheetId, tab, rows: flattenSettings(draft) } });
       toast.success("Foaia a fost creată și completată cu setările curente.");
       window.open(r.url, "_blank", "noreferrer");
