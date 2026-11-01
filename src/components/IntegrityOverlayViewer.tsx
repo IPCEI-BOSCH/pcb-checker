@@ -284,26 +284,75 @@ export function IntegrityOverlayViewer({ a, b, detail, adj, historyA, historyB }
     e.preventDefault();
   };
 
+  /** Renders one high-resolution capture offscreen (no UI state change): overlay, diff, or zoom on the suspect zone. */
+  const capture = (m: "overlay" | "diff", zone?: [number, number, number, number]): string | null => {
+    if (!da || !db) return null;
+    const W = 1400, H = 1000, dpr = 1;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const ctx = cv.getContext("2d")!;
+    ctx.fillStyle = "#05070a"; ctx.fillRect(0, 0, W, H);
+    let s = Math.min(W, H) / (2 * ext), ox = W / 2, oy = H / 2;
+    if (zone) {
+      const zx = (zone[0] + zone[2]) / 2, zy = (zone[1] + zone[3]) / 2;
+      s = Math.min(W / Math.max(1, zone[2] - zone[0]), H / Math.max(1, zone[3] - zone[1])) * 0.85;
+      ox = W / 2 - zx * s; oy = H / 2 + zy * s;
+    }
+    const view = { s, ox, oy };
+    if (m === "overlay") {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.drawImage(renderBoard(W, H, dpr, da, groups, COL_A, undefined, undefined, view, hidePours), 0, 0);
+      ctx.drawImage(renderBoard(W, H, dpr, db, groups, COL_B, detail.transform, manual, view, hidePours), 0, 0);
+      ctx.globalCompositeOperation = "source-over";
+    } else {
+      ctx.globalAlpha = 0.22;
+      ctx.drawImage(renderBoard(W, H, dpr, da, groups, COL_FADE, undefined, undefined, view, hidePours), 0, 0);
+      ctx.drawImage(renderBoard(W, H, dpr, db, groups, COL_FADE, detail.transform, manual, view, hidePours), 0, 0);
+      ctx.globalAlpha = 1;
+      const sh = sharedCopper(da.fp, db.fp, detail.transform, manual);
+      ctx.strokeStyle = COL_HIT; ctx.fillStyle = COL_HIT; ctx.lineCap = "round";
+      for (const g of sh.segs) {
+        const r = (g.a * Math.PI) / 180, hx = (Math.cos(r) * g.l) / 2, hy = (Math.sin(r) * g.l) / 2;
+        ctx.lineWidth = Math.max(1.5, g.w * s);
+        ctx.beginPath(); ctx.moveTo(ox + (g.x - hx) * s, oy - (g.y - hy) * s); ctx.lineTo(ox + (g.x + hx) * s, oy - (g.y + hy) * s); ctx.stroke();
+      }
+      for (const [x, y] of sh.vias) { ctx.beginPath(); ctx.arc(ox + x * s, oy - y * s, Math.max(2, 0.35 * s), 0, Math.PI * 2); ctx.fill(); }
+      const z = zone ?? detail.bestZoneRect;
+      if (z) { ctx.strokeStyle = COL_ZONE; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(ox + z[0] * s, oy - z[3] * s, (z[2] - z[0]) * s, (z[3] - z[1]) * s); ctx.setLineDash([]); }
+    }
+    return cv.toDataURL("image/png");
+  };
+
   const print = async () => {
-    const prev = mode;
-    if (printDiff !== (mode === "diff")) { setMode(printDiff ? "diff" : "overlay"); await new Promise((r) => setTimeout(r, 120)); }
-    const img = canvas.current?.toDataURL("image/png"); setMode(prev); if (!img) return;
-    const ff = detail.forensicFlags, fa = da?.fp.forensic, fb = db?.fp.forensic;
+    if (!da || !db) return;
+    const imgOverlay = capture("overlay");
+    const imgDiff = capture("diff");
+    const imgZone = detail.bestZoneRect ? capture("diff", detail.bestZoneRect) : null;
+    if (!imgOverlay) return;
+    const ff = detail.forensicFlags, fa = da.fp.forensic, fb = db.fp.forensic;
     const yn = (v?: boolean) => (v ? "DA" : "nu");
     const dt = (t?: number) => (t ? new Date(t).toLocaleString("ro-RO") : "—");
     const w = window.open("", "_blank"); if (!w) return;
     const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
     const row = (k: string, v: string | number | undefined) => `<tr><td>${esc(k)}</td><td><b>${esc(String(v ?? "—"))}</b></td></tr>`;
+    const tfDesc = `Rotire ${detail.transform.rot}°${detail.transform.mirror ? " + oglindire" : ""}${detail.layerSwapDetected ? " + inversare TOP↔BOTTOM" : ""}${detail.scaleCamouflage ? ` + scalare ×${detail.scaleFactor}` : ""}, Δ ${detail.transform.dx.toFixed(2)}/${detail.transform.dy.toFixed(2)} mm`;
+    const histTable = (label: string, h?: HistEntry[]) => h?.length
+      ? `<h3 style="font-size:13px;margin:12px 0 4px">Cronologie ${esc(label)}</h3><table><tr><th style="border:1px solid #ccc;padding:4px 6px;text-align:left">Data</th><th style="border:1px solid #ccc;padding:4px 6px;text-align:left">Tip</th><th style="border:1px solid #ccc;padding:4px 6px;text-align:left">Scor DRC</th></tr>${h.map((e) => `<tr><td>${esc(new Date(e.at).toLocaleString("ro-RO"))}</td><td>${esc(e.kind === "OFFICIAL" ? "Predare oficială" : "Self-check")}</td><td>${e.score ?? "—"}</td></tr>`).join("")}</table>`
+      : "";
     w.document.write(`<!doctype html><html><head><title>Fișă integritate PCB</title><style>body{font-family:system-ui,sans-serif;margin:16mm;color:#111}h1{font-size:17px;margin:0}h2{font-size:12px;font-weight:normal;margin:2px 0 10px}table{border-collapse:collapse;width:100%;font-size:12px}td{border:1px solid #ccc;padding:4px 6px}img{width:100%;border:1px solid #999;margin:10px 0;background:#05070a}.sig{margin-top:30px;display:flex;justify-content:space-between;font-size:12px}@page{size:A4}</style></head><body>
 <h1>Universitatea Națională de Știință și Tehnologie POLITEHNICA București</h1>
-<h2>Facultatea de Electronică, Telecomunicații și Tehnologia Informației — Fișă de verificare a integrității layout-ului PCB</h2>
+<h2>Facultatea de Electronică, Telecomunicații și Tehnologia Informației — Fișă probatorie de integritate a layout-ului PCB (Comisia de Etică)</h2>
 <p style="font-size:12px">Generată: ${new Date().toLocaleString("ro-RO")}. Scorul este un indiciu pentru verificare umană, nu o probă automată.</p>
 <table>${row("Proiect A (cyan)", a.name + (a.meta ? " · " + a.meta : ""))}${row("Proiect B (magenta)", b.name + (b.meta ? " · " + b.meta : ""))}
-${row("Clasificare automată", CLASS_LABEL[classOf(detail)])}${row("Rutare trasee % (fără grosime)", detail.routing ?? detail.traces)}${row("Rutare exactă % (cu grosime)", detail.routingExact)}${row("Schemă / piese %", detail.schema)}${row("Cea mai copiată zonă de trasee %", detail.routeZoneMax)}
-${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${row("Componente %", detail.comps)}${row("Găuri % (fără găuri de prindere)", detail.holes)}${row("Serigrafie %", detail.silk)}${row("Transformare B", `${detail.transform.rot}°${detail.transform.mirror ? ", oglindit" : ""}, Δ ${detail.transform.dx.toFixed(2)}/${detail.transform.dy.toFixed(2)} mm`)}${row("Via-uri suprapuse %", detail.viaMatch)}${row("Rutare cross-layer %", detail.routingCrossLayer)}${row("Inversare TOP↔BOTTOM detectată", yn(detail.layerSwapDetected))}${manual ? row("Ajustare manuală", `${extra.rot}°${extra.mirror ? ", oglindit" : ""}, Δ ${extra.dx}/${extra.dy} mm`) : ""}</table>
-<h3 style="font-size:13px;margin:12px 0 4px">Indicatori tehnici Gerber / ZIP (Forensics)</h3><table>${row("Ordine aperturi identică (≥90%)", `${yn(ff?.identicalApertureOrder)} (${ff?.apertureOrderPct ?? "—"}%)`)}${row("Același %TF.ProjectId", yn(ff?.sameProjectId))}${row("Timestamp intern ZIP apropiat (<5 min)", yn(ff?.closeZipTimestamps))}${row("Header CAD A", (fa?.cadHeader ?? []).slice(0, 3).join(" | "))}${row("Header CAD B", (fb?.cadHeader ?? []).slice(0, 3).join(" | "))}${row("Arhivă A (min–max)", `${dt(fa?.zipMin)} – ${dt(fa?.zipMax)}`)}${row("Arhivă B (min–max)", `${dt(fb?.zipMin)} – ${dt(fb?.zipMax)}`)}</table>
-<p style="font-size:11px">Imagine: ${printDiff ? "Diff — cupru comun evidențiat cu roșu, chenar galben = zona cu similitudine maximă" : "Suprapunere cyan/magenta"}.</p>
-<img src="${img}" alt="Comparație"/>
+${row("Amprentă predare A (hash)", fpHash(da.fp))}${row("Amprentă predare B (hash)", fpHash(db.fp))}${row("Arhivă A (min–max)", `${dt(fa?.zipMin)} – ${dt(fa?.zipMax)}`)}${row("Arhivă B (min–max)", `${dt(fb?.zipMin)} – ${dt(fb?.zipMax)}`)}</table>
+<h3 style="font-size:13px;margin:12px 0 4px">Metrici de similitudine</h3>
+<table>${row("Clasificare automată", CLASS_LABEL[classOf(detail)] + (detail.obfuscationSubtype ? ` (${detail.obfuscationSubtype === "layer_swap" ? "inversare straturi" : "scalare artificială"})` : ""))}${row("Scor Schemă (%)", detail.schema)}${row("Scor Rutare Geometric (%)", detail.routingGeo ?? detail.routing ?? detail.traces)}${row("Scor Rutare combinat (%)", detail.routing ?? detail.traces)}${row("Scor Topologic (%)", detail.topological)}${row("Corelație Ordine Internă Fișier CAD (%)", detail.cadSequence)}${row("Rutare exactă % (cu grosime)", detail.routingExact)}${row("Cea mai copiată zonă de trasee %", detail.routeZoneMax)}
+${row("Similaritate totală %", detail.total)}${adj ? row("Scor statistic pe serie", `Z robust ${adj.z} · peste medie ${adj.adjusted}% · baseline serie ${adj.baseline}%`) : ""}${row("Transformare D₄ detectată (B)", tfDesc)}${row("Via-uri suprapuse %", detail.viaMatch)}${row("Rutare cross-layer %", detail.routingCrossLayer)}${manual ? row("Ajustare manuală", `${extra.rot}°${extra.mirror ? ", oglindit" : ""}, Δ ${extra.dx}/${extra.dy} mm`) : ""}</table>
+<h3 style="font-size:13px;margin:12px 0 4px">Indicatori tehnici Gerber / ZIP (Forensics)</h3><table>${row("Ordine aperturi identică (≥90%)", `${yn(ff?.identicalApertureOrder)} (${ff?.apertureOrderPct ?? "—"}%)`)}${row("Ordine internă de export CAD identică (≥85%)", yn(ff?.identicalCadSequence))}${row("Același %TF.ProjectId", yn(ff?.sameProjectId))}${row("Timestamp intern ZIP apropiat (<5 min)", yn(ff?.closeZipTimestamps))}${row("Header CAD A", (fa?.cadHeader ?? []).slice(0, 3).join(" | "))}${row("Header CAD B", (fb?.cadHeader ?? []).slice(0, 3).join(" | "))}</table>
+${histTable(`încercări ${a.name}`, historyA)}${histTable(`încercări ${b.name}`, historyB)}
+<p style="font-size:11px">Captura 1: suprapunere completă cyan/magenta (alb = identic).</p>
+<img src="${imgOverlay}" alt="Suprapunere"/>
+${imgDiff ? `<p style="font-size:11px">Captura 2: modul Diff — cuprul comun evidențiat cu roșu, chenar galben = zona cu similitudine maximă.</p><img src="${imgDiff}" alt="Diff"/>` : ""}
+${imgZone ? `<p style="font-size:11px">Captura 3: zoom pe fereastra critică (zona 5×5 cu cea mai mare similitudine).</p><img src="${imgZone}" alt="Zoom zonă critică"/>` : ""}
 <div class="sig"><span>Cadru didactic: ____________________</span><span>Semnătură: ____________</span></div>
 <script>onload=()=>print()</script></body></html>`);
     w.document.close();
