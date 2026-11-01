@@ -130,6 +130,14 @@ function Gradebook() {
       return count ?? 0;
     },
   });
+  const openRequests = useQuery({
+    queryKey: ["gb-review-requests"],
+    enabled: canEdit,
+    queryFn: async () => {
+      const { count } = await supabase.from("review_requests").select("id", { count: "exact", head: true }).eq("status", "open");
+      return count ?? 0;
+    },
+  });
 
   const saveLink = async () => {
     if (!seriesId) return void toast.error("Alege mai întâi seria.");
@@ -349,6 +357,15 @@ function Gradebook() {
 
       <GradebookKpis k={kpis} alerts={alerts.data ?? null} />
 
+      <GradebookStats rows={filtered} />
+
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setAuditOpen(true)}><History className="mr-1 h-4 w-4" /> Istoric Modificări (Audit Log)</Button>
+          {!!openRequests.data && <Badge variant="outline" className="border-warning text-warning">{openRequests.data} {openRequests.data === 1 ? "cerere" : "cereri"} de reevaluare deschise — vezi Evaluare</Badge>}
+        </div>
+      )}
+
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-2 pb-3">
           <CardTitle className="text-base">Situație ({data.length} studenți)</CardTitle>
@@ -374,6 +391,7 @@ function Gradebook() {
         onPrint={() => print(selectedRows)}
       />
       <StudentInspectionDrawer row={inspect} onClose={() => setInspect(null)} />
+      <GradebookAuditDrawer rows={data} open={auditOpen} onClose={() => setAuditOpen(false)} />
 
       <Dialog open={weightsOpen} onOpenChange={setWeightsOpen}>
         <DialogContent className="max-w-md">
