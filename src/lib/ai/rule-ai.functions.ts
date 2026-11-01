@@ -4,8 +4,8 @@ import { aiConfig } from "../platform.server";
 
 const MODEL = "openai/gpt-6-astra";
 
-const CHECKS = ["min_hole", "max_hole", "min_line_width", "max_line_width", "min_pad", "max_pad", "layer_required", "max_holes", "min_holes", "hole_to_edge", "copper_to_edge", "max_primitives"];
-const LAYERS = ["top_copper", "bottom_copper", "top_mask", "top_silk", "top_paste", "outline", "drill", "fabrication"];
+const CHECKS = ["min_hole", "max_hole", "min_line_width", "max_line_width", "min_pad", "max_pad", "layer_required", "max_holes", "min_holes", "hole_to_edge", "copper_to_edge", "max_primitives", "layer_primitive_count", "feature_dimension_range", "cross_layer_clearance", "copper_coverage_ratio", "required_silk_aspect"];
+const LAYERS = ["top_copper", "bottom_copper", "top_mask", "top_silk", "bottom_silk", "top_paste", "outline", "drill", "fabrication"];
 const CATS = ["STRUCT", "MECH", "DRILL", "COPPER", "SOLDERMASK", "STENCIL", "SILKSCREEN"];
 
 export interface AiRuleDraft {
@@ -15,6 +15,9 @@ export interface AiRuleDraft {
   checkType: string;
   layer: string;
   value: number;
+  value2: number | null;
+  layer2: string | null;
+  region: { x: number; y: number; w: number; h: number } | null;
   points: number;
   perIssue: number;
   cap: number;
@@ -67,7 +70,7 @@ export const aiCreateRule = createServerFn({ method: "POST" })
     const schema = jsonSchema<AiRuleDraft>({
       type: "object",
       additionalProperties: false,
-      required: ["code", "title", "category", "checkType", "layer", "value", "points", "perIssue", "cap", "severity", "critical", "smtOnly", "appliesTo", "tolerance", "minOccurrences", "ignoreHoled", "reference", "example", "what", "why", "fix", "explanation"],
+      required: ["code", "title", "category", "checkType", "layer", "value", "value2", "layer2", "region", "points", "perIssue", "cap", "severity", "critical", "smtOnly", "appliesTo", "tolerance", "minOccurrences", "ignoreHoled", "reference", "example", "what", "why", "fix", "explanation"],
       properties: {
         code: str,
         title: str,
@@ -75,6 +78,14 @@ export const aiCreateRule = createServerFn({ method: "POST" })
         checkType: { type: "string", enum: CHECKS },
         layer: { type: "string", enum: LAYERS },
         value: num,
+        value2: { type: ["number", "null"] },
+        layer2: { type: ["string", "null"], enum: [...LAYERS, null] },
+        region: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          required: ["x", "y", "w", "h"],
+          properties: { x: num, y: num, w: num, h: num },
+        },
         points: num,
         perIssue: num,
         cap: num,
@@ -103,7 +114,13 @@ Tipuri de verificare disponibile (checkType) și straturi permise:
 - layer_required: orice strat
 - copper_to_edge: top_copper, bottom_copper, top_silk, top_paste
 - max_primitives: top_copper, bottom_copper, top_silk, top_mask, top_paste, fabrication
-value: pragul în mm (sau bucăți pentru numărători). 1 mil = 0.0254 mm.
+- layer_primitive_count: număr de elemente pe strat între value (minim) și value2 (maxim, opțional). Ex.: „minim 4 via-uri de masă” → layer=drill, value=4, value2=null
+- feature_dimension_range: lățimea liniilor / latura pad-urilor / diametrul găurilor în intervalul [value, value2] mm
+- cross_layer_clearance: distanță minimă value (mm) între elementele de pe layer și cele de pe layer2
+- copper_coverage_ratio: procentul minim din aria plăcii acoperit de cupru pe layer (top_copper/bottom_copper). Ex.: „plan de masă pe BOTTOM minim 40%” → layer=bottom_copper, value=40
+- required_silk_aspect: obligă existența unui bloc de text pe layer (top_silk/bottom_silk), opțional într-o zonă region {x,y,w,h} în mm (coordonate absolute pe placă); region=null = toată placa
+value: pragul în mm (sau bucăți pentru numărători, sau % pentru copper_coverage_ratio). 1 mil = 0.0254 mm.
+value2/layer2/region: null când tipul de verificare nu le folosește.
 code: identificator unic MAJUSCULE cu prefix CUSTOM_ (ex. CUSTOM_HOLE_EDGE), diferit de: ${data.existingCodes.join(", ") || "(niciunul)"}.
 points = penalizare de bază ca număr POZITIV (0–100), perIssue = puncte per apariție suplimentară, cap = plafon total (≥ points).
 appliesTo: ALL implicit, SMT/THT dacă profesorul precizează varianta (smtOnly = appliesTo==="SMT").
@@ -144,6 +161,11 @@ explanation: o frază pentru profesor despre cum ai interpretat cererea. Dacă c
         minOccurrences: Math.max(1, Math.round(Number(out.minOccurrences) || 1)),
         smtOnly: out.appliesTo === "SMT",
         cap: Math.max(Math.abs(Number(out.points) || 0), Math.abs(Number(out.cap) || 0)),
+        value2: out.value2 != null && Number.isFinite(Number(out.value2)) ? Math.abs(Number(out.value2)) : null,
+        layer2: out.layer2 && LAYERS.includes(out.layer2) ? out.layer2 : null,
+        region: out.region && [out.region.x, out.region.y, out.region.w, out.region.h].every((n) => Number.isFinite(Number(n)))
+          ? { x: Number(out.region.x), y: Number(out.region.y), w: Math.abs(Number(out.region.w)), h: Math.abs(Number(out.region.h)) }
+          : null,
       };
     } catch (e) {
       if (NoObjectGeneratedError.isInstance(e)) throw new Error("AI nu a returnat o regulă validă. Reformulați cererea mai concret.");
