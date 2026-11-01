@@ -10,3 +10,9 @@
 - Score separates `schema` (parts/holes, normal for same theme) from `routing` (width-independent trace centre lines); `cls` pre-classifies every pair and server alerts fire only on routing evidence.
 - Mounting holes (≥2.8 mm) are excluded as boilerplate.
 - Overlay renders each board offscreen per layer group with clear polarity as destination-out and even-odd regions, so copper pours show their cut-outs.
+
+## v6 (FP 5 / PAIR 6)
+- Vias (≤0.65 mm holes with copper on both layers) are a separate `vias` set feeding routing (15%), not schema.
+- Fingerprints carry staff-only `forensic` metadata (aperture order, CAD header, ZIP mtimes) collected by `loadGerberZip` into `layer.meta`; pairs get `forensicFlags` — indicators only, never alert triggers.
+- Layer-swap camouflage = cross-layer routing ≥70% and ≥20 pts above same-layer routing → class `obfuscare`.
+- Partial copy uses 5x5 half-overlapping windows; `bestZoneRect` (A's centred frame) drives the viewer's Diff mode zone and zoom.
