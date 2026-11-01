@@ -96,7 +96,7 @@ export const exportSemesterBundle = createServerFn({ method: "POST" })
     const { data: groups } = await ctx.supabase.from("groups").select("id, name").eq("series_id", data.seriesId);
     const groupIds = (groups ?? []).map((g: { id: string }) => g.id);
     if (!groupIds.length) throw new Error("Seria nu are grupe.");
-    const groupName = new Map((groups ?? []).map((g: { id: string; name: string }) => [g.id, g.name]));
+    const groupName = new Map<string, string>((groups ?? []).map((g: { id: string; name: string }) => [g.id, g.name]));
 
     const { data: studentsRaw } = await ctx.supabase.from("students").select("*").in("group_id", groupIds);
     const students: any[] = studentsRaw ?? [];
@@ -160,8 +160,8 @@ export const exportSemesterBundle = createServerFn({ method: "POST" })
     );
 
     for (const s of officials as any[]) {
-      const st = studentById.get(s.student_id);
-      const dir = `rapoarte_drc/${safe(groupName.get(st?.group_id) ?? "fara_grupa")}/${safe(st?.full_name ?? s.student_id)}`;
+      const st: any = studentById.get(s.student_id);
+      const dir = `rapoarte_drc/${safe(groupName.get(st?.group_id) ?? "fara_grupa")}/${safe(String(st?.full_name ?? s.student_id))}`;
       zip.file(`${dir}/raport_v${s.revision}.json`, JSON.stringify(s.report, null, 2));
     }
 
