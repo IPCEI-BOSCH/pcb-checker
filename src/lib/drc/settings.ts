@@ -47,6 +47,24 @@ export interface RuleValues {
   viaMaxDetect: number;
   /** Minimum drawn lines on FAB (drill chart, stack-up, notes). */
   fabMinLines: number;
+  /** Minimum solder-mask bridge (sliver) between two adjacent mask openings (mm). */
+  minMaskSliver: number;
+  /** Minimum interior angle between connected trace segments (degrees) — acid traps. */
+  minTraceAngleDeg: number;
+  /** Maximum trace width for which acute angles count as acid traps (mm). */
+  acidTrapMaxWidth: number;
+  /** Minimum area of a dead copper island to report (mm²). */
+  islandMinArea: number;
+  /** Minimum neck width of a copper pour (mm). */
+  pourNeckMin: number;
+  /** Tombstoning check: maximum SMD pad area considered (mm²), comparison radius (mm), max asymmetry ratio. */
+  tombstonePadArea: number;
+  tombstoneRadius: number;
+  tombstoneRatio: number;
+  /** Minimum clearance from a mounting (NPTH) hole edge to any copper (mm). */
+  npthCopperClearance: number;
+  /** Maximum gap between consecutive outline segment endpoints for a closed loop (mm). */
+  outlineGapTol: number;
 }
 
 export type AppliesTo = "ALL" | "SMT" | "THT";
@@ -106,6 +124,15 @@ export const RULE_LINKS: Record<string, (keyof RuleValues)[]> = {
   PASTE_MISSING_PAD: [],
   VIA_DIAMETER: ["viaDiameter", "viaTol", "viaMaxDetect"],
   FAB_CONTENT: ["fabMinLines"],
+  SOLDER_MASK_SLIVER: ["minMaskSliver"],
+  ACID_TRAPS: ["minTraceAngleDeg", "acidTrapMaxWidth"],
+  COPPER_ISLANDS: ["islandMinArea", "pourNeckMin"],
+  THERMAL_RELIEF_MISSING: [],
+  TOMBSTONING_ASYMMETRY: ["tombstonePadArea", "tombstoneRadius", "tombstoneRatio"],
+  NPTH_CLEARANCE: ["npthMinDiameter", "npthCopperClearance"],
+  OUTLINE_OPEN_OR_INVALID: ["outlineGapTol"],
+  DANGLING_TRACES: [],
+  DRILL_ON_TRACE_NO_PAD: ["npthMinDiameter"],
 };
 
 export const GENERAL_FIELDS: (keyof RuleValues)[] = ["passScore", "reserveScore", "criticalScoreCap"];
