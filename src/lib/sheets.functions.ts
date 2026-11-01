@@ -20,7 +20,7 @@ async function gateway(path: string, init: RequestInit) {
 /** Write only the platform-owned columns (A..L) plus the header row; manual columns stay untouched. */
 export const pushGradebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { spreadsheetId: string; sheetName: string; header: string[]; manualHeader: string[]; values: Cell[][]; linkHeader?: string[]; links?: Cell[][] }) => input)
+  .validator((input: { spreadsheetId: string; sheetName: string; header: string[]; manualHeader: string[]; values: Cell[][]; linkHeader?: string[]; links?: Cell[][] }) => input)
   .handler(async ({ data, context }) => {
     await assertStaff(context as never);
     const autoCols = data.header.length;
@@ -48,7 +48,7 @@ export const pushGradebook = createServerFn({ method: "POST" })
 /** Read the whole sheet back so manual columns can be merged into the platform. */
 export const pullGradebook = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { spreadsheetId: string; sheetName: string }) => input)
+  .validator((input: { spreadsheetId: string; sheetName: string }) => input)
   .handler(async ({ data, context }) => {
     await assertStaff(context as never);
     const sheet = `'${data.sheetName.replace(/'/g, "''")}'`;
@@ -63,7 +63,7 @@ export const checkSheetsConnection = createServerFn({ method: "GET" }).handler(a
 /** Creates a new spreadsheet in the connected Google account with the given tabs; returns its ID. */
 export const createSpreadsheet = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { title: string; tabs: string[] }) => {
+  .validator((input: { title: string; tabs: string[] }) => {
     const title = String(input.title ?? "").slice(0, 200).trim();
     const tabs = (Array.isArray(input.tabs) ? input.tabs : []).map((t) => String(t).slice(0, 90)).filter(Boolean).slice(0, 10);
     if (!title || !tabs.length) throw new Error("Titlu sau file lipsă.");
