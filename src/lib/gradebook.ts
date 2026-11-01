@@ -1,3 +1,4 @@
+import { safeCell } from "./csvSafe";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -169,7 +170,7 @@ export async function fetchGradeRows(seriesId: string | null): Promise<GradeRow[
 }
 
 export function buildSheetMatrix(rows: GradeRow[]): (string | number | null)[][] {
-  return [[...ALL_COLUMNS], ...rows.map(rowToArray)];
+  return [[...ALL_COLUMNS], ...rows.map((r) => rowToArray(r).map(safeCell) as (string | number | null)[])];
 }
 
 export function exportWorkbook(rows: GradeRow[], fileName: string, format: "xlsx" | "csv") {
