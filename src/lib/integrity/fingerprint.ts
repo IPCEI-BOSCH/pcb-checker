@@ -303,6 +303,62 @@ export function forensicFlags(a?: Forensic, b?: Forensic): ForensicFlags {
 const cos = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * (b[i] ?? 0), 0);
 const ratio = (a: number, b: number) => (Math.max(a, b) ? Math.min(a, b) / Math.max(a, b) : 1);
 
+/** v7: topological routing signature similarity 0..1 (scale/rotation invariant). */
+function topoSim(a?: TopoSig, b?: TopoSig): number | undefined {
+  if (!a || !b) return undefined;
+  const inter = a.angH.reduce((s, v, i) => s + Math.min(v, b.angH[i] ?? 0), 0);
+  return Math.max(0, Math.min(1, 0.45 * cos(norm(a.lenQ), norm(b.lenQ)) + 0.35 * inter + 0.2 * ((ratio(a.junctions, b.junctions) + ratio(a.viaDensity, b.viaDensity)) / 2)));
+}
+
+/** Longest common subsequence length (exact match on quantized bins). */
+function lcs(a: number[], b: number[]): number {
+  if (!a.length || !b.length) return 0;
+  const dp = new Uint16Array(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = 0;
+    for (let j = 1; j <= b.length; j++) {
+      const t = dp[j]!;
+      dp[j] = a[i - 1] === b[j - 1] ? prev + 1 : Math.max(dp[j]!, dp[j - 1]!);
+      prev = t;
+    }
+  }
+  return dp[b.length]!;
+}
+
+/** v7: CAD export-order correlation 0..100 — identical internal object order means a copied .brd, not independent work. */
+export function cadSequenceScore(a?: Forensic, b?: Forensic): number | undefined {
+  const fa = a?.flashSeq ?? [], fb = b?.flashSeq ?? [];
+  if (fa.length < 8 || fb.length < 8) return undefined;
+  const flashSim = (2 * lcs(fa, fb)) / (fa.length + fb.length);
+  const da = a?.drillSeq ?? [], db2 = b?.drillSeq ?? [];
+  let drillSim = 0;
+  if (da.length >= 4 && db2.length >= 4) {
+    // Compare (diameter, count) pairs allowing ±1 bin on diameter.
+    let hit = 0;
+    const used = new Set<number>();
+    for (let i = 0; i < da.length; i += 2)
+      for (let j = 0; j < db2.length; j += 2)
+        if (!used.has(j) && Math.abs(da[i]! - db2[j]!) <= 1 && Math.abs(da[i + 1]! - db2[j + 1]!) <= Math.max(1, 0.15 * da[i + 1]!)) { hit++; used.add(j); break; }
+    drillSim = (2 * hit) / (da.length / 2 + db2.length / 2);
+  }
+  const ap = forensicFlags(a, b).apertureOrderPct ?? 0;
+  return Math.round((0.6 * flashSim + 0.25 * drillSim + 0.15 * (ap / 100)) * 1000) / 10;
+}
+
+/** v7: returns a copy of the fingerprint with all geometry scaled by λ (scale-camouflage test). */
+function scaleFp(f: Fingerprint, l: number): Fingerprint {
+  const p = (pts?: P2[]) => pts?.map(([x, y]) => [r2(x * l), r2(y * l)] as P2);
+  return {
+    ...f,
+    padPts: p(f.padPts),
+    copperPts: p(f.copperPts),
+    silkPts: p(f.silkPts),
+    vias: p(f.vias),
+    holePts: f.holePts?.map(([x, y, d]) => [r2(x * l), r2(y * l), r2(d * l)] as [number, number, number]),
+    segs: f.segs?.map(([x, y, a, w, len, ly]) => [r2(x * l), r2(y * l), a, r2(w * l), r2(len * l), ly] as Seg),
+  };
+}
+
 /** Histogram-only similarity 0..1 (v1 behaviour). */
 function globalSim(a: Fingerprint, b: Fingerprint) {
   return 0.45 * cos(a.dist, b.dist) + 0.2 * cos(a.drill, b.drill) + 0.2 * cos(a.radial, b.radial) + 0.15 * ((ratio(a.pads, b.pads) + ratio(a.holes, b.holes) + ratio(a.copperLen, b.copperLen)) / 3);
