@@ -1,0 +1,50 @@
+# PCB Checker & CAM — stack complet server local (HTTPS prin Nginx)
+# Stack-ul de date (PostgreSQL 16 + Auth + Storage) pornește separat din
+# selfhost/supabase (creat de install.sh). Acest fișier adaugă aplicația + Nginx.
+# AI local opțional: docker compose -f selfhost/docker-compose.yml --profile ai up -d
+services:
+  app:
+    build:
+      context: ..
+      args:
+        VITE_SUPABASE_URL: ${PUBLIC_API_URL}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+    restart: unless-stopped
+    env_file: ../.env.selfhost
+    environment:
+      SUPABASE_URL: http://host.docker.internal:8000
+      SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+    volumes:
+      - pcb_storage:/var/lib/pcb-checker/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - app
+
+  # Profil opțional: motor AI local (OCR serigrafie, reguli DRC) fără internet.
+  # Pornire: docker compose -f selfhost/docker-compose.yml --profile ai up -d
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  pcb_storage:
+  ollama_models:

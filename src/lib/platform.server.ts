@@ -128,6 +128,43 @@ export function aiConfig(lovableModel: string) {
 }
 
 /**
+ * Deployment mode: "cloud" (Lovable Cloud) vs "selfhost" (own server: Docker stack
+ * with Postgres + Auth + Storage + Nginx). Detected from VITE_DEPLOYMENT_MODE or
+ * VITE_SELF_HOSTED at build time, overridable with DEPLOYMENT_MODE at runtime.
+ */
+export function deploymentMode(): "cloud" | "selfhost" {
+  const v = (env("DEPLOYMENT_MODE") ?? env("VITE_DEPLOYMENT_MODE") ?? "").toLowerCase();
+  if (v === "selfhost" || v === "local") return "selfhost";
+  if ((env("VITE_SELF_HOSTED") ?? "").toLowerCase() === "true") return "selfhost";
+  return "cloud";
+}
+
+/**
+ * Local storage layout on a self-hosted server. In cloud mode files live in Storage
+ * buckets; on the local server the same buckets are served by the self-hosted storage
+ * service, persisted on the Docker volume mounted at STORAGE_ROOT.
+ */
+export function storageLayout() {
+  return {
+    mode: deploymentMode(),
+    root: env("STORAGE_ROOT") ?? "/var/lib/pcb-checker/storage",
+    buckets: { projectFiles: "project_files", submissions: "submissions" },
+    sha256Verified: true,
+  };
+}
+
+/** Email domains accepted for local sign-up on a self-hosted server. */
+export function allowedEmailDomains(): string[] {
+  const raw = env("ALLOWED_EMAIL_DOMAINS") ?? "@student.upb.ro,@upb.ro,@cetti.ro";
+  return raw.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+}
+
+/** Lab invite code (optional): when set, local sign-up must present it. */
+export function labInviteCode(): string | null {
+  return env("LAB_INVITE_CODE") || null;
+}
+
+/**
  * Air-Gapped Exam Mode (self-hosted, EXAM_MODE=1): the server runs in an isolated lab
  * network; external services (Google, cloud AI) are expected to be unreachable and the
  * app degrades gracefully — sync queues for reconnect, AI falls back to a local
@@ -146,6 +183,10 @@ export function aiConfigured() {
 export function platformServices() {
   const ai = aiConfigured();
   return {
+    deployment: deploymentMode(),
+    storage: storageLayout(),
+    allowedEmailDomains: allowedEmailDomains(),
+    labInviteRequired: !!labInviteCode(),
     examMode: examMode(),
     google: { drive: googleConfigured("drive"), sheets: googleConfigured("sheets") },
     ai: {

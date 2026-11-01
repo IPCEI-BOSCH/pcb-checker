@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as SelfhostRouteImport } from './routes/selfhost'
+import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedCamRouteImport } from './routes/_authenticated/cam'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -37,6 +39,16 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SelfhostRoute = SelfhostRouteImport.update({
+  id: '/selfhost',
+  path: '/selfhost',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
@@ -104,6 +116,8 @@ const AuthenticatedSelfCheckRoute = AuthenticatedSelfCheckRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/selfhost': typeof SelfhostRoute
+  '/setup': typeof SetupRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/cam': typeof AuthenticatedCamRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -120,6 +134,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/selfhost': typeof SelfhostRoute
+  '/setup': typeof SetupRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/cam': typeof AuthenticatedCamRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -138,6 +154,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/selfhost': typeof SelfhostRoute
+  '/setup': typeof SetupRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/cam': typeof AuthenticatedCamRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -156,6 +174,8 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/selfhost'
+    | '/setup'
     | '/admin'
     | '/cam'
     | '/dashboard'
@@ -172,6 +192,8 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/selfhost'
+    | '/setup'
     | '/admin'
     | '/cam'
     | '/dashboard'
@@ -189,6 +211,8 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/selfhost'
+    | '/setup'
     | '/_authenticated/admin'
     | '/_authenticated/cam'
     | '/_authenticated/dashboard'
@@ -207,6 +231,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  SelfhostRoute: typeof SelfhostRoute
+  SetupRoute: typeof SetupRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -230,6 +256,20 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/selfhost': {
+      id: '/selfhost'
+      path: '/selfhost'
+      fullPath: '/selfhost'
+      preLoaderRoute: typeof SelfhostRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/admin': {
@@ -356,6 +396,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  SelfhostRoute: SelfhostRoute,
+  SetupRoute: SetupRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

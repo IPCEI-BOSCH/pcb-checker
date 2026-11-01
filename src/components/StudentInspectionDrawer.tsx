@@ -1,12 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ExternalLink, FolderOpen } from "lucide-react";
+import { ExternalLink, FolderOpen, KeyRound } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { driveFolderUrl, type GradeRow } from "@/lib/gradebook";
+import { resetStudentPassword } from "@/lib/setup.functions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/GradebookTable";
+
+const SELF_HOST = import.meta.env["VITE_SELF_HOSTED"] === "true";
 
 type Issue = { code: string; title: string; severity: string; message: string };
 
@@ -78,10 +84,45 @@ export function StudentInspectionDrawer({ row, onClose }: { row: GradeRow | null
                 <Button asChild size="sm"><Link to="/review"><ExternalLink className="mr-1 h-4 w-4" /> Deschide la Evaluare</Link></Button>
                 {row.driveFolderId && <Button asChild size="sm" variant="outline"><a href={driveFolderUrl(row.driveFolderId)} target="_blank" rel="noreferrer"><FolderOpen className="mr-1 h-4 w-4" /> Folder Drive</a></Button>}
               </div>
+              {SELF_HOST && <PasswordReset studentId={row.studentId} />}
             </div>
           </>
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** Self-hosted labs run offline (no SMTP): staff reset a student's local password directly. Audited server-side. */
+function PasswordReset({ studentId }: { studentId: string }) {
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className="space-y-2 rounded-md border border-border p-3">
+      <h3 className="flex items-center gap-1 font-medium text-foreground"><KeyRound className="h-4 w-4" /> Resetare parolă (server local)</h3>
+      <div className="flex gap-2">
+        <Input type="text" placeholder="Parolă nouă (min. 8)" value={pw} onChange={(e) => setPw(e.target.value)} />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || pw.length < 8}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await resetStudentPassword({ data: { studentId, newPassword: pw } });
+              toast.success("Parola a fost resetată.");
+              setPw("");
+            } catch (e) {
+              toast.error((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Resetează
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Acțiunea este înregistrată în jurnalul de audit.</p>
+    </section>
   );
 }
