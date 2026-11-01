@@ -18,7 +18,7 @@ export const AUTO_COLUMNS = [
 ] as const;
 
 /** Columns owned by the teacher — never written by the platform. */
-export const MANUAL_COLUMNS = ["Nota schema", "Nota documentatie", "Nota finala", "Observatii"] as const;
+export const MANUAL_COLUMNS = ["Nota schema", "Nota documentatie", "Nota interviu", "Nota finala", "Observatii"] as const;
 
 /** Platform-owned link columns, placed after the manual block so existing sheets keep their column layout. */
 export const LINK_COLUMNS = ["Folder Google Drive", "Fisiere dosar proiect", "Puncte dosare (Proiect+Fabricatie)"] as const;
@@ -45,6 +45,7 @@ export interface GradeRow {
   submittedAt: string;
   gradeSchema: number | null;
   gradeDoc: number | null;
+  gradeInterview: number | null;
   gradeFinal: number | null;
   notes: string;
   driveFolderId: string | null;
@@ -75,6 +76,7 @@ export function rowToArray(r: GradeRow): (string | number | null)[] {
     r.submittedAt,
     r.gradeSchema,
     r.gradeDoc,
+    r.gradeInterview,
     r.gradeFinal,
     r.notes,
     driveFolderUrl(r.driveFolderId),
@@ -155,6 +157,7 @@ export async function fetchGradeRows(seriesId: string | null): Promise<GradeRow[
         submittedAt: sub ? new Date(sub.created_at).toLocaleString("ro-RO") : "",
         gradeSchema: st.grade_schema != null ? Number(st.grade_schema) : null,
         gradeDoc: st.grade_doc != null ? Number(st.grade_doc) : null,
+        gradeInterview: st.grade_interview != null ? Number(st.grade_interview) : null,
         gradeFinal: st.grade_final != null ? Number(st.grade_final) : null,
         notes: st.teacher_notes ?? "",
         driveFolderId: st.drive_folder_id ?? null,
