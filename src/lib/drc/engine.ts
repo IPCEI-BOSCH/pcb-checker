@@ -421,9 +421,10 @@ function buildNets(top: Layer | undefined, bottom: Layer | undefined, holes: Hol
       box.minX = Math.min(box.minX, c.b.minX); box.minY = Math.min(box.minY, c.b.minY);
       box.maxX = Math.max(box.maxX, c.b.maxX); box.maxY = Math.max(box.maxY, c.b.maxY);
     }
+    const rootGid = gfind(offset[members[0]!.s]! + members[0]!.i);
     const holeIds: number[] = [];
-    holes.forEach((h, hi) => {
-      if (holeGids[hi]!.some((g) => gfind(g) === gfind(offset[sides.findIndex((s) => s.caps.some((c) => c.i === members[0]!.i))]! + members[0]!.i))) holeIds.push(hi);
+    holes.forEach((_h, hi) => {
+      if (holeGids[hi]!.some((g) => gfind(g) === rootGid)) holeIds.push(hi);
     });
     nets.push({
       netId: n,
