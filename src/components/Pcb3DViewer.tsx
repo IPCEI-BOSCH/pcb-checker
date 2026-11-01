@@ -229,7 +229,7 @@ export function Pcb3DViewer({ layers, issues }: Props) {
           </mesh>
 
           {/* Pad-uri expuse prin mască (finisaj ENIG/HASL) */}
-          {(geo.mask?.primitives ?? []).filter((p) => p.t === "flash" && !p.clear).map((p, i) => {
+          {(geo.mask?.primitives ?? []).filter((p) => p.t === "flash" && !p.clear && fin(p.x, p.y, p.w, p.h) && p.w > 0 && p.h > 0).map((p, i) => {
             const f = p as Extract<Primitive, { t: "flash" }>;
             const [x, y] = P(f.x, f.y);
             return (
@@ -241,11 +241,12 @@ export function Pcb3DViewer({ layers, issues }: Props) {
           })}
 
           {/* Serigrafie TOP */}
-          {(geo.silk?.primitives ?? []).filter((p) => p.t === "line" && !p.clear).map((p, i) => {
+          {(geo.silk?.primitives ?? []).filter((p) => p.t === "line" && !p.clear && fin(p.x1, p.y1, p.x2, p.y2, p.w) && p.w > 0).map((p, i) => {
             const l = p as Extract<Primitive, { t: "line" }>;
             const [x1, y1] = P(l.x1, l.y1);
             const [x2, y2] = P(l.x2, l.y2);
             const len = Math.hypot(x2 - x1, y2 - y1);
+            if (len <= 0) return null;
             const ang = Math.atan2(y2 - y1, x2 - x1);
             return (
               <mesh key={`silk-${i}`} position={[(x1 + x2) / 2, (y1 + y2) / 2, FR4 / 2 + CU + MASK_T + 0.008 + ex * 1.6]} rotation={[0, 0, ang]}>
@@ -256,7 +257,7 @@ export function Pcb3DViewer({ layers, issues }: Props) {
           })}
 
           {/* Pasta de lipit (volum 0.127 mm) */}
-          {(geo.paste?.primitives ?? []).filter((p) => p.t === "flash" && !p.clear).map((p, i) => {
+          {(geo.paste?.primitives ?? []).filter((p) => p.t === "flash" && !p.clear && fin(p.x, p.y, p.w, p.h) && p.w > 0 && p.h > 0).map((p, i) => {
             const f = p as Extract<Primitive, { t: "flash" }>;
             const [x, y] = P(f.x, f.y);
             return (
