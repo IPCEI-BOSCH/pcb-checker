@@ -20,8 +20,9 @@ import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { IntegrityOverlayViewer } from "@/components/IntegrityOverlayViewer";
+import { IntegrityOverlayViewer, type HistEntry } from "@/components/IntegrityOverlayViewer";
 import { IntegrityClusters } from "@/components/IntegrityClusters";
+import { IntegrityNetwork } from "@/components/IntegrityNetwork";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const Route = createFileRoute("/_authenticated/insights")({
@@ -38,7 +39,7 @@ export const Route = createFileRoute("/_authenticated/insights")({
   component: Insights,
 });
 
-type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; zipPath: string | null; report: DrcReport | null; score: number | null; submittedAt?: string | null };
+type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; group?: string | undefined; zipPath: string | null; report: DrcReport | null; score: number | null; submittedAt?: string | null };
 type Review = { student_a: string; student_b: string; status: "false_positive" | "discuss" | "confirmed"; note: string | null };
 type Pair = { a: Row; b: Row; d: SimilarityDetail; adj?: Adjusted };
 type Alert = { id: string; student_id: string; other_student_id: string; similarity: number; adjusted: number; status: string; created_at: string; detail: SimilarityDetail };
@@ -47,8 +48,9 @@ const STATUS_LABEL: Record<Review["status"], string> = { false_positive: "Fals p
 
 async function fetchRows(seriesIds: string[]): Promise<Row[]> {
   if (!seriesIds.length) return [];
-  const g = await supabase.from("groups").select("id, series_id").in("series_id", seriesIds);
+  const g = await supabase.from("groups").select("id, series_id, name").in("series_id", seriesIds);
   const gmap = new Map((g.data ?? []).map((x) => [x.id, x.series_id]));
+  const gname = new Map((g.data ?? []).map((x) => [x.id, x.name]));
   if (!gmap.size) return [];
   const st = await supabase.from("students").select("id, full_name, theme_name, theme_number, group_id").in("group_id", [...gmap.keys()]);
   const ids = (st.data ?? []).map((s) => s.id);
@@ -58,7 +60,7 @@ async function fetchRows(seriesIds: string[]): Promise<Row[]> {
   return (st.data ?? []).map((s) => {
     const sub = latest.get(s.id);
     return {
-      studentId: s.id, submissionId: sub?.id ?? null, name: s.full_name, seriesId: gmap.get(s.group_id)!,
+      studentId: s.id, submissionId: sub?.id ?? null, name: s.full_name, seriesId: gmap.get(s.group_id)!, group: gname.get(s.group_id),
       theme: [s.theme_number, s.theme_name].filter(Boolean).join(" ") || "—",
       zipPath: sub?.zip_path ?? null, report: (sub?.report as DrcReport) ?? null, score: sub?.drc_score ?? null, submittedAt: sub?.created_at ?? null,
     };
@@ -359,7 +361,7 @@ function Insights() {
   };
 
   const [overlay, setOverlay] = useState<Pair | null>(null);
-  const [pairView, setPairView] = useState<"pairs" | "clusters">("pairs");
+  const [pairView, setPairView] = useState<"pairs" | "clusters" | "network">("pairs");
 
   return (
     <div className="space-y-4">
@@ -504,8 +506,9 @@ function Insights() {
               <div className="flex gap-2">
                 <Button size="sm" variant={pairView === "pairs" ? "default" : "outline"} onClick={() => setPairView("pairs")}>Perechi</Button>
                 <Button size="sm" variant={pairView === "clusters" ? "default" : "outline"} onClick={() => setPairView("clusters")}>Grupuri / Clustere</Button>
+                <Button size="sm" variant={pairView === "network" ? "default" : "outline"} onClick={() => setPairView("network")}>Harta Clusterelor</Button>
               </div>
-              {pairView === "clusters" ? <IntegrityClusters pairs={pairs} fps={fps} onOpen={(p) => setOverlay(p as Pair)} /> : <>
+              {pairView === "clusters" ? <IntegrityClusters pairs={pairs} fps={fps} onOpen={(p) => setOverlay(p as Pair)} /> : pairView === "network" ? <IntegrityNetwork pairs={pairs} onOpen={(p) => setOverlay(p as Pair)} /> : <>
               {belowOnly && <p className="text-sm text-muted-foreground">Nicio pereche nu depășește pragul. Mai jos sunt cele mai asemănătoare 15 perechi, doar ca reper.</p>}
               <Table>
                 <TableHeader><TableRow><TableHead>Proiect</TableHead><TableHead>Seamănă cu</TableHead><TableHead>Detaliu</TableHead><TableHead className="text-right">Similaritate</TableHead><TableHead>Decizie</TableHead><TableHead /></TableRow></TableHeader>
@@ -558,11 +561,25 @@ function Insights() {
 }
 
 function OverlayDialog({ pair, onClose, meta }: { pair: Pair | null; onClose: () => void; meta: (sid: string) => string }) {
+  // Chronology of both students' self-check/official runs — evidence for the A4 sheet.
+  const history = useQuery({
+    queryKey: ["pair_history", pair?.a.studentId, pair?.b.studentId],
+    enabled: !!pair,
+    queryFn: async () => {
+      const { data } = await supabase.from("submissions").select("student_id, created_at, drc_score, kind").in("student_id", [pair!.a.studentId, pair!.b.studentId]).order("created_at", { ascending: true });
+      const out = { a: [] as HistEntry[], b: [] as HistEntry[] };
+      for (const r of data ?? []) {
+        const e: HistEntry = { at: r.created_at, score: r.drc_score, kind: r.kind };
+        (r.student_id === pair!.a.studentId ? out.a : out.b).push(e);
+      }
+      return out;
+    },
+  });
   return (
     <Dialog open={!!pair} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-6xl">
         <DialogHeader><DialogTitle>Comparație Gerber {pair && `— ${pair.d.total.toFixed(1)}%`}</DialogTitle></DialogHeader>
-        {pair && <IntegrityOverlayViewer a={{ name: pair.a.name, zipPath: pair.a.zipPath, meta: `${pair.a.theme} · ${meta(pair.a.seriesId)}` }} b={{ name: pair.b.name, zipPath: pair.b.zipPath, meta: `${pair.b.theme} · ${meta(pair.b.seriesId)}` }} detail={pair.d} />}
+        {pair && <IntegrityOverlayViewer a={{ name: pair.a.name, zipPath: pair.a.zipPath, meta: `${pair.a.theme} · ${meta(pair.a.seriesId)}` }} b={{ name: pair.b.name, zipPath: pair.b.zipPath, meta: `${pair.b.theme} · ${meta(pair.b.seriesId)}` }} detail={pair.d} adj={pair.adj} historyA={history.data?.a} historyB={history.data?.b} />}
       </DialogContent>
     </Dialog>
   );

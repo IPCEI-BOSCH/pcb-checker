@@ -2,9 +2,9 @@ import type { Layer } from "@/lib/gerber/types";
 import { outlineBBox } from "@/lib/gerber/parser";
 import { extractTextBlocks } from "@/lib/silk/extract";
 
-export const FP_VERSION = 5;
+export const FP_VERSION = 6;
 /** Bump when similarityDetail changes so cached pair scores are recomputed. */
-export const PAIR_VERSION = 6;
+export const PAIR_VERSION = 7;
 
 type P2 = [number, number];
 /** [midX, midY, angle 0..180°, width, length, layer 0=top 1=bottom] */
@@ -35,6 +35,22 @@ export interface Fingerprint {
   vias?: P2[];
   /** v5: technical metadata (staff only). */
   forensic?: Forensic;
+  /** v7: RMS radius of the pad cloud around the centre — scale-camouflage detection. */
+  rms?: number;
+  /** v7: transform/scale-invariant topological routing signature (rubber-band invariance). */
+  topo?: TopoSig | undefined;
+}
+
+/** v7: topological routing descriptor — survives local "rubber-band" dragging of segments. */
+export interface TopoSig {
+  /** 10 quantiles of segment lengths, normalized by total length (scale invariant). */
+  lenQ: number[];
+  /** Length-weighted histogram of segment directions (12 bins over 0..180°). */
+  angH: number[];
+  /** Junction density: segment endpoints touching another segment / endpoint count. */
+  junctions: number;
+  /** Vias per segment (routing style). */
+  viaDensity: number;
 }
 
 export interface Forensic {
@@ -43,9 +59,13 @@ export interface Forensic {
   projectId?: string | undefined;
   zipMin?: number | undefined;
   zipMax?: number | undefined;
+  /** v7: quantized distances (0.2 mm bins) between consecutive D03 flashes, in file order — rotation/translation invariant CAD export sequence. */
+  flashSeq?: number[];
+  /** v7: drill diameters (0.05 mm bins) + hole counts per tool, in first-use order. */
+  drillSeq?: number[];
 }
 
-export interface ForensicFlags { identicalApertureOrder: boolean; sameProjectId: boolean; closeZipTimestamps: boolean; apertureOrderPct?: number }
+export interface ForensicFlags { identicalApertureOrder: boolean; sameProjectId: boolean; closeZipTimestamps: boolean; apertureOrderPct?: number; identicalCadSequence?: boolean }
 
 /** Automatic pre-classification — replaces the generic "undecided" state. */
 export type PairClass = "copiere_trasee" | "obfuscare" | "copie_partiala" | "inspectie" | "independent";
@@ -76,6 +96,18 @@ export interface SimilarityDetail {
   /** v6: best 5x5 overlapping window, in A's centred frame [x0,y0,x1,y1] mm. */
   bestZoneRect?: [number, number, number, number] | undefined;
   forensicFlags?: ForensicFlags;
+  /** v7: geometric routing match before topological blending. */
+  routingGeo?: number | undefined;
+  /** v7: topological routing signature match (rubber-band invariant) 0..100. */
+  topological?: number | undefined;
+  /** v7: CAD export-order correlation (LCS over flash/drill/aperture sequences) 0..100. */
+  cadSequence?: number | undefined;
+  /** v7: scale factor A/B tested for scale camouflage. */
+  scaleFactor?: number | undefined;
+  /** v7: routing match improved >18% after scale normalization. */
+  scaleCamouflage?: boolean | undefined;
+  /** v7: which camouflage was detected. */
+  obfuscationSubtype?: "layer_swap" | "scalare_artificiala" | undefined;
   zoneMax?: number;
   zones?: number;
   partial?: boolean;
@@ -117,11 +149,18 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   let copperLen = 0;
   const segs: [number, number, number][] = [];
   const segFull: [number, number, number, number, number, number][] = [];
+  // v7: consecutive-flash distance sequence in file order (CAD export-order forensic).
+  const flashSeq: number[] = [];
+  let lastFlash: P2 | null = null;
   for (const l of copper) {
     const ly = l.kind === "bottom_copper" ? 1 : 0;
     for (const p of l.primitives) {
       if (p.clear) continue;
-      if (p.t === "flash") pts.push([p.x, p.y]);
+      if (p.t === "flash") {
+        pts.push([p.x, p.y]);
+        if (lastFlash && flashSeq.length < 400) flashSeq.push(Math.round(Math.hypot(p.x - lastFlash[0], p.y - lastFlash[1]) / 0.2));
+        lastFlash = [p.x, p.y];
+      }
       else if (p.t === "line") {
         const len = Math.hypot(p.x2 - p.x1, p.y2 - p.y1);
         copperLen += len;
@@ -180,6 +219,8 @@ export function fingerprint(layers: Layer[]): Fingerprint {
   const okBox = ob && ob.maxX - ob.minX > 3 && ob.maxY - ob.minY > 3 && ob.maxX - ob.minX < 300;
   const ox = okBox ? (ob!.minX + ob!.maxX) / 2 : cx, oy = okBox ? (ob!.minY + ob!.maxY) / 2 : cy;
   const silk = [...extractTextBlocks(layers.find((l) => l.kind === "top_silk")), ...extractTextBlocks(layers.find((l) => l.kind === "bottom_silk"))];
+  const padPtsC = sub(pts, 400).map(([x, y]) => [r2(x - ox), r2(y - oy)] as P2);
+  const rms = Math.sqrt(padPtsC.reduce((a, p) => a + p[0] * p[0] + p[1] * p[1], 0) / (padPtsC.length || 1));
   return {
     v: FP_VERSION,
     pads: pts.length,
@@ -188,7 +229,7 @@ export function fingerprint(layers: Layer[]): Fingerprint {
     drill: norm(drill),
     radial: norm(radial),
     copperLen,
-    padPts: sub(pts, 400).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
+    padPts: padPtsC,
     holePts: sub(holes, 400).map((h) => [r2(h.x - ox), r2(h.y - oy), r2(h.d)]),
     copperPts: sub(segs, 600).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
     silkPts: silk.slice(0, 150).map((b) => [r2(b.x - ox), r2(b.y - oy)]),
@@ -196,18 +237,53 @@ export function fingerprint(layers: Layer[]): Fingerprint {
     centroid: [ox, oy],
     board: okBox ? [r2(ob!.maxX - ob!.minX), r2(ob!.maxY - ob!.minY)] : undefined,
     vias: sub(viaList, 300).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
-    forensic: forensicOf(layers),
+    forensic: forensicOf(layers, flashSeq),
+    rms: r2(rms),
+    topo: topoSig(segFull, viaList.length),
   };
 }
 
-function forensicOf(layers: Layer[]): Forensic {
+/** v7: scale/rotation-invariant topological signature of the routing (rubber-band invariance). */
+function topoSig(segs: [number, number, number, number, number, number][], vias: number): TopoSig | undefined {
+  if (segs.length < 5) return undefined;
+  const lens = segs.map((s) => s[4]).sort((x, y) => x - y);
+  const totL = lens.reduce((a, v) => a + v, 0) || 1;
+  const lenQ = Array.from({ length: 10 }, (_, i) => lens[Math.min(lens.length - 1, Math.floor(((i + 0.5) / 10) * lens.length))]! / totL);
+  const angH = new Array(12).fill(0);
+  for (const s of segs) angH[Math.min(11, Math.floor((s[2] / 180) * 12))] += s[4];
+  const angN = norm(angH);
+  // Junction density: segment endpoints within 0.3 mm of another segment's midpoint.
+  const idx = index(segs.map((s) => [s[0], s[1]] as P2), 0.3);
+  let junc = 0, ends = 0;
+  for (const s of segs) {
+    const r = (s[2] * Math.PI) / 180, hx = (Math.cos(r) * s[4]) / 2, hy = (Math.sin(r) * s[4]) / 2;
+    for (const [ex, ey] of [[s[0] - hx, s[1] - hy], [s[0] + hx, s[1] + hy]] as P2[]) {
+      ends++;
+      const cx = Math.floor(ex / 0.3), cy = Math.floor(ey / 0.3);
+      outer: for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++)
+        for (const q of idx.get(`${cx + i},${cy + j}`) ?? [])
+          if (Math.abs(q[0] - ex) <= 0.3 && Math.abs(q[1] - ey) <= 0.3 && (Math.abs(q[0] - s[0]) > 1e-6 || Math.abs(q[1] - s[1]) > 1e-6)) { junc++; break outer; }
+    }
+  }
+  return { lenQ, angH: angN, junctions: r2(junc / (ends || 1)), viaDensity: r2(vias / segs.length) };
+}
+
+function forensicOf(layers: Layer[], flashSeq: number[]): Forensic {
   const cu = ["top_copper", "bottom_copper"];
   const apertureSignature = layers.filter((l) => cu.includes(l.kind)).sort((a, b) => cu.indexOf(a.kind) - cu.indexOf(b.kind)).flatMap((l) => l.meta?.apertures ?? []).slice(0, 300);
   const src = layers.find((l) => l.kind === "top_copper") ?? layers.find((l) => l.meta?.header?.length);
   const cadHeader = src?.meta?.header ?? [];
   const pid = layers.flatMap((l) => l.meta?.header ?? []).find((h) => h.startsWith("%TF.ProjectId"));
   const times = layers.map((l) => l.meta?.mtime).filter((t): t is number => typeof t === "number" && t > 0);
-  return { apertureSignature, cadHeader, projectId: pid?.replace(/^%TF\.ProjectId,?/, "").replace(/\*%?$/, "") || undefined, zipMin: times.length ? Math.min(...times) : undefined, zipMax: times.length ? Math.max(...times) : undefined };
+  // v7: drill diameters + hole counts per tool, in first-use order (file order ≈ tool order).
+  const drillSeq: number[] = [];
+  const seen = new Map<number, number>();
+  for (const l of layers.filter((x) => x.kind === "drill")) for (const h of l.holes) {
+    const k = Math.round(h.d / 0.05);
+    if (!seen.has(k)) { seen.set(k, drillSeq.length / 2); drillSeq.push(k, 0); }
+    drillSeq[seen.get(k)! * 2 + 1] = Math.min(255, (drillSeq[seen.get(k)! * 2 + 1] ?? 0) + 1);
+  }
+  return { apertureSignature, cadHeader, projectId: pid?.replace(/^%TF\.ProjectId,?/, "").replace(/\*%?$/, "") || undefined, zipMin: times.length ? Math.min(...times) : undefined, zipMax: times.length ? Math.max(...times) : undefined, flashSeq, drillSeq: drillSeq.slice(0, 120) };
 }
 
 export function forensicFlags(a?: Forensic, b?: Forensic): ForensicFlags {
@@ -226,6 +302,61 @@ export function forensicFlags(a?: Forensic, b?: Forensic): ForensicFlags {
 
 const cos = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * (b[i] ?? 0), 0);
 const ratio = (a: number, b: number) => (Math.max(a, b) ? Math.min(a, b) / Math.max(a, b) : 1);
+
+/** v7: topological routing signature similarity 0..1 (scale/rotation invariant). */
+function topoSim(a?: TopoSig, b?: TopoSig): number | undefined {
+  if (!a || !b) return undefined;
+  const inter = a.angH.reduce((s, v, i) => s + Math.min(v, b.angH[i] ?? 0), 0);
+  return Math.max(0, Math.min(1, 0.45 * cos(norm(a.lenQ), norm(b.lenQ)) + 0.35 * inter + 0.2 * ((ratio(a.junctions, b.junctions) + ratio(a.viaDensity, b.viaDensity)) / 2)));
+}
+
+/** Longest common subsequence length (exact match on quantized bins). */
+function lcs(a: number[], b: number[]): number {
+  if (!a.length || !b.length) return 0;
+  const dp = new Uint16Array(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = 0;
+    for (let j = 1; j <= b.length; j++) {
+      const t = dp[j]!;
+      dp[j] = a[i - 1] === b[j - 1] ? prev + 1 : Math.max(dp[j]!, dp[j - 1]!);
+      prev = t;
+    }
+  }
+  return dp[b.length]!;
+}
+
+/** v7: CAD export-order correlation 0..100 — identical internal object order means a copied .brd, not independent work. */
+export function cadSequenceScore(a?: Forensic, b?: Forensic): number | undefined {
+  const fa = a?.flashSeq ?? [], fb = b?.flashSeq ?? [];
+  if (fa.length < 8 || fb.length < 8) return undefined;
+  const flashSim = (2 * lcs(fa, fb)) / (fa.length + fb.length);
+  const da = a?.drillSeq ?? [], db2 = b?.drillSeq ?? [];
+  let drillSim = 0;
+  if (da.length >= 4 && db2.length >= 4) {
+    // Compare (diameter, count) pairs allowing ±1 bin on diameter.
+    let hit = 0;
+    const used = new Set<number>();
+    for (let i = 0; i < da.length; i += 2)
+      for (let j = 0; j < db2.length; j += 2)
+        if (!used.has(j) && Math.abs(da[i]! - db2[j]!) <= 1 && Math.abs(da[i + 1]! - db2[j + 1]!) <= Math.max(1, 0.15 * da[i + 1]!)) { hit++; used.add(j); break; }
+    drillSim = (2 * hit) / (da.length / 2 + db2.length / 2);
+  }
+  const ap = forensicFlags(a, b).apertureOrderPct ?? 0;
+  return Math.round((0.6 * flashSim + 0.25 * drillSim + 0.15 * (ap / 100)) * 1000) / 10;
+}
+
+/** v7: returns a copy of the fingerprint with all geometry scaled by λ (scale-camouflage test). */
+function scaleFp(f: Fingerprint, l: number): Fingerprint {
+  const p = (pts: P2[]) => pts.map(([x, y]) => [r2(x * l), r2(y * l)] as P2);
+  const out: Fingerprint = { ...f };
+  if (f.padPts) out.padPts = p(f.padPts);
+  if (f.copperPts) out.copperPts = p(f.copperPts);
+  if (f.silkPts) out.silkPts = p(f.silkPts);
+  if (f.vias) out.vias = p(f.vias);
+  if (f.holePts) out.holePts = f.holePts.map(([x, y, d]) => [r2(x * l), r2(y * l), r2(d * l)] as [number, number, number]);
+  if (f.segs) out.segs = f.segs.map(([x, y, a, w, len, ly]) => [r2(x * l), r2(y * l), a, r2(w * l), r2(len * l), ly] as Seg);
+  return out;
+}
 
 /** Histogram-only similarity 0..1 (v1 behaviour). */
 function globalSim(a: Fingerprint, b: Fingerprint) {
@@ -419,25 +550,50 @@ export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDeta
   const viaMatch = hasVias ? matchFrac(index(va, 0.25), va.length, vb, 0.25) : 0;
   const ff = forensicFlags(a.forensic, b.forensic);
   const schema = 0.4 * comps + 0.35 * al.score + 0.25 * holes;
-  const routing = hasVias ? 0.85 * tm.loose + 0.15 * viaMatch : tm.loose;
+  let routing = hasVias ? 0.85 * tm.loose + 0.15 * viaMatch : tm.loose;
   const layerSwapDetected = cross - tm.loose >= 0.2 && cross >= 0.7;
+  // v7: scale camouflage — same layout exported at a slightly different scale.
+  let scaleFactor: number | undefined, scaleCamouflage = false;
+  let tmUse = tm, alUse = al;
+  const rmsA = a.rms ?? 0, rmsB = b.rms ?? 0;
+  if (rmsA > 1 && rmsB > 1 && routing < 0.9) {
+    const lam = rmsA / rmsB;
+    if (lam >= 0.85 && lam <= 1.15 && Math.abs(lam - 1) > 0.015) {
+      const bs = scaleFp(b, lam);
+      const alS = align(a.padPts!, bs.padPts!, segMid(a.segs), segMid(bs.segs));
+      const tmS = hasSegs ? traceMatch(a.segs!, bs.segs!, alS.t, alS.dx, alS.dy) : tm;
+      const routingS = hasVias ? 0.85 * tmS.loose + 0.15 * viaMatch : tmS.loose;
+      if (routingS > routing * 1.18 + 0.02) {
+        scaleCamouflage = true; scaleFactor = Math.round(lam * 1000) / 1000;
+        tmUse = tmS; alUse = alS; routing = routingS;
+      }
+    }
+  }
+  // v7: topological routing score (rubber-band invariance) blended with the geometric Chamfer score.
+  const topo = topoSim(a.topo, b.topo);
+  const routingC = topo != null && topo >= 0.6 ? Math.max(routing, 0.5 * routing + 0.5 * topo) : routing;
+  const cadSeq = cadSequenceScore(a.forensic, b.forensic);
+  if (cadSeq != null && cadSeq >= 85) ff.identicalCadSequence = true;
   // Routing dominates: same schematic alone (same theme) must not look like a copy.
   const s = hasSilk
-    ? 0.45 * routing + 0.15 * tm.exact + 0.2 * schema + 0.1 * silk + 0.1 * global
-    : 0.5 * routing + 0.15 * tm.exact + 0.25 * schema + 0.1 * global;
+    ? 0.45 * routingC + 0.15 * tmUse.exact + 0.2 * schema + 0.1 * silk + 0.1 * global
+    : 0.5 * routingC + 0.15 * tmUse.exact + 0.25 * schema + 0.1 * global;
   const total = Math.round(Math.max(0, Math.min(1, s)) * 1000) / 10;
   const pct = (v: number) => Math.round(v * 1000) / 10;
-  const partial = routing < 0.75 && tm.zones >= 1 && tm.zoneMax >= 0.9 && (zm.max >= 0.85 || !hasSegs);
-  const cls: PairClass = layerSwapDetected ? "obfuscare" : routing >= 0.75
+  const partial = routingC < 0.75 && tmUse.zones >= 1 && tmUse.zoneMax >= 0.9 && (zm.max >= 0.85 || !hasSegs);
+  const cls: PairClass = layerSwapDetected || scaleCamouflage ? "obfuscare" : routingC >= 0.75
     ? (hasSilk && silk < 0.2 ? "obfuscare" : "copiere_trasee")
     : partial ? "copie_partiala"
-    : routing >= 0.4 ? "inspectie" : "independent";
+    : routingC >= 0.4 ? "inspectie" : "independent";
   return {
-    total, pads: pct(al.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global),
-    comps: pct(comps), traces: pct(routing), schema: pct(schema), routing: pct(routing), routingExact: pct(tm.exact), routeZoneMax: pct(tm.zoneMax),
-    cls, zoneMax: pct(zm.max), zones: tm.zones, partial,
-    viaMatch: hasVias ? pct(viaMatch) : undefined, routingCrossLayer: pct(cross), layerSwapDetected, bestZoneRect: tm.rect, forensicFlags: ff,
-    transform: { rot: al.t.rot, mirror: al.t.mirror, dx: al.dx, dy: al.dy }, verdict: verdictOf(total),
+    total, pads: pct(alUse.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global),
+    comps: pct(comps), traces: pct(routingC), schema: pct(schema), routing: pct(routingC), routingExact: pct(tmUse.exact), routeZoneMax: pct(tmUse.zoneMax),
+    cls, zoneMax: pct(zm.max), zones: tmUse.zones, partial,
+    viaMatch: hasVias ? pct(viaMatch) : undefined, routingCrossLayer: pct(cross), layerSwapDetected, bestZoneRect: tmUse.rect, forensicFlags: ff,
+    routingGeo: pct(routing), topological: topo != null ? pct(topo) : undefined, cadSequence: cadSeq,
+    scaleFactor, scaleCamouflage: scaleCamouflage || undefined,
+    obfuscationSubtype: layerSwapDetected ? "layer_swap" : scaleCamouflage ? "scalare_artificiala" : undefined,
+    transform: { rot: alUse.t.rot, mirror: alUse.t.mirror, dx: alUse.dx, dy: alUse.dy }, verdict: verdictOf(total),
   };
 }
 
