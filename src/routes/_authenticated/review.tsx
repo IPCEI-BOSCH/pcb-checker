@@ -1,9 +1,9 @@
 import { fetchSettings } from "@/lib/drc/settings";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, GitCompareArrows, Play, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, GitCompareArrows, MessageSquareWarning, Play, Timer, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { VersionDiffDialog, type VersionEntry } from "@/components/VersionDiff";
 import { useAuth } from "@/lib/auth";
@@ -14,10 +14,15 @@ import { exportSituatie, fetchSituatieRows, runBatchDrc } from "@/lib/situatie";
 import type { Layer } from "@/lib/gerber/types";
 import { DrcReportView } from "@/components/DrcReportView";
 import { ZipImportDialog } from "@/components/ZipImportDialog";
+import { DeadlinesCard } from "@/components/DeadlinesCard";
+import { InterviewPanel } from "@/components/InterviewPanel";
+import { addAnnotation, deleteAnnotation, fetchAnnotations } from "@/lib/annotations";
+import { setExtension } from "@/lib/deadlines";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,7 +56,7 @@ function Review() {
   const [studentId, setStudentId] = useState<string>(ALL);
   const [variantFilter, setVariantFilter] = useState<"ALL" | "SMT" | "THT">("ALL");
   const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
-  const [view, setView] = useState<{ name: string; report: DrcReport; layers: Layer[] | null; meta?: import("@/lib/drc/evaluationSheet").EvaluationMeta } | null>(null);
+  const [view, setView] = useState<{ name: string; studentId: string; submissionId: string; report: DrcReport; layers: Layer[] | null; meta?: import("@/lib/drc/evaluationSheet").EvaluationMeta } | null>(null);
   const [diffFor, setDiffFor] = useState<{ name: string; versions: VersionEntry[] } | null>(null);
   const [reject, setReject] = useState<{ sub: Sub; name: string } | null>(null);
   const [reason, setReason] = useState("");
@@ -59,6 +64,11 @@ function Review() {
   const [showArchived, setShowArchived] = useState(false);
   const [delStudent, setDelStudent] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pinDraft, setPinDraft] = useState<{ x: number; y: number } | null>(null);
+  const [pinNote, setPinNote] = useState("");
+  const [pinFocus, setPinFocus] = useState<{ x: number; y: number } | null>(null);
+  const [extFor, setExtFor] = useState<{ id: string; name: string; current: string | null } | null>(null);
+  const [extValue, setExtValue] = useState("");
 
   const s = structure.data;
   const visibleGroups = useMemo(() => {
