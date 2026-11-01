@@ -1,3 +1,4 @@
+import { safeCell } from "@/lib/csvSafe";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState } from "react";
@@ -152,7 +153,7 @@ function History() {
 
   const exportCsv = () => {
     const head = ["Grupa", "Folder", "Student", "Tema", "N", "Varianta", "Scor DRC", "Erori blocante", "Intră în FAB?", "Nota schemă", "Nota doc", "Nota finală"];
-    const lines = (rows.data ?? []).map((r) => [groupName.get(r.group_id), r.file_prefix, r.full_name, r.theme_name, r.theme_number, r.variant, r.sub?.drc_score, r.sub?.blocking_count, r.sub?.review_status === "approved" ? "DA" : "NU", r.grade_schema, r.grade_doc, r.grade_final].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+    const lines = (rows.data ?? []).map((r) => [groupName.get(r.group_id), r.file_prefix, r.full_name, r.theme_name, r.theme_number, r.variant, r.sub?.drc_score, r.sub?.blocking_count, r.sub?.review_status === "approved" ? "DA" : "NU", r.grade_schema, r.grade_doc, r.grade_final].map((v) => `"${String(safeCell(v) ?? "").replace(/"/g, '""')}"`).join(","));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(["\ufeff" + [head.join(","), ...lines].join("\n")], { type: "text/csv" }));
     a.download = `Situatie_${years.find((y) => y.id === yearId)?.name}_${seriesId === ALL ? "toate" : seriesName.get(seriesId)}.csv`;

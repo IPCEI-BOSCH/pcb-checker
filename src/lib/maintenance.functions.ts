@@ -1,3 +1,4 @@
+import { safeCell } from "./csvSafe";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { googleConfigured, platformServices } from "./platform.server";
@@ -74,7 +75,7 @@ export const platformHealth = createServerFn({ method: "GET" })
   });
 
 const csv = (rows: (string | number | null | undefined)[][]) =>
-  rows.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  rows.map((r) => r.map((c) => `"${String(safeCell(c) ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
 
 /** One-click semester bundle: all official reports, gradebook, integrity matrix and audit for a series, as one ZIP. */
 export const exportSemesterBundle = createServerFn({ method: "POST" })

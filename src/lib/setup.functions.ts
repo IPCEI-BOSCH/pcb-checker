@@ -104,11 +104,16 @@ export const createFirstAdmin = createServerFn({ method: "POST" })
         fullName: z.string().min(2).max(120),
         email: z.string().email().max(200),
         password: z.string().min(8).max(200),
+        setupToken: z.string().max(256).optional().default(""),
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
     if (deploymentMode() !== "selfhost") throw new Error("Disponibil doar pe serverul local (self-host).");
+    const expectedToken = process.env.SETUP_TOKEN?.trim();
+    if (!expectedToken || data.setupToken.trim() !== expectedToken) {
+      throw new Error("Cod de instalare invalid. Folosește SETUP_TOKEN din fișierul .env al serverului.");
+    }
     const email = data.email.trim().toLowerCase();
     if (!STAFF_DOMAINS.some((d) => email.endsWith(d))) {
       throw new Error("Contul de administrator trebuie să fie pe domeniul @upb.ro sau @cetti.ro.");
@@ -186,8 +191,11 @@ export const resetStudentPassword = createServerFn({ method: "POST" })
       (["admin", "series_manager", "instructor"] as const).map((r) => ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: r })),
     );
     if (!roles.some((r) => r.data)) throw new Error("Forbidden");
-    const { data: student } = await ctx.supabase.from("students").select("user_id, full_name").eq("id", data.studentId).single();
-    if (!student?.user_id) throw new Error("Studentul nu are cont de autentificare asociat.");
+    const { data: student } = await ctx.supabase.from("students").select("user_id, full_name, group_id").eq("id", data.studentId).single();
+    if (!student) throw new Error("Forbidden");
+    const { data: canManage } = await ctx.supabase.rpc("can_manage_group", { _uid: ctx.userId, _group: student.group_id });
+    if (!canManage) throw new Error("Forbidden");
+    if (!student.user_id) throw new Error("Studentul nu are cont de autentificare asociat.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.auth.admin.updateUserById(student.user_id, { password: data.newPassword });
     if (error) throw new Error(error.message);

@@ -138,6 +138,13 @@ export const listDriveLayouts = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ groupIds: z.array(z.string().uuid()).max(200) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertCam(context as never);
+    const ctx = context as unknown as { supabase: { rpc: (f: string, a: Record<string, unknown>) => PromiseLike<{ data: unknown }> }; userId: string };
+    const allowed: string[] = [];
+    for (const g of data.groupIds) {
+      const { data: ok } = await ctx.supabase.rpc("can_view_group", { _uid: ctx.userId, _group: g });
+      if (ok) allowed.push(g);
+    }
+    data = { groupIds: allowed };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: students, error } = await supabaseAdmin
       .from("students")

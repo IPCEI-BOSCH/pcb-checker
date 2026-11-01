@@ -5,8 +5,17 @@ import { supabase } from "@/integrations/supabase/client";
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no I/L/O/0/1 — unambiguous when read aloud or printed
 
 export function generateExamCode(): string {
-  const part = () => Array.from({ length: 4 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join("");
-  return `${part()}-${part()}`;
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const chars: string[] = [];
+  for (const b of bytes) {
+    if (b < 248) chars.push(ALPHABET[b % ALPHABET.length]); // 248 = 8*31, unbiased
+    if (chars.length === 12) break;
+  }
+  while (chars.length < 12) {
+    const b = crypto.getRandomValues(new Uint8Array(1))[0];
+    if (b < 248) chars.push(ALPHABET[b % ALPHABET.length]);
+  }
+  return `${chars.slice(0, 4).join("")}-${chars.slice(4, 8).join("")}-${chars.slice(8).join("")}`;
 }
 
 export interface ExamToken {
