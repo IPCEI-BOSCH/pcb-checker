@@ -141,7 +141,10 @@ export const LEGACY_PENALTY: Record<string, [number, Severity, boolean]> = {
   STENCIL_WINDOWPANE: [0, "info", true],
 };
 
-type Capsule = { ax: number; ay: number; bx: number; by: number; r: number; b: BBox; i: number };
+/** Axis-aligned rectangle used for SAT-exact distances on rectangular flashes. */
+interface Rect { minX: number; minY: number; maxX: number; maxY: number }
+
+type Capsule = { ax: number; ay: number; bx: number; by: number; r: number; b: BBox; i: number; rect?: Rect };
 
 function toCapsule(p: Primitive, i: number): Capsule | null {
   if (p.clear) return null;
@@ -159,9 +162,88 @@ function toCapsule(p: Primitive, i: number): Capsule | null {
       r: short / 2,
       b: primitiveBBox(p),
       i,
+      // Rectangular flashes keep their true shape: the capsule approximation overestimates corners.
+      ...(p.shape === "R" ? { rect: { minX: p.x - p.w / 2, maxX: p.x + p.w / 2, minY: p.y - p.h / 2, maxY: p.y + p.h / 2 } } : {}),
     };
   }
   return null;
+}
+
+function ptSegDist(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l = dx * dx + dy * dy;
+  let t = l ? ((px - x1) * dx + (py - y1) * dy) / l : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+function ptRectDist(px: number, py: number, r: Rect): number {
+  const dx = Math.max(r.minX - px, 0, px - r.maxX);
+  const dy = Math.max(r.minY - py, 0, py - r.maxY);
+  return Math.hypot(dx, dy);
+}
+
+/** Strict segment intersection (proper crossing, not just touching). */
+function segmentsCross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
+  const cross = (ox: number, oy: number, px: number, py: number, qx: number, qy: number) => (px - ox) * (qy - oy) - (py - oy) * (qx - ox);
+  const d1 = cross(ax, ay, bx, by, cx, cy);
+  const d2 = cross(ax, ay, bx, by, dx, dy);
+  const d3 = cross(cx, cy, dx, dy, ax, ay);
+  const d4 = cross(cx, cy, dx, dy, bx, by);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+/** Exact distance between an axis-aligned rectangle and a segment (SAT on 4 axes + edge tests). */
+function rectSegDist(r: Rect, ax: number, ay: number, bx: number, by: number): number {
+  if (ptRectDist(ax, ay, r) === 0 || ptRectDist(bx, by, r) === 0) return 0;
+  const corners: [number, number][] = [
+    [r.minX, r.minY], [r.maxX, r.minY], [r.maxX, r.maxY], [r.minX, r.maxY],
+  ];
+  for (let i = 0; i < 4; i++) {
+    const [cx, cy] = corners[i]!;
+    const [dx, dy] = corners[(i + 1) % 4]!;
+    if (segmentsCross(ax, ay, bx, by, cx, cy, dx, dy)) return 0;
+  }
+  let min = Math.min(ptRectDist(ax, ay, r), ptRectDist(bx, by, r));
+  for (const [cx, cy] of corners) min = Math.min(min, ptSegDist(cx, cy, ax, ay, bx, by));
+  return min;
+}
+
+function rectRectDist(a: Rect, b: Rect): number {
+  const dx = Math.max(a.minX - b.maxX, b.minX - a.maxX, 0);
+  const dy = Math.max(a.minY - b.maxY, b.minY - a.maxY, 0);
+  return Math.hypot(dx, dy);
+}
+
+/** Gap between two copper items; rectangular flashes use exact SAT distance, the rest capsules. */
+function gapBetween(A: Capsule, B: Capsule): number {
+  if (A.rect && B.rect) return rectRectDist(A.rect, B.rect);
+  if (A.rect) return rectSegDist(A.rect, B.ax, B.ay, B.bx, B.by) - B.r;
+  if (B.rect) return rectSegDist(B.rect, A.ax, A.ay, A.bx, A.by) - A.r;
+  return segSegDist(A, B) - A.r - B.r;
+}
+
+function pointInPoly(x: number, y: number, pts: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i]!;
+    const [xj, yj] = pts[j]!;
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yj)) / (yi - yj) + xj) inside = !inside;
+  }
+  return inside;
+}
+
+function polyArea(pts: [number, number][]): number {
+  let a = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += (pts[j]![0] + pts[i]![0]) * (pts[j]![1] - pts[i]![1]);
+  return Math.abs(a / 2);
+}
+
+function polyPerimeter(pts: [number, number][]): number {
+  let p = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) p += Math.hypot(pts[i]![0] - pts[j]![0], pts[i]![1] - pts[j]![1]);
+  return p;
 }
 
 function segSegDist(a: Capsule, b: Capsule): number {
