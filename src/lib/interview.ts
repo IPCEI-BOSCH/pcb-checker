@@ -6,8 +6,8 @@ export interface InterviewQuestion {
   /** Expected technical answer — visible to staff only. */
   answer: string;
   /** Board coordinate the question refers to, when available. */
-  x?: number;
-  y?: number;
+  x?: number | undefined;
+  y?: number | undefined;
 }
 
 const r1 = (v: number) => Math.round(v * 100) / 100;

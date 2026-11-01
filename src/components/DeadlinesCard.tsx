@@ -37,7 +37,7 @@ export function DeadlinesCard({ seriesId, groupId, userId, canEdit }: { seriesId
     setBusy(true);
     try {
       await saveDeadline({
-        id: (q.data as Deadline | null)?.id,
+        ...((q.data as Deadline | null)?.id ? { id: (q.data as Deadline).id } : {}),
         series_id: groupId ? null : seriesId,
         group_id: groupId,
         soft_deadline: soft ? new Date(soft).toISOString() : null,

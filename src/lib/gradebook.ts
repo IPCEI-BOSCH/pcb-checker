@@ -358,8 +358,8 @@ export async function updateStudentGradeField(studentId: string, field: GradeFie
 export async function bulkUpdateGrades(studentIds: string[], patch: Partial<Record<GradeField, number | string | null>>) {
   if (!studentIds.length) return 0;
   const fields = Object.keys(patch) as GradeField[];
-  const { data: cur } = await supabase.from("students").select(`id, ${fields.join(", ")}`).in("id", studentIds);
-  const oldBy = new Map((cur ?? []).map((r) => [r.id as string, r as Record<string, unknown>]));
+  const { data: cur } = await supabase.from("students").select("*").in("id", studentIds);
+  const oldBy = new Map((cur ?? []).map((r) => [r.id as string, r as unknown as Record<string, unknown>]));
   const { data, error } = await supabase.from("students").update(patch as never).in("id", studentIds).select("id");
   if (error) throw error;
   await auditGradeChanges((data ?? []).flatMap((r) =>
