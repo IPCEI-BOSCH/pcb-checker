@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Send, Upload } from "lucide-react";
+import { MessageSquareWarning, ReceiptText, Send, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { fetchMyStudent } from "@/lib/data";
@@ -11,9 +11,15 @@ import { loadGerberZip } from "@/lib/gerber/load";
 import { runDrc, type DrcReport } from "@/lib/drc/engine";
 import type { Layer } from "@/lib/gerber/types";
 import { DrcReportView } from "@/components/DrcReportView";
+import { OrcadExportGuide } from "@/components/OrcadExportGuide";
+import { fetchDeadline, deadlineState } from "@/lib/deadlines";
+import { printSubmissionReceipt, sha256Hex } from "@/lib/receipt";
+import { fetchAnnotations } from "@/lib/annotations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/self-check")({
   head: () => ({
@@ -35,9 +41,13 @@ function SelfCheck() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastFile = useRef<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const [current, setCurrent] = useState<Current | null>(null);
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
+  const [contest, setContest] = useState<{ submissionId: string } | null>(null);
+  const [contestMsg, setContestMsg] = useState("");
 
   const student = useQuery({ queryKey: ["my-student", user.id], queryFn: () => fetchMyStudent(user.id) });
   const history = useQuery({
@@ -62,9 +72,11 @@ function SelfCheck() {
     );
   }
   const st = student.data;
+  const pins = useQuery({ queryKey: ["my-annotations", st.id], queryFn: () => fetchAnnotations(st.id) });
 
   const run = async (file: File) => {
     if (!/\.zip$/i.test(file.name)) return void toast.error("Încarcă o arhivă .zip cu fișierele Gerber și Excellon.");
+    lastFile.current = file;
     try {
       setBusy("Se parsează straturile…");
       const layers = await loadGerberZip(file);
