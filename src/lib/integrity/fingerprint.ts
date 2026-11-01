@@ -237,18 +237,53 @@ export function fingerprint(layers: Layer[]): Fingerprint {
     centroid: [ox, oy],
     board: okBox ? [r2(ob!.maxX - ob!.minX), r2(ob!.maxY - ob!.minY)] : undefined,
     vias: sub(viaList, 300).map(([x, y]) => [r2(x - ox), r2(y - oy)]),
-    forensic: forensicOf(layers),
+    forensic: forensicOf(layers, flashSeq),
+    rms: r2(rms),
+    topo: topoSig(segFull, viaList.length),
   };
 }
 
-function forensicOf(layers: Layer[]): Forensic {
+/** v7: scale/rotation-invariant topological signature of the routing (rubber-band invariance). */
+function topoSig(segs: [number, number, number, number, number, number][], vias: number): TopoSig | undefined {
+  if (segs.length < 5) return undefined;
+  const lens = segs.map((s) => s[4]).sort((x, y) => x - y);
+  const totL = lens.reduce((a, v) => a + v, 0) || 1;
+  const lenQ = Array.from({ length: 10 }, (_, i) => lens[Math.min(lens.length - 1, Math.floor(((i + 0.5) / 10) * lens.length))]! / totL);
+  const angH = new Array(12).fill(0);
+  for (const s of segs) angH[Math.min(11, Math.floor((s[2] / 180) * 12))] += s[4];
+  const angN = norm(angH);
+  // Junction density: segment endpoints within 0.3 mm of another segment's midpoint.
+  const idx = index(segs.map((s) => [s[0], s[1]] as P2), 0.3);
+  let junc = 0, ends = 0;
+  for (const s of segs) {
+    const r = (s[2] * Math.PI) / 180, hx = (Math.cos(r) * s[4]) / 2, hy = (Math.sin(r) * s[4]) / 2;
+    for (const [ex, ey] of [[s[0] - hx, s[1] - hy], [s[0] + hx, s[1] + hy]] as P2[]) {
+      ends++;
+      const cx = Math.floor(ex / 0.3), cy = Math.floor(ey / 0.3);
+      outer: for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++)
+        for (const q of idx.get(`${cx + i},${cy + j}`) ?? [])
+          if (Math.abs(q[0] - ex) <= 0.3 && Math.abs(q[1] - ey) <= 0.3 && (Math.abs(q[0] - s[0]) > 1e-6 || Math.abs(q[1] - s[1]) > 1e-6)) { junc++; break outer; }
+    }
+  }
+  return { lenQ, angH: angN, junctions: r2(junc / (ends || 1)), viaDensity: r2(vias / segs.length) };
+}
+
+function forensicOf(layers: Layer[], flashSeq: number[]): Forensic {
   const cu = ["top_copper", "bottom_copper"];
   const apertureSignature = layers.filter((l) => cu.includes(l.kind)).sort((a, b) => cu.indexOf(a.kind) - cu.indexOf(b.kind)).flatMap((l) => l.meta?.apertures ?? []).slice(0, 300);
   const src = layers.find((l) => l.kind === "top_copper") ?? layers.find((l) => l.meta?.header?.length);
   const cadHeader = src?.meta?.header ?? [];
   const pid = layers.flatMap((l) => l.meta?.header ?? []).find((h) => h.startsWith("%TF.ProjectId"));
   const times = layers.map((l) => l.meta?.mtime).filter((t): t is number => typeof t === "number" && t > 0);
-  return { apertureSignature, cadHeader, projectId: pid?.replace(/^%TF\.ProjectId,?/, "").replace(/\*%?$/, "") || undefined, zipMin: times.length ? Math.min(...times) : undefined, zipMax: times.length ? Math.max(...times) : undefined };
+  // v7: drill diameters + hole counts per tool, in first-use order (file order ≈ tool order).
+  const drillSeq: number[] = [];
+  const seen = new Map<number, number>();
+  for (const l of layers.filter((x) => x.kind === "drill")) for (const h of l.holes) {
+    const k = Math.round(h.d / 0.05);
+    if (!seen.has(k)) { seen.set(k, drillSeq.length / 2); drillSeq.push(k, 0); }
+    drillSeq[seen.get(k)! * 2 + 1] = Math.min(255, (drillSeq[seen.get(k)! * 2 + 1] ?? 0) + 1);
+  }
+  return { apertureSignature, cadHeader, projectId: pid?.replace(/^%TF\.ProjectId,?/, "").replace(/\*%?$/, "") || undefined, zipMin: times.length ? Math.min(...times) : undefined, zipMax: times.length ? Math.max(...times) : undefined, flashSeq, drillSeq: drillSeq.slice(0, 120) };
 }
 
 export function forensicFlags(a?: Forensic, b?: Forensic): ForensicFlags {
