@@ -8,12 +8,12 @@ export function generateExamCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const chars: string[] = [];
   for (const b of bytes) {
-    if (b < 248) chars.push(ALPHABET[b % ALPHABET.length]); // 248 = 8*31, unbiased
+    if (b < 248) chars.push(ALPHABET.charAt(b % ALPHABET.length)); // 248 = 8*31, unbiased
     if (chars.length === 12) break;
   }
   while (chars.length < 12) {
-    const b = crypto.getRandomValues(new Uint8Array(1))[0];
-    if (b < 248) chars.push(ALPHABET[b % ALPHABET.length]);
+    const b = crypto.getRandomValues(new Uint8Array(1))[0] ?? 255;
+    if (b < 248) chars.push(ALPHABET.charAt(b % ALPHABET.length));
   }
   return `${chars.slice(0, 4).join("")}-${chars.slice(4, 8).join("")}-${chars.slice(8).join("")}`;
 }

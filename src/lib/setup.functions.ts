@@ -110,7 +110,7 @@ export const createFirstAdmin = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     if (deploymentMode() !== "selfhost") throw new Error("Disponibil doar pe serverul local (self-host).");
-    const expectedToken = process.env.SETUP_TOKEN?.trim();
+    const expectedToken = process.env["SETUP_TOKEN"]?.trim();
     if (!expectedToken || data.setupToken.trim() !== expectedToken) {
       throw new Error("Cod de instalare invalid. Folosește SETUP_TOKEN din fișierul .env al serverului.");
     }
