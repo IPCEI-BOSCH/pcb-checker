@@ -361,7 +361,7 @@ function Insights() {
   };
 
   const [overlay, setOverlay] = useState<Pair | null>(null);
-  const [pairView, setPairView] = useState<"pairs" | "clusters">("pairs");
+  const [pairView, setPairView] = useState<"pairs" | "clusters" | "network">("pairs");
 
   return (
     <div className="space-y-4">
@@ -506,8 +506,9 @@ function Insights() {
               <div className="flex gap-2">
                 <Button size="sm" variant={pairView === "pairs" ? "default" : "outline"} onClick={() => setPairView("pairs")}>Perechi</Button>
                 <Button size="sm" variant={pairView === "clusters" ? "default" : "outline"} onClick={() => setPairView("clusters")}>Grupuri / Clustere</Button>
+                <Button size="sm" variant={pairView === "network" ? "default" : "outline"} onClick={() => setPairView("network")}>Harta Clusterelor</Button>
               </div>
-              {pairView === "clusters" ? <IntegrityClusters pairs={pairs} fps={fps} onOpen={(p) => setOverlay(p as Pair)} /> : <>
+              {pairView === "clusters" ? <IntegrityClusters pairs={pairs} fps={fps} onOpen={(p) => setOverlay(p as Pair)} /> : pairView === "network" ? <IntegrityNetwork pairs={pairs} onOpen={(p) => setOverlay(p as Pair)} /> : <>
               {belowOnly && <p className="text-sm text-muted-foreground">Nicio pereche nu depășește pragul. Mai jos sunt cele mai asemănătoare 15 perechi, doar ca reper.</p>}
               <Table>
                 <TableHeader><TableRow><TableHead>Proiect</TableHead><TableHead>Seamănă cu</TableHead><TableHead>Detaliu</TableHead><TableHead className="text-right">Similaritate</TableHead><TableHead>Decizie</TableHead><TableHead /></TableRow></TableHeader>
@@ -560,11 +561,25 @@ function Insights() {
 }
 
 function OverlayDialog({ pair, onClose, meta }: { pair: Pair | null; onClose: () => void; meta: (sid: string) => string }) {
+  // Chronology of both students' self-check/official runs — evidence for the A4 sheet.
+  const history = useQuery({
+    queryKey: ["pair_history", pair?.a.studentId, pair?.b.studentId],
+    enabled: !!pair,
+    queryFn: async () => {
+      const { data } = await supabase.from("submissions").select("student_id, created_at, drc_score, kind").in("student_id", [pair!.a.studentId, pair!.b.studentId]).order("created_at", { ascending: true });
+      const out = { a: [] as HistEntry[], b: [] as HistEntry[] };
+      for (const r of data ?? []) {
+        const e: HistEntry = { at: r.created_at, score: r.drc_score, kind: r.kind };
+        (r.student_id === pair!.a.studentId ? out.a : out.b).push(e);
+      }
+      return out;
+    },
+  });
   return (
     <Dialog open={!!pair} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-6xl">
         <DialogHeader><DialogTitle>Comparație Gerber {pair && `— ${pair.d.total.toFixed(1)}%`}</DialogTitle></DialogHeader>
-        {pair && <IntegrityOverlayViewer a={{ name: pair.a.name, zipPath: pair.a.zipPath, meta: `${pair.a.theme} · ${meta(pair.a.seriesId)}` }} b={{ name: pair.b.name, zipPath: pair.b.zipPath, meta: `${pair.b.theme} · ${meta(pair.b.seriesId)}` }} detail={pair.d} />}
+        {pair && <IntegrityOverlayViewer a={{ name: pair.a.name, zipPath: pair.a.zipPath, meta: `${pair.a.theme} · ${meta(pair.a.seriesId)}` }} b={{ name: pair.b.name, zipPath: pair.b.zipPath, meta: `${pair.b.theme} · ${meta(pair.b.seriesId)}` }} detail={pair.d} adj={pair.adj} historyA={history.data?.a} historyB={history.data?.b} />}
       </DialogContent>
     </Dialog>
   );
