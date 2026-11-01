@@ -275,7 +275,7 @@ export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; det
   const print = async () => {
     const prev = mode;
     if (printDiff !== (mode === "diff")) { setMode(printDiff ? "diff" : "overlay"); await new Promise((r) => setTimeout(r, 120)); }
-    const img = canvas.current?.toDataURL("image/png"); if (prev !== mode || printDiff !== (prev === "diff")) setMode(prev); if (!img) return;
+    const img = canvas.current?.toDataURL("image/png"); setMode(prev); if (!img) return;
     const ff = detail.forensicFlags, fa = da?.fp.forensic, fb = db?.fp.forensic;
     const yn = (v?: boolean) => (v ? "DA" : "nu");
     const dt = (t?: number) => (t ? new Date(t).toLocaleString("ro-RO") : "—");
@@ -300,9 +300,9 @@ ${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${
   return (
     <div className="space-y-3" ref={wrap}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        {(["overlay", "side", "blink"] as Mode[]).map((m) => (
+        {(["overlay", "side", "blink", "diff"] as Mode[]).map((m) => (
           <Button key={m} size="sm" variant={mode === m ? "default" : "outline"} onClick={() => setMode(m)}>
-            {m === "overlay" ? "Suprapunere" : m === "side" ? "Alăturat" : "Clipire"}
+            {MODE_LABEL[m]}
           </Button>
         ))}
         <span className="mx-2 h-5 w-px bg-border" />
