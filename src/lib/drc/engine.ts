@@ -63,6 +63,8 @@ export interface DrcReport {
   silkText?: { blocks: SilkBlock[]; read?: Record<number, { text: string; confidence: number }>; mirrored?: boolean; nameFound?: boolean | null } | undefined;
   /** Connectivity graph (copper nets) built by Union-Find across TOP/BOTTOM and vias. */
   nets?: NetSummary[] | undefined;
+  /** Clearance-ul minim activ la rulare — îl folosește șublerul din viewer pentru verdictul verde/roșu. */
+  rulesMinClearance?: number | undefined;
 }
 
 export const RULES = {
@@ -1148,6 +1150,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     customCatalog: Object.keys(customCatalog).length ? customCatalog : undefined,
     silkText: silkBlocks.length ? { blocks: silkBlocks } : undefined,
     nets,
+    rulesMinClearance: R.minClearance,
   };
 }
 
