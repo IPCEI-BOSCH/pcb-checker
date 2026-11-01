@@ -444,6 +444,7 @@ function Review() {
                           )}
                           {canManage && (
                             <div className="mt-1 flex justify-end gap-1">
+                              <Button size="sm" variant="ghost" aria-label={`Derogare termen pentru ${st.full_name}`} title="Derogare individuală de la termenul dur" onClick={() => { setExtFor({ id: st.id, name: st.full_name, current: st.deadline_extension_until }); setExtValue(st.deadline_extension_until ? new Date(st.deadline_extension_until).toISOString().slice(0, 16) : ""); }}><Timer className="mr-1 h-4 w-4" /> Derogare</Button>
                               {st.status === "archived" ? (
                                 <Button size="sm" variant="ghost" aria-label={`Dezarhivează proiectul ${st.full_name}`} onClick={() => archiveStudent(st.id, st.full_name, false)}><ArchiveRestore className="mr-1 h-4 w-4" /> Dezarhivează</Button>
                               ) : (
@@ -492,7 +493,70 @@ function Review() {
       <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
         <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
           <DialogHeader><DialogTitle>Gerber & DRC — {view?.name}</DialogTitle></DialogHeader>
-          {view && <DrcReportView report={view.report} layers={view.layers} meta={view.meta ?? { student: view.name }} />}
+          {view && (
+            <>
+              <DrcReportView
+                report={view.report}
+                layers={view.layers}
+                meta={view.meta ?? { student: view.name }}
+                pins={(annots.data ?? []).map((p, i) => ({ x: Number(p.x), y: Number(p.y), label: String(i + 1), title: p.note }))}
+                onPinRequest={view.layers ? (x, y) => { setPinDraft({ x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }); setPinNote(""); } : undefined}
+                focusPoint={pinFocus}
+              />
+              <Card>
+                <CardHeader className="pb-3"><CardTitle className="text-base">Adnotări pe placă ({annots.data?.length ?? 0})</CardTitle></CardHeader>
+                <CardContent className="space-y-1.5 text-sm">
+                  <p className="text-xs text-muted-foreground">Click dreapta pe placă → pin de comentariu la coordonata respectivă. Studentul vede pin-ii în Self-Check și poate face zoom direct pe ei.</p>
+                  {(annots.data ?? []).map((p, i) => (
+                    <div key={p.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5">
+                      <span className="font-mono text-xs text-muted-foreground">#{i + 1} ({Number(p.x).toFixed(1)}, {Number(p.y).toFixed(1)})</span>
+                      <button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => setPinFocus({ x: Number(p.x), y: Number(p.y) })}>{p.note}</button>
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive" onClick={async () => { await deleteAnnotation(p.id); qc.invalidateQueries({ queryKey: ["annotations", view.studentId] }); }}>Șterge</Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <InterviewPanel report={view.report} studentId={view.studentId} studentName={view.name} canGrade={canManage || has("instructor")} onFocusPoint={(x, y) => setPinFocus({ x, y })} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pinDraft} onOpenChange={(o) => !o && setPinDraft(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Pin comentariu la ({pinDraft?.x}, {pinDraft?.y}) mm</DialogTitle></DialogHeader>
+          <Textarea placeholder="Ex.: Mută acest condensator de decuplare mai aproape de pinul de alimentare…" value={pinNote} onChange={(e) => setPinNote(e.target.value)} rows={3} autoFocus />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPinDraft(null)}>Renunță</Button>
+            <Button disabled={!pinNote.trim()} onClick={async () => {
+              try {
+                await addAnnotation({ student_id: view!.studentId, submission_id: view!.submissionId, x: pinDraft!.x, y: pinDraft!.y, note: pinNote.trim(), created_by: user.id });
+                qc.invalidateQueries({ queryKey: ["annotations", view!.studentId] });
+                setPinDraft(null);
+                toast.success("Pin adăugat — studentul îl vede în Self-Check.");
+              } catch (e) { toast.error((e as Error).message); }
+            }}>Salvează pin-ul</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!extFor} onOpenChange={(o) => !o && setExtFor(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Derogare termen — {extFor?.name}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Studentul poate preda oficial până la această dată chiar dacă termenul dur a trecut.</p>
+          <Input type="datetime-local" value={extValue} onChange={(e) => setExtValue(e.target.value)} aria-label="Derogare până la" />
+          <DialogFooter>
+            <Button variant="ghost" onClick={async () => { await setExtension(extFor!.id, null); setExtFor(null); qc.invalidateQueries({ queryKey: ["review"] }); toast.success("Derogarea a fost retrasă."); }}>Retrage derogarea</Button>
+            <Button disabled={!extValue} onClick={async () => {
+              try {
+                await setExtension(extFor!.id, new Date(extValue).toISOString());
+                await logAudit(user.id, "DEADLINE_EXTENSION", "student", extFor!.id, { until: extValue });
+                setExtFor(null);
+                qc.invalidateQueries({ queryKey: ["review"] });
+                toast.success("Derogarea a fost acordată.");
+              } catch (e) { toast.error((e as Error).message); }
+            }}>Acordă derogarea</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
