@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as SelfhostRouteImport } from './routes/selfhost'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedCamRouteImport } from './routes/_authenticated/cam'
@@ -38,6 +39,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SelfhostRoute = SelfhostRouteImport.update({
+  id: '/selfhost',
+  path: '/selfhost',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SetupRoute = SetupRouteImport.update({
@@ -110,6 +116,7 @@ const AuthenticatedSelfCheckRoute = AuthenticatedSelfCheckRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/selfhost': typeof SelfhostRoute
   '/setup': typeof SetupRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/cam': typeof AuthenticatedCamRoute
@@ -127,6 +134,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/selfhost': typeof SelfhostRoute
   '/setup': typeof SetupRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/cam': typeof AuthenticatedCamRoute
@@ -146,6 +154,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/selfhost': typeof SelfhostRoute
   '/setup': typeof SetupRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/cam': typeof AuthenticatedCamRoute
@@ -165,6 +174,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/selfhost'
     | '/setup'
     | '/admin'
     | '/cam'
@@ -182,6 +192,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/selfhost'
     | '/setup'
     | '/admin'
     | '/cam'
@@ -200,6 +211,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/selfhost'
     | '/setup'
     | '/_authenticated/admin'
     | '/_authenticated/cam'
@@ -219,6 +231,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  SelfhostRoute: typeof SelfhostRoute
   SetupRoute: typeof SetupRoute
 }
 
@@ -243,6 +256,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/selfhost': {
+      id: '/selfhost'
+      path: '/selfhost'
+      fullPath: '/selfhost'
+      preLoaderRoute: typeof SelfhostRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/setup': {
@@ -376,6 +396,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  SelfhostRoute: SelfhostRoute,
   SetupRoute: SetupRoute,
 }
 export const routeTree = rootRouteImport
