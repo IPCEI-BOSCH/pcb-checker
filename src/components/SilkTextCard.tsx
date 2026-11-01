@@ -22,7 +22,13 @@ export function SilkTextCard({ report, layers, student, onLocate }: { report: Dr
   const readFn = useServerFn(aiReadSilk);
 
   const analysis = useMemo(() => {
-    const texts = Object.values(read).filter((t) => t.text && t.confidence >= 0.4).map((t) => t.text.trim());
+    // AI readings win where present; otherwise fall back to the local vector pre-OCR from the DRC report.
+    const texts = blocks.map((b) => {
+      const ai = read[b.idx];
+      if (ai && ai.text && ai.confidence >= 0.4) return ai.text.trim();
+      if (b.decoded && (b.decodeConfidence ?? 0) >= 0.5) return b.decoded;
+      return "";
+    }).filter(Boolean);
     const des = texts.filter((t) => DESIGNATOR.test(t)).map((t) => t.toUpperCase());
     const dup = [...new Set(des.filter((d, i) => des.indexOf(d) !== i))];
     let nameFound: boolean | null = null;
@@ -32,8 +38,10 @@ export function SilkTextCard({ report, layers, student, onLocate }: { report: Dr
       nameFound = parts.some((p) => all.includes(p));
     }
     const lowConf = Object.values(read).filter((t) => t.text && t.confidence < 0.4).length;
-    return { des, dup, nameFound, lowConf };
-  }, [read, student]);
+    const localCount = blocks.filter((b) => b.decoded && (b.decodeConfidence ?? 0) >= 0.5).length;
+    const mirroredLocal = blocks.filter((b) => b.mirrored === true && (b.decodeConfidence ?? 0) >= 0.5 && (b.layer === "top_silk" || b.layer === "top_copper")).length;
+    return { des, dup, nameFound, lowConf, localCount, mirroredLocal };
+  }, [read, student, blocks]);
 
   if (!blocks.length) return null;
 
@@ -64,16 +72,15 @@ export function SilkTextCard({ report, layers, student, onLocate }: { report: Dr
         <Button size="sm" variant="outline" onClick={runAi} disabled={busy || !layers}><Sparkles className="mr-1 h-4 w-4" /> {busy ? "Se citește…" : "Citește cu AI"}</Button>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <p className="text-muted-foreground">Dimensiunile sunt măsurate automat. Textul se citește la cerere (folosește credite AI); citirea e un ajutor, verificați vizual cazurile neclare.</p>
-        {!!Object.keys(read).length && (
-          <div className="flex flex-wrap gap-2">
-            {student && <Badge variant={analysis.nameFound ? "secondary" : "destructive"}>{analysis.nameFound ? "Numele studentului apare pe placă" : "Numele studentului nu a fost găsit"}</Badge>}
-            <Badge variant="secondary">{analysis.des.length} designatoare</Badge>
-            {!!analysis.dup.length && <Badge variant="destructive">Duplicate: {analysis.dup.join(", ")}</Badge>}
-            {mirrored && <Badge variant="destructive">Text TOP în oglindă</Badge>}
-            {!!analysis.lowConf && <Badge variant="outline">{analysis.lowConf} citiri nesigure</Badge>}
-          </div>
-        )}
+        <p className="text-muted-foreground">Dimensiunile și citirea vectorială locală (fără cost AI) sunt automate. Fonturile nestandard sau siglele se citesc la cerere cu AI; verificați vizual cazurile neclare.</p>
+        <div className="flex flex-wrap gap-2">
+          {student && analysis.nameFound !== null && <Badge variant={analysis.nameFound ? "secondary" : "destructive"}>{analysis.nameFound ? "✓ Numele studentului apare pe placă" : "Numele studentului nu a fost găsit"}</Badge>}
+          {!!analysis.localCount && <Badge variant="outline">{analysis.localCount} texte citite local</Badge>}
+          {!!analysis.des.length && <Badge variant="secondary">{analysis.des.length} designatoare</Badge>}
+          {!!analysis.dup.length && <Badge variant="destructive">Duplicate: {analysis.dup.join(", ")}</Badge>}
+          {(mirrored || !!analysis.mirroredLocal) && <Badge variant="destructive">Text TOP în oglindă{analysis.mirroredLocal ? ` (${analysis.mirroredLocal})` : ""}</Badge>}
+          {!!analysis.lowConf && <Badge variant="outline">{analysis.lowConf} citiri nesigure</Badge>}
+        </div>
         <div className="max-h-72 overflow-auto">
           <Table>
             <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Text</TableHead><TableHead>Strat</TableHead><TableHead className="text-right">Înălțime</TableHead><TableHead className="text-right">Linie</TableHead><TableHead className="text-right">Poziție</TableHead></TableRow></TableHeader>
