@@ -1,5 +1,7 @@
 # Instalare pe server propriu — PCB Checker & CAM (UPB)
 
+> Manualul complet și actualizat este **`selfhost/INSTALL_GUIDE_RO.md`** (și în aplicație, pagina `/selfhost` — „Ghid Instalare Server Local", cu generator interactiv de configurație). Acest fișier rămâne un rezumat rapid.
+
 Ghid pentru persoane fără experiență tehnică. Durează ~15 minute.
 
 ## Ce îți trebuie
