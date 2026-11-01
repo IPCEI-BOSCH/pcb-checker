@@ -2,14 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { loadGerberZip } from "@/lib/gerber/load";
 import type { Layer, LayerKind, Primitive } from "@/lib/gerber/types";
-import { fingerprint, CLASS_LABEL, classOf, type SimilarityDetail } from "@/lib/integrity/fingerprint";
+import { fingerprint, CLASS_LABEL, classOf, type Fingerprint, type SimilarityDetail } from "@/lib/integrity/fingerprint";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { FlipHorizontal, Printer, RotateCcw, RotateCw } from "lucide-react";
+import { FlipHorizontal, Printer, RotateCcw, RotateCw, ScanSearch } from "lucide-react";
 
 type Side = { name: string; zipPath: string | null; meta?: string };
-type Mode = "overlay" | "side" | "blink";
+type Mode = "overlay" | "side" | "blink" | "diff";
+const MODE_LABEL: Record<Mode, string> = { overlay: "Suprapunere", side: "Alăturat", blink: "Clipire", diff: "Diff (Cupru comun)" };
+// Diff mode colours (data visualisation): faded board, strong red-orange for shared copper, yellow suspect zone.
+const COL_FADE = "rgb(140,140,140)", COL_HIT = "#ff3b30", COL_ZONE = "#ffd60a";
 type Group = "top" | "bottom" | "drill" | "silk" | "outline";
 const GROUPS: { id: Group; label: string; kinds: LayerKind[] }[] = [
   { id: "top", label: "Cu TOP", kinds: ["top_copper"] },
@@ -22,7 +25,7 @@ const GROUPS: { id: Group; label: string; kinds: LayerKind[] }[] = [
 const COL_A = "#00e5ff", COL_B = "#ff2bd6";
 
 type Tf = SimilarityDetail["transform"];
-type Loaded = { layers: Layer[]; c: [number, number]; area: number };
+type Loaded = { layers: Layer[]; c: [number, number]; area: number; fp: Fingerprint };
 type View = { s: number; ox: number; oy: number };
 
 async function loadSide(path: string | null): Promise<Loaded | null> {
@@ -33,7 +36,7 @@ async function loadSide(path: string | null): Promise<Loaded | null> {
   const fp = fingerprint(layers);
   const c = (fp.centroid ?? [0, 0]) as [number, number];
   const area = fp.board ? fp.board[0] * fp.board[1] : 1600;
-  return { layers, c, area };
+  return { layers, c, area, fp };
 }
 
 const ROT = (r: number) => (r === 0 ? [1, 0] : r === 90 ? [0, 1] : r === 180 ? [-1, 0] : [0, -1]) as [number, number];
@@ -131,6 +134,30 @@ function extent(d: Loaded | null, t?: Tf) {
 
 const ID: Tf = { rot: 0, mirror: false, dx: 0, dy: 0 };
 
+type DSeg = { x: number; y: number; a: number; w: number; l: number };
+/** Trace pieces (and vias) shared by both boards within copy tolerance (±0.4 mm, ±10°, any layer), in the common frame. */
+function sharedCopper(fa: Fingerprint, fb: Fingerprint, t: Tf, extra?: Tf) {
+  const m = mapper([0, 0], t, extra);
+  const rotAng = (ang: number) => { let r = ang; for (const tf of [t, extra]) { if (!tf) continue; if (tf.mirror) r = 180 - r; r += tf.rot; } return ((r % 180) + 180) % 180; };
+  const A: DSeg[] = (fa.segs ?? []).map((s) => ({ x: s[0], y: s[1], a: s[2], w: s[3], l: s[4] }));
+  const B: DSeg[] = (fb.segs ?? []).map((s) => { const [x, y] = m(s[0], s[1]); return { x, y, a: rotAng(s[2]), w: s[3], l: s[4] }; });
+  const tol = 0.4, idx = new Map<string, number[]>();
+  B.forEach((s, i) => { const k = `${Math.floor(s.x / tol)},${Math.floor(s.y / tol)}`; (idx.get(k) ?? idx.set(k, []).get(k)!).push(i); });
+  const hitB = new Set<number>(), out: DSeg[] = [];
+  for (const s of A) {
+    const cx = Math.floor(s.x / tol), cy = Math.floor(s.y / tol); let ok = false;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const k of idx.get(`${cx + i},${cy + j}`) ?? []) {
+      const q = B[k]!; const da = Math.abs(q.a - s.a);
+      if (Math.abs(q.x - s.x) <= tol && Math.abs(q.y - s.y) <= tol && Math.min(da, 180 - da) <= 10) { ok = true; hitB.add(k); }
+    }
+    if (ok) out.push(s);
+  }
+  B.forEach((s, i) => { if (hitB.has(i)) out.push(s); });
+  const vb = (fb.vias ?? []).map((p) => m(p[0], p[1]));
+  const vias = (fa.vias ?? []).filter((p) => vb.some((q) => Math.abs(q[0] - p[0]) <= 0.25 && Math.abs(q[1] - p[1]) <= 0.25));
+  return { segs: out, vias };
+}
+
 export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; detail: SimilarityDetail }) {
   const [da, setDa] = useState<Loaded | null>(null);
   const [db, setDb] = useState<Loaded | null>(null);
@@ -145,6 +172,7 @@ export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; det
   const [pan, setPan] = useState<[number, number]>([0, 0]);
   const [extra, setExtra] = useState<Tf>(ID);
   const [cross, setCross] = useState<[number, number] | null>(null);
+  const [printDiff, setPrintDiff] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const drag = useRef<[number, number] | null>(null);
@@ -191,6 +219,28 @@ export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; det
       return;
     }
     const s = (Math.min(W, H) / (2 * ext)) * zoom, view = { s, ox: W / 2 + pan[0], oy: H / 2 + pan[1] };
+    if (mode === "diff") {
+      ctx.globalAlpha = 0.22;
+      ctx.drawImage(renderBoard(W, H, dpr, da, groups, COL_FADE, undefined, undefined, view, hidePours), 0, 0);
+      ctx.drawImage(renderBoard(W, H, dpr, db, groups, COL_FADE, detail.transform, manual, view, hidePours), 0, 0);
+      ctx.globalAlpha = 1;
+      const sh = sharedCopper(da.fp, db.fp, detail.transform, manual);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.strokeStyle = COL_HIT; ctx.fillStyle = COL_HIT; ctx.lineCap = "round";
+      for (const g of sh.segs) {
+        const r = (g.a * Math.PI) / 180, hx = (Math.cos(r) * g.l) / 2, hy = (Math.sin(r) * g.l) / 2;
+        ctx.lineWidth = Math.max(1.5, g.w * s);
+        ctx.beginPath(); ctx.moveTo(view.ox + (g.x - hx) * s, view.oy - (g.y - hy) * s); ctx.lineTo(view.ox + (g.x + hx) * s, view.oy - (g.y + hy) * s); ctx.stroke();
+      }
+      for (const [x, y] of sh.vias) { ctx.beginPath(); ctx.arc(view.ox + x * s, view.oy - y * s, Math.max(2, 0.35 * s), 0, Math.PI * 2); ctx.fill(); }
+      const z = detail.bestZoneRect;
+      if (z && (detail.routeZoneMax ?? 0) >= 80) {
+        ctx.strokeStyle = COL_ZONE; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+        ctx.strokeRect(view.ox + z[0] * s, view.oy - z[3] * s, (z[2] - z[0]) * s, (z[3] - z[1]) * s); ctx.setLineDash([]);
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      return;
+    }
     ctx.globalCompositeOperation = "lighter";
     if (mode === "blink") {
       ctx.drawImage(blinkB ? renderBoard(W, H, dpr, db, groups, COL_B, detail.transform, manual, view, hidePours) : renderBoard(W, H, dpr, da, groups, COL_A, undefined, undefined, view, hidePours), 0, 0);
@@ -203,6 +253,13 @@ export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; det
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
   }, [da, db, groups, mode, mix, blinkB, zoom, pan, ext, detail.transform, manual, hidePours, cross]);
 
+  const zoomZone = () => {
+    const z = detail.bestZoneRect, cv = canvas.current; if (!z || !cv) return;
+    const W = cv.clientWidth, H = cv.clientHeight, base = Math.min(W, H) / (2 * ext);
+    const zz = Math.min(40, Math.max(1, Math.min(W / ((z[2] - z[0]) * base), H / ((z[3] - z[1]) * base)) * 0.85));
+    const cx = (z[0] + z[2]) / 2, cy = (z[1] + z[3]) / 2;
+    setMode("diff"); setZoom(zz); setPan([-cx * base * zz, cy * base * zz]);
+  };
   const toggle = (g: Group) => setGroups((s) => { const n = new Set(s); if (n.has(g)) n.delete(g); else n.add(g); return n; });
   const nudge = (dx: number, dy: number) => setExtra((e) => ({ ...e, dx: Math.round((e.dx + dx) * 100) / 100, dy: Math.round((e.dy + dy) * 100) / 100 }));
 
@@ -215,8 +272,13 @@ export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; det
     e.preventDefault();
   };
 
-  const print = () => {
-    const img = canvas.current?.toDataURL("image/png"); if (!img) return;
+  const print = async () => {
+    const prev = mode;
+    if (printDiff !== (mode === "diff")) { setMode(printDiff ? "diff" : "overlay"); await new Promise((r) => setTimeout(r, 120)); }
+    const img = canvas.current?.toDataURL("image/png"); if (prev !== mode || printDiff !== (prev === "diff")) setMode(prev); if (!img) return;
+    const ff = detail.forensicFlags, fa = da?.fp.forensic, fb = db?.fp.forensic;
+    const yn = (v?: boolean) => (v ? "DA" : "nu");
+    const dt = (t?: number) => (t ? new Date(t).toLocaleString("ro-RO") : "—");
     const w = window.open("", "_blank"); if (!w) return;
     const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
     const row = (k: string, v: string | number | undefined) => `<tr><td>${esc(k)}</td><td><b>${esc(String(v ?? "—"))}</b></td></tr>`;
@@ -226,8 +288,10 @@ export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; det
 <p style="font-size:12px">Generată: ${new Date().toLocaleString("ro-RO")}. Scorul este un indiciu pentru verificare umană, nu o probă automată.</p>
 <table>${row("Proiect A (cyan)", a.name + (a.meta ? " · " + a.meta : ""))}${row("Proiect B (magenta)", b.name + (b.meta ? " · " + b.meta : ""))}
 ${row("Clasificare automată", CLASS_LABEL[classOf(detail)])}${row("Rutare trasee % (fără grosime)", detail.routing ?? detail.traces)}${row("Rutare exactă % (cu grosime)", detail.routingExact)}${row("Schemă / piese %", detail.schema)}${row("Cea mai copiată zonă de trasee %", detail.routeZoneMax)}
-${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${row("Componente %", detail.comps)}${row("Găuri % (fără găuri de prindere)", detail.holes)}${row("Serigrafie %", detail.silk)}${row("Transformare B", `${detail.transform.rot}°${detail.transform.mirror ? ", oglindit" : ""}, Δ ${detail.transform.dx.toFixed(2)}/${detail.transform.dy.toFixed(2)} mm`)}${manual ? row("Ajustare manuală", `${extra.rot}°${extra.mirror ? ", oglindit" : ""}, Δ ${extra.dx}/${extra.dy} mm`) : ""}</table>
-<img src="${img}" alt="Suprapunere"/>
+${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${row("Componente %", detail.comps)}${row("Găuri % (fără găuri de prindere)", detail.holes)}${row("Serigrafie %", detail.silk)}${row("Transformare B", `${detail.transform.rot}°${detail.transform.mirror ? ", oglindit" : ""}, Δ ${detail.transform.dx.toFixed(2)}/${detail.transform.dy.toFixed(2)} mm`)}${row("Via-uri suprapuse %", detail.viaMatch)}${row("Rutare cross-layer %", detail.routingCrossLayer)}${row("Inversare TOP↔BOTTOM detectată", yn(detail.layerSwapDetected))}${manual ? row("Ajustare manuală", `${extra.rot}°${extra.mirror ? ", oglindit" : ""}, Δ ${extra.dx}/${extra.dy} mm`) : ""}</table>
+<h3 style="font-size:13px;margin:12px 0 4px">Indicatori tehnici Gerber / ZIP (Forensics)</h3><table>${row("Ordine aperturi identică (≥90%)", `${yn(ff?.identicalApertureOrder)} (${ff?.apertureOrderPct ?? "—"}%)`)}${row("Același %TF.ProjectId", yn(ff?.sameProjectId))}${row("Timestamp intern ZIP apropiat (<5 min)", yn(ff?.closeZipTimestamps))}${row("Header CAD A", (fa?.cadHeader ?? []).slice(0, 3).join(" | "))}${row("Header CAD B", (fb?.cadHeader ?? []).slice(0, 3).join(" | "))}${row("Arhivă A (min–max)", `${dt(fa?.zipMin)} – ${dt(fa?.zipMax)}`)}${row("Arhivă B (min–max)", `${dt(fb?.zipMin)} – ${dt(fb?.zipMax)}`)}</table>
+<p style="font-size:11px">Imagine: ${printDiff ? "Diff — cupru comun evidențiat cu roșu, chenar galben = zona cu similitudine maximă" : "Suprapunere cyan/magenta"}.</p>
+<img src="${img}" alt="Comparație"/>
 <div class="sig"><span>Cadru didactic: ____________________</span><span>Semnătură: ____________</span></div>
 <script>onload=()=>print()</script></body></html>`);
     w.document.close();
@@ -247,7 +311,9 @@ ${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${
         ))}
         <label className="flex items-center gap-1 text-xs"><Switch checked={hidePours} onCheckedChange={setHidePours} aria-label="Ascunde planurile de masă" />Ascunde planurile de masă</label>
         <Button size="sm" variant="ghost" onClick={() => { setZoom(1); setPan([0, 0]); setExtra(ID); }} aria-label="Resetează vederea"><RotateCcw className="h-4 w-4" /></Button>
-        <Button size="sm" variant="outline" onClick={print} disabled={!da || !db}><Printer className="mr-1 h-4 w-4" />Fișă A4</Button>
+        <Button size="sm" variant="outline" onClick={zoomZone} disabled={!detail.bestZoneRect}><ScanSearch className="mr-1 h-4 w-4" />Zoom pe zona suspectă</Button>
+        <label className="flex items-center gap-1 text-xs"><Switch checked={printDiff} onCheckedChange={setPrintDiff} aria-label="Fișa folosește modul Diff" />Fișă: Diff</label>
+        <Button size="sm" variant="outline" onClick={() => void print()} disabled={!da || !db}><Printer className="mr-1 h-4 w-4" />Fișă A4</Button>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-muted-foreground">Ajustare manuală B:</span>
@@ -284,7 +350,7 @@ ${row("Similaritate totală %", detail.total)}${row("Pad-uri %", detail.pads)}${
         <div className="flex items-center gap-3 text-sm"><span className="truncate">{a.name}</span><Slider value={[mix]} min={0} max={100} step={5} onValueChange={(v) => setMix(v[0] ?? 50)} aria-label="Amestec" /><span className="truncate">{b.name}</span></div>
       )}
       <p className="text-xs text-muted-foreground">
-        {CLASS_LABEL[classOf(detail)]} · Rutare {detail.routing ?? detail.traces ?? "—"}% (exactă {detail.routingExact ?? "—"}%) · Schemă {detail.schema ?? "—"}% · Pad-uri {detail.pads}% · Găuri {detail.holes}% · Text {detail.silk}%. Rotița = zoom, trage = deplasare.
+        {CLASS_LABEL[classOf(detail)]}{detail.layerSwapDetected ? " (inversare TOP↔BOTTOM)" : ""} · Cross-layer {detail.routingCrossLayer ?? "—"}% · Via-uri {detail.viaMatch ?? "—"}% · Rutare {detail.routing ?? detail.traces ?? "—"}% (exactă {detail.routingExact ?? "—"}%) · Schemă {detail.schema ?? "—"}% · Pad-uri {detail.pads}% · Găuri {detail.holes}% · Text {detail.silk}%. Rotița = zoom, trage = deplasare.
       </p>
     </div>
   );
