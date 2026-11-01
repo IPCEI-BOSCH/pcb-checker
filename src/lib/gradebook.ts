@@ -331,9 +331,9 @@ export function proposeFinalGrades(rows: GradeRow[], w: FinalWeights): ManualCha
   return out;
 }
 
-export type GradeField = "grade_schema" | "grade_doc" | "grade_final" | "teacher_notes";
-export const GRADE_FIELD_KEY: Record<GradeField, "gradeSchema" | "gradeDoc" | "gradeFinal" | "notes"> = {
-  grade_schema: "gradeSchema", grade_doc: "gradeDoc", grade_final: "gradeFinal", teacher_notes: "notes",
+export type GradeField = "grade_schema" | "grade_doc" | "grade_interview" | "grade_final" | "teacher_notes";
+export const GRADE_FIELD_KEY: Record<GradeField, "gradeSchema" | "gradeDoc" | "gradeInterview" | "gradeFinal" | "notes"> = {
+  grade_schema: "gradeSchema", grade_doc: "gradeDoc", grade_interview: "gradeInterview", grade_final: "gradeFinal", teacher_notes: "notes",
 };
 
 /** Parses a 1.00–10.00 grade ("9,5" ok); empty -> null; invalid -> undefined. */
@@ -347,15 +347,24 @@ export function parseGrade(raw: string): number | null | undefined {
 
 export async function updateStudentGradeField(studentId: string, field: GradeField, value: number | string | null) {
   const v = field === "teacher_notes" ? (String(value ?? "").trim() || null) : value;
+  const { data: cur } = await supabase.from("students").select(field).eq("id", studentId).single();
+  const oldV = cur ? String((cur as Record<string, unknown>)[field] ?? "") : null;
   const { data, error } = await supabase.from("students").update({ [field]: v } as never).eq("id", studentId).select("id");
   if (error) throw error;
   if (!data?.length) throw new Error("Nu ai drept de editare pentru acest student.");
+  await auditGradeChanges([{ student_id: studentId, field, old_value: oldV || null, new_value: v == null ? null : String(v) }]);
 }
 
 export async function bulkUpdateGrades(studentIds: string[], patch: Partial<Record<GradeField, number | string | null>>) {
   if (!studentIds.length) return 0;
+  const fields = Object.keys(patch) as GradeField[];
+  const { data: cur } = await supabase.from("students").select(`id, ${fields.join(", ")}`).in("id", studentIds);
+  const oldBy = new Map((cur ?? []).map((r) => [r.id as string, r as Record<string, unknown>]));
   const { data, error } = await supabase.from("students").update(patch as never).in("id", studentIds).select("id");
   if (error) throw error;
+  await auditGradeChanges((data ?? []).flatMap((r) =>
+    fields.map((f) => ({ student_id: r.id, field: f, old_value: oldBy.get(r.id)?.[f] != null ? String(oldBy.get(r.id)![f]) : null, new_value: patch[f] != null ? String(patch[f]) : null })),
+  ));
   return data?.length ?? 0;
 }
 
