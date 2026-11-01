@@ -155,10 +155,10 @@ export function Pcb3DViewer({ layers, issues }: Props) {
         <Button size="sm" variant={finish === "enig" ? "default" : "outline"} className="h-6 px-2 text-[10px]" onClick={() => setFinish("enig")}>ENIG (auriu)</Button>
         <Button size="sm" variant={finish === "hasl" ? "default" : "outline"} className="h-6 px-2 text-[10px]" onClick={() => setFinish("hasl")}>HASL (argintiu)</Button>
         <span className="mx-1 h-4 w-px bg-border" />
-        <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={() => applyRef.current("top")}>Top</Button>
-        <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={() => applyRef.current("bottom")}>Bottom</Button>
-        <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={() => applyRef.current("iso")}>Iso</Button>
-        <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={() => applyRef.current("side")}>Secțiune</Button>
+        <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={() => camApi.current?.("top")}>Top</Button>
+        <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={() => camApi.current?.("bottom")}>Bottom</Button>
+        <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={() => camApi.current?.("iso")}>Iso</Button>
+        <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={() => camApi.current?.("side")}>Secțiune</Button>
         <label className="ml-auto flex items-center gap-1"><Switch checked={showPins} onCheckedChange={setShowPins} aria-label="Markere DRC 3D" />Markere DRC</label>
       </div>
       <div className="flex items-center gap-3 text-xs">
@@ -171,7 +171,7 @@ export function Pcb3DViewer({ layers, issues }: Props) {
           <ambientLight intensity={0.55} />
           <directionalLight position={[30, -20, 60]} intensity={1.4} />
           <directionalLight position={[-30, 30, -40]} intensity={0.4} />
-          <CameraButtons setView={() => {}} />
+          <CamSync apiRef={camApi} />
           <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.12} />
 
           {/* Substrat FR4 */}
