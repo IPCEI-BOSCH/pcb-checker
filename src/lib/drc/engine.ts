@@ -1246,7 +1246,7 @@ function evalCustomRule(
           const d = edgeDist(p.x, p.y) - Math.max(p.w, p.h) / 2;
           if (d < v - 1e-6) hits.push({ x: p.x, y: p.y, msg: `Pad la ${f(d)} mm de margine (min ${v} mm).` });
         } else if (p.t === "line") {
-          const d = Math.min(edgeDist(p.x1, p.x2), edgeDist(p.x2, p.y2)) - p.w / 2;
+          const d = Math.min(edgeDist(p.x1, p.y1), edgeDist(p.x2, p.y2)) - p.w / 2;
           if (d < v - 1e-6) hits.push({ x: p.x1, y: p.y1, msg: `Linie la ${f(d)} mm de margine (min ${v} mm).` });
         }
       }
