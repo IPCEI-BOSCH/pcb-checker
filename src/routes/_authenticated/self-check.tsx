@@ -133,6 +133,17 @@ function SelfCheck() {
 
   const submitOfficial = async () => {
     if (!current) return;
+    setBusy("Se verifică termenul-limită…");
+    // Deadline enforcement: hard deadline blocks the button, soft deadline records lateness.
+    const dl = await fetchDeadline(st.groups?.series_id ?? null, st.group_id);
+    const ds = deadlineState(dl, st.deadline_extension_until);
+    if (ds.phase === "closed") {
+      setBusy(null);
+      return void toast.error(`Termenul dur de predare a expirat${ds.hard ? ` (${ds.hard.toLocaleString("ro-RO")})` : ""}. Doar profesorul îți poate acorda o derogare individuală.`);
+    }
+    setBusy("Se semnează criptografic predarea…");
+    const zipHash = lastFile.current ? await sha256Hex(lastFile.current) : null;
+    const reportHash = await sha256Hex(JSON.stringify(current.report));
     setBusy("Se trimite predarea oficială…");
     const revision = (history.data?.filter((h) => h.kind === "OFFICIAL").length ?? 0) + 1;
     const { data: inserted, error } = await supabase.from("submissions").insert({
@@ -146,9 +157,13 @@ function SelfCheck() {
       drc_score: current.report.score,
       blocking_count: current.report.blockingCount,
       report: current.report as never,
+      zip_sha256: zipHash,
+      report_sha256: reportHash,
+      late_days: ds.lateDays || null,
     }).select("id").single();
     setBusy(null);
     if (error) return void toast.error(error.message);
+    if (ds.phase === "late") toast.warning(`Predare cu ${ds.lateDays} ${ds.lateDays === 1 ? "zi" : "zile"} întârziere${ds.penalty ? ` — penalizare ${ds.penalty} puncte` : ""}.`);
     // Background integrity check (results visible to staff only).
     if (inserted && current.layers) {
       const layers = current.layers;
