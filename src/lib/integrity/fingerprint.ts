@@ -38,7 +38,7 @@ export interface Fingerprint {
   /** v7: RMS radius of the pad cloud around the centre — scale-camouflage detection. */
   rms?: number;
   /** v7: transform/scale-invariant topological routing signature (rubber-band invariance). */
-  topo?: TopoSig;
+  topo?: TopoSig | undefined;
 }
 
 /** v7: topological routing descriptor — survives local "rubber-band" dragging of segments. */
@@ -97,17 +97,17 @@ export interface SimilarityDetail {
   bestZoneRect?: [number, number, number, number] | undefined;
   forensicFlags?: ForensicFlags;
   /** v7: geometric routing match before topological blending. */
-  routingGeo?: number;
+  routingGeo?: number | undefined;
   /** v7: topological routing signature match (rubber-band invariant) 0..100. */
-  topological?: number;
+  topological?: number | undefined;
   /** v7: CAD export-order correlation (LCS over flash/drill/aperture sequences) 0..100. */
-  cadSequence?: number;
+  cadSequence?: number | undefined;
   /** v7: scale factor A/B tested for scale camouflage. */
-  scaleFactor?: number;
+  scaleFactor?: number | undefined;
   /** v7: routing match improved >18% after scale normalization. */
-  scaleCamouflage?: boolean;
+  scaleCamouflage?: boolean | undefined;
   /** v7: which camouflage was detected. */
-  obfuscationSubtype?: "layer_swap" | "scalare_artificiala";
+  obfuscationSubtype?: "layer_swap" | "scalare_artificiala" | undefined;
   zoneMax?: number;
   zones?: number;
   partial?: boolean;
@@ -350,7 +350,7 @@ function scaleFp(f: Fingerprint, l: number): Fingerprint {
   const p = (pts?: P2[]) => pts?.map(([x, y]) => [r2(x * l), r2(y * l)] as P2);
   return {
     ...f,
-    padPts: p(f.padPts),
+    padPts: p(f.padPts) ?? f.padPts,
     copperPts: p(f.copperPts),
     silkPts: p(f.silkPts),
     vias: p(f.vias),

@@ -39,7 +39,7 @@ export const Route = createFileRoute("/_authenticated/insights")({
   component: Insights,
 });
 
-type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; group?: string; zipPath: string | null; report: DrcReport | null; score: number | null; submittedAt?: string | null };
+type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; group?: string | undefined; zipPath: string | null; report: DrcReport | null; score: number | null; submittedAt?: string | null };
 type Review = { student_a: string; student_b: string; status: "false_positive" | "discuss" | "confirmed"; note: string | null };
 type Pair = { a: Row; b: Row; d: SimilarityDetail; adj?: Adjusted };
 type Alert = { id: string; student_id: string; other_student_id: string; similarity: number; adjusted: number; status: string; created_at: string; detail: SimilarityDetail };

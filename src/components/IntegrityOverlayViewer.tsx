@@ -170,7 +170,7 @@ function fpHash(fp: Fingerprint | undefined): string {
   return h.toString(16).padStart(8, "0");
 }
 
-export function IntegrityOverlayViewer({ a, b, detail, adj, historyA, historyB }: { a: Side; b: Side; detail: SimilarityDetail; adj?: { adjusted: number; z: number; baseline: number }; historyA?: HistEntry[]; historyB?: HistEntry[] }) {
+export function IntegrityOverlayViewer({ a, b, detail, adj, historyA, historyB }: { a: Side; b: Side; detail: SimilarityDetail; adj?: { adjusted: number; z: number; baseline: number } | undefined; historyA?: HistEntry[] | undefined; historyB?: HistEntry[] | undefined }) {
   const [da, setDa] = useState<Loaded | null>(null);
   const [db, setDb] = useState<Loaded | null>(null);
   const [err, setErr] = useState<string | null>(null);
