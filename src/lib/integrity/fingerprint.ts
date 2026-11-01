@@ -348,15 +348,14 @@ export function cadSequenceScore(a?: Forensic, b?: Forensic): number | undefined
 /** v7: returns a copy of the fingerprint with all geometry scaled by λ (scale-camouflage test). */
 function scaleFp(f: Fingerprint, l: number): Fingerprint {
   const p = (pts?: P2[]) => pts?.map(([x, y]) => [r2(x * l), r2(y * l)] as P2);
-  return {
-    ...f,
-    padPts: p(f.padPts) ?? f.padPts,
-    copperPts: p(f.copperPts),
-    silkPts: p(f.silkPts),
-    vias: p(f.vias),
-    holePts: f.holePts?.map(([x, y, d]) => [r2(x * l), r2(y * l), r2(d * l)] as [number, number, number]),
-    segs: f.segs?.map(([x, y, a, w, len, ly]) => [r2(x * l), r2(y * l), a, r2(w * l), r2(len * l), ly] as Seg),
-  };
+  const out: Fingerprint = { ...f };
+  if (f.padPts) out.padPts = p(f.padPts);
+  if (f.copperPts) out.copperPts = p(f.copperPts);
+  if (f.silkPts) out.silkPts = p(f.silkPts);
+  if (f.vias) out.vias = p(f.vias);
+  if (f.holePts) out.holePts = f.holePts.map(([x, y, d]) => [r2(x * l), r2(y * l), r2(d * l)] as [number, number, number]);
+  if (f.segs) out.segs = f.segs.map(([x, y, a, w, len, ly]) => [r2(x * l), r2(y * l), a, r2(w * l), r2(len * l), ly] as Seg);
+  return out;
 }
 
 /** Histogram-only similarity 0..1 (v1 behaviour). */
