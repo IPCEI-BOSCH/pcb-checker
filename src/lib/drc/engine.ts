@@ -729,6 +729,24 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     else note("SILK_TEXT_SIZE", silkBlocks.length ? `${silkBlocks.length} texte de serigrafie, toate lizibile.` : "Nu s-au găsit texte pe serigrafie.");
   }
 
+  // ERR_63 — text orientation: mirrored on TOP or NOT mirrored on BOTTOM (silk + copper text).
+  // The local vector pre-OCR votes the mirror verdict only from confidently decoded asymmetric glyphs.
+  {
+    const copperText = [...extractTextBlocks(one("top_copper")), ...extractTextBlocks(one("bottom_copper"))].slice(0, 150);
+    const allText = [...silkBlocks, ...copperText];
+    const decodable = allText.filter((b) => b.mirrored !== null && b.mirrored !== undefined && (b.decodeConfidence ?? 0) >= 0.5 && b.chars >= 2);
+    const badTop = decodable.filter((b) => b.mirrored === true && (b.layer === "top_silk" || b.layer === "top_copper"));
+    const badBottom = decodable.filter((b) => b.mirrored === false && (b.layer === "bottom_silk" || b.layer === "bottom_copper"));
+    const bad = [...badTop, ...badBottom];
+    bad.slice(0, MAX_MARKS).forEach((b) => {
+      const where = b.layer === "top_silk" ? "serigrafie TOP" : b.layer === "top_copper" ? "cupru TOP" : b.layer === "bottom_silk" ? "serigrafie BOTTOM" : "cupru BOTTOM";
+      const prob = b.layer.startsWith("top") ? "scris în oglindă (pe TOP trebuie citit normal)" : "NEoglindit (pe spatele plăcii va apărea în oglindă, ilizibil)";
+      fail("MIRRORED_TEXT_ORIENTATION", `Text „${b.decoded ?? "?"}” pe ${where}: ${prob}.`, { x: b.x, y: b.y, layer: b.layer });
+    });
+    if (bad.length) failed.set("MIRRORED_TEXT_ORIENTATION", `${bad.length} ${bad.length === 1 ? "bloc de text are" : "blocuri de text au"} orientarea greșită (oglindă).`);
+    else note("MIRRORED_TEXT_ORIENTATION", decodable.length ? `${decodable.length} texte decodate local, toate cu orientarea corectă.` : "Nu s-au putut decoda local texte pentru verificarea orientării.");
+  }
+
 
   // Min trace width
   let minTrace: number | null = null;
