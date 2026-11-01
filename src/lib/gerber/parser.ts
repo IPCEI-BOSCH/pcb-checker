@@ -554,6 +554,8 @@ export function outlineBBox(layer: Layer): BBox | null {
 export function layerBBox(layer: Layer, centerline = false): BBox | null {
   let b: BBox | null = null;
   const add = (o: BBox) => {
+    // Unresolved aperture macros must not poison the entire board's bounds.
+    if (![o.minX, o.minY, o.maxX, o.maxY].every(Number.isFinite)) return;
     if (!b) b = { ...o };
     else {
       b.minX = Math.min(b.minX, o.minX);
