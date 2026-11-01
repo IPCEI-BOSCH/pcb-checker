@@ -551,25 +551,50 @@ export function similarityDetail(a: Fingerprint, b: Fingerprint): SimilarityDeta
   const viaMatch = hasVias ? matchFrac(index(va, 0.25), va.length, vb, 0.25) : 0;
   const ff = forensicFlags(a.forensic, b.forensic);
   const schema = 0.4 * comps + 0.35 * al.score + 0.25 * holes;
-  const routing = hasVias ? 0.85 * tm.loose + 0.15 * viaMatch : tm.loose;
+  let routing = hasVias ? 0.85 * tm.loose + 0.15 * viaMatch : tm.loose;
   const layerSwapDetected = cross - tm.loose >= 0.2 && cross >= 0.7;
+  // v7: scale camouflage — same layout exported at a slightly different scale.
+  let scaleFactor: number | undefined, scaleCamouflage = false;
+  let tmUse = tm, alUse = al;
+  const rmsA = a.rms ?? 0, rmsB = b.rms ?? 0;
+  if (rmsA > 1 && rmsB > 1 && routing < 0.9) {
+    const lam = rmsA / rmsB;
+    if (lam >= 0.85 && lam <= 1.15 && Math.abs(lam - 1) > 0.015) {
+      const bs = scaleFp(b, lam);
+      const alS = align(a.padPts!, bs.padPts!, segMid(a.segs), segMid(bs.segs));
+      const tmS = hasSegs ? traceMatch(a.segs!, bs.segs!, alS.t, alS.dx, alS.dy) : tm;
+      const routingS = hasVias ? 0.85 * tmS.loose + 0.15 * viaMatch : tmS.loose;
+      if (routingS > routing * 1.18 + 0.02) {
+        scaleCamouflage = true; scaleFactor = Math.round(lam * 1000) / 1000;
+        tmUse = tmS; alUse = alS; routing = routingS;
+      }
+    }
+  }
+  // v7: topological routing score (rubber-band invariance) blended with the geometric Chamfer score.
+  const topo = topoSim(a.topo, b.topo);
+  const routingC = topo != null && topo >= 0.6 ? Math.max(routing, 0.5 * routing + 0.5 * topo) : routing;
+  const cadSeq = cadSequenceScore(a.forensic, b.forensic);
+  if (cadSeq != null && cadSeq >= 85) ff.identicalCadSequence = true;
   // Routing dominates: same schematic alone (same theme) must not look like a copy.
   const s = hasSilk
-    ? 0.45 * routing + 0.15 * tm.exact + 0.2 * schema + 0.1 * silk + 0.1 * global
-    : 0.5 * routing + 0.15 * tm.exact + 0.25 * schema + 0.1 * global;
+    ? 0.45 * routingC + 0.15 * tmUse.exact + 0.2 * schema + 0.1 * silk + 0.1 * global
+    : 0.5 * routingC + 0.15 * tmUse.exact + 0.25 * schema + 0.1 * global;
   const total = Math.round(Math.max(0, Math.min(1, s)) * 1000) / 10;
   const pct = (v: number) => Math.round(v * 1000) / 10;
-  const partial = routing < 0.75 && tm.zones >= 1 && tm.zoneMax >= 0.9 && (zm.max >= 0.85 || !hasSegs);
-  const cls: PairClass = layerSwapDetected ? "obfuscare" : routing >= 0.75
+  const partial = routingC < 0.75 && tmUse.zones >= 1 && tmUse.zoneMax >= 0.9 && (zm.max >= 0.85 || !hasSegs);
+  const cls: PairClass = layerSwapDetected || scaleCamouflage ? "obfuscare" : routingC >= 0.75
     ? (hasSilk && silk < 0.2 ? "obfuscare" : "copiere_trasee")
     : partial ? "copie_partiala"
-    : routing >= 0.4 ? "inspectie" : "independent";
+    : routingC >= 0.4 ? "inspectie" : "independent";
   return {
-    total, pads: pct(al.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global),
-    comps: pct(comps), traces: pct(routing), schema: pct(schema), routing: pct(routing), routingExact: pct(tm.exact), routeZoneMax: pct(tm.zoneMax),
-    cls, zoneMax: pct(zm.max), zones: tm.zones, partial,
-    viaMatch: hasVias ? pct(viaMatch) : undefined, routingCrossLayer: pct(cross), layerSwapDetected, bestZoneRect: tm.rect, forensicFlags: ff,
-    transform: { rot: al.t.rot, mirror: al.t.mirror, dx: al.dx, dy: al.dy }, verdict: verdictOf(total),
+    total, pads: pct(alUse.score), holes: pct(holes), copper: pct(copper), silk: pct(silk), global: pct(global),
+    comps: pct(comps), traces: pct(routingC), schema: pct(schema), routing: pct(routingC), routingExact: pct(tmUse.exact), routeZoneMax: pct(tmUse.zoneMax),
+    cls, zoneMax: pct(zm.max), zones: tmUse.zones, partial,
+    viaMatch: hasVias ? pct(viaMatch) : undefined, routingCrossLayer: pct(cross), layerSwapDetected, bestZoneRect: tmUse.rect, forensicFlags: ff,
+    routingGeo: pct(routing), topological: topo != null ? pct(topo) : undefined, cadSequence: cadSeq,
+    scaleFactor, scaleCamouflage: scaleCamouflage || undefined,
+    obfuscationSubtype: layerSwapDetected ? "layer_swap" : scaleCamouflage ? "scalare_artificiala" : undefined,
+    transform: { rot: alUse.t.rot, mirror: alUse.t.mirror, dx: alUse.dx, dy: alUse.dy }, verdict: verdictOf(total),
   };
 }
 
