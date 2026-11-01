@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { openEvaluationSheet, type EvaluationMeta } from "@/lib/drc/evaluationSheet";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { GerberViewer } from "@/components/GerberViewer";
+import { GerberViewer, type BoardPin } from "@/components/GerberViewer";
 import { FileDiagnostics } from "@/components/FileDiagnostics";
 import { SilkTextCard } from "@/components/SilkTextCard";
 import type { DrcReport } from "@/lib/drc/engine";
@@ -13,7 +13,7 @@ import { CATALOG, CATEGORY_LABELS } from "@/lib/drc/catalog";
 import type { Layer } from "@/lib/gerber/types";
 import { cn } from "@/lib/utils";
 
-export function DrcReportView({ report, layers, meta }: { report: DrcReport; layers: Layer[] | null; meta?: EvaluationMeta }) {
+export function DrcReportView({ report, layers, meta, pins, onPinRequest, focusPoint }: { report: DrcReport; layers: Layer[] | null; meta?: EvaluationMeta; pins?: BoardPin[] | undefined; onPinRequest?: ((x: number, y: number) => void) | undefined; focusPoint?: { x: number; y: number } | null | undefined }) {
   const [cad, setCad] = useState<CadTool>("orcad");
   const [focus, setFocus] = useState<number | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -109,7 +109,7 @@ export function DrcReportView({ report, layers, meta }: { report: DrcReport; lay
             <span className="text-xs text-muted-foreground">Ghid remediere: {CAD_LABELS[cad]}</span>
           </CardHeader>
           <CardContent>
-            <GerberViewer layers={layers} issues={report.issues} focus={focus} cad={cad} onSelectIssue={setFocus} nets={report.nets} minClearance={report.rulesMinClearance} />
+            <GerberViewer layers={layers} issues={report.issues} focus={focus} cad={cad} onSelectIssue={setFocus} nets={report.nets} minClearance={report.rulesMinClearance} pins={pins} onPinRequest={onPinRequest} focusPoint={focusPoint} />
           </CardContent>
         </Card>
       )}
