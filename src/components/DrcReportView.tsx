@@ -14,7 +14,7 @@ import type { Layer } from "@/lib/gerber/types";
 import { cn } from "@/lib/utils";
 
 export function DrcReportView({ report, layers, meta }: { report: DrcReport; layers: Layer[] | null; meta?: EvaluationMeta }) {
-  const [cad] = useState<CadTool>("orcad");
+  const [cad, setCad] = useState<CadTool>("orcad");
   const [focus, setFocus] = useState<number | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const locate = (code: string) => {
