@@ -96,6 +96,6 @@ export function generateInterviewQuestions(report: DrcReport): InterviewQuestion
 
 /** Interview grade (1–10) from the three per-question marks (100/50/0). */
 export function interviewGrade(marks: (100 | 50 | 0)[]): number {
-  const avg = marks.reduce((a, m) => a + m, 0) / Math.max(1, marks.length);
+  const avg = marks.reduce<number>((a, m) => a + m, 0) / Math.max(1, marks.length);
   return Math.round((1 + (avg / 100) * 9) * 100) / 100;
 }
