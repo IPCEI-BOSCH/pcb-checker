@@ -40,9 +40,9 @@ export interface Fingerprint {
 export interface Forensic {
   apertureSignature: string[];
   cadHeader: string[];
-  projectId?: string;
-  zipMin?: number;
-  zipMax?: number;
+  projectId?: string | undefined;
+  zipMin?: number | undefined;
+  zipMax?: number | undefined;
 }
 
 export interface ForensicFlags { identicalApertureOrder: boolean; sameProjectId: boolean; closeZipTimestamps: boolean; apertureOrderPct?: number }
@@ -69,12 +69,12 @@ export interface SimilarityDetail {
   routeZoneMax?: number;
   cls?: PairClass;
   /** v6: overlapped vias %. */
-  viaMatch?: number;
+  viaMatch?: number | undefined;
   /** v6: routing ignoring the copper layer (TOP↔BOTTOM swap). */
   routingCrossLayer?: number;
   layerSwapDetected?: boolean;
   /** v6: best 5x5 overlapping window, in A's centred frame [x0,y0,x1,y1] mm. */
-  bestZoneRect?: [number, number, number, number];
+  bestZoneRect?: [number, number, number, number] | undefined;
   forensicFlags?: ForensicFlags;
   zoneMax?: number;
   zones?: number;
