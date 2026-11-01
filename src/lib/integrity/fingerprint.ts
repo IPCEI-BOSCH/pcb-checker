@@ -347,7 +347,7 @@ export function cadSequenceScore(a?: Forensic, b?: Forensic): number | undefined
 
 /** v7: returns a copy of the fingerprint with all geometry scaled by λ (scale-camouflage test). */
 function scaleFp(f: Fingerprint, l: number): Fingerprint {
-  const p = (pts?: P2[]) => pts?.map(([x, y]) => [r2(x * l), r2(y * l)] as P2);
+  const p = (pts: P2[]) => pts.map(([x, y]) => [r2(x * l), r2(y * l)] as P2);
   const out: Fingerprint = { ...f };
   if (f.padPts) out.padPts = p(f.padPts);
   if (f.copperPts) out.copperPts = p(f.copperPts);
