@@ -15,8 +15,10 @@ export function GoldenSuitePanel() {
     setRunning(true);
     setResults(null);
     const out: GoldenResult[] = [];
-    await runGoldenSuite((_done, _total, r) => setResults([...out, r]) && out.push(r));
-    setResults(out);
+    await runGoldenSuite((_done, _total, r) => {
+      out.push(r);
+      setResults([...out]);
+    });
     setRunning(false);
   };
 

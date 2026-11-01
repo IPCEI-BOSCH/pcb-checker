@@ -168,8 +168,8 @@ async function runCase(c: GoldenCase): Promise<GoldenResult> {
   const failures: string[] = [];
   try {
     const blob = await makeZip(c.files);
-    const parsed = await loadGerberZip(blob, "smt");
-    const report: DrcReport = runDrc(parsed, DEFAULT_SETTINGS, "smt");
+    const parsed = await loadGerberZip(blob);
+    const report: DrcReport = runDrc(parsed, "smt", DEFAULT_SETTINGS);
     for (const e of c.expect) {
       const rule = report.rules.find((r) => r.code === e.rule);
       if (!rule) failures.push(`regula ${e.rule} nu apare în raport`);
