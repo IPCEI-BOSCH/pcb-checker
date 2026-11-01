@@ -275,7 +275,7 @@ function pointInFlash(x: number, y: number, p: Extract<Primitive, { t: "flash" }
   return Math.abs(x - p.x) <= p.w / 2 + tol && Math.abs(y - p.y) <= p.h / 2 + tol;
 }
 
-/** Minimum clearance between copper items that do not touch (spatial hash). */
+/** Minimum clearance between copper items that do not touch (spatial hash grid 2 mm + Union-Find). */
 function clearanceScan(layer: Layer, limit: number) {
   const caps = layer.primitives.map(toCapsule).filter((c): c is Capsule => !!c);
   const cell = 2;
@@ -305,7 +305,7 @@ function clearanceScan(layer: Layer, limit: number) {
         const key = ia < ib ? `${ia}-${ib}` : `${ib}-${ia}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const gap = segSegDist(A, B) - A.r - B.r;
+        const gap = gapBetween(A, B);
         if (gap <= 0.001) parent[find(ia)] = find(ib);
         else if (gap < limit * 2) pairs.push([ia, ib, gap]);
       }
@@ -315,20 +315,11 @@ function clearanceScan(layer: Layer, limit: number) {
   const dark = layer.primitives.filter((p) => p.t === "region" && !p.clear) as Extract<Primitive, { t: "region" }>[];
   const clearR = layer.primitives.filter((p) => p.t === "region" && p.clear) as Extract<Primitive, { t: "region" }>[];
   const clearF = layer.primitives.filter((p) => p.t === "flash" && p.clear) as Extract<Primitive, { t: "flash" }>[];
-  const inPoly = (x: number, y: number, pts: [number, number][]) => {
-    let inside = false;
-    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const [xi, yi] = pts[i]!;
-      const [xj, yj] = pts[j]!;
-      if (yi > y !== yj > y && x < ((xj - xi) * (y - yj)) / (yi - yj) + xj) inside = !inside;
-    }
-    return inside;
-  };
   const inSolid = (x: number, y: number) =>
     dark.length > 0 &&
     !clearF.some((f) => pointInFlash(x, y, f)) &&
-    !clearR.some((r) => inPoly(x, y, r.pts)) &&
-    dark.some((r) => inPoly(x, y, r.pts));
+    !clearR.some((r) => pointInPoly(x, y, r.pts)) &&
+    dark.some((r) => pointInPoly(x, y, r.pts));
   let min: number | null = null;
   const hits: { x: number; y: number; gap: number }[] = [];
   for (const [a, b, gap] of pairs) {
@@ -346,7 +337,107 @@ function clearanceScan(layer: Layer, limit: number) {
     }
   }
   hits.sort((p, q) => p.gap - q.gap);
-  return { min, hits };
+  return { min, hits, caps, find };
+}
+
+/**
+ * Electrical connectivity graph: Union-Find over the copper capsules of TOP and BOTTOM,
+ * merged across layers by drill holes (vias/THT) that touch copper on both sides.
+ * Net names come from Gerber X2 %TO.N attributes when present, else NET_001…
+ */
+function buildNets(top: Layer | undefined, bottom: Layer | undefined, holes: Hole[]): NetSummary[] | undefined {
+  const sides: { kind: "top_copper" | "bottom_copper"; caps: Capsule[]; find: (i: number) => number }[] = [];
+  for (const [kind, layer] of [["top_copper", top], ["bottom_copper", bottom]] as const) {
+    if (!layer) continue;
+    const { caps, find } = clearanceScan(layer, 0);
+    if (caps.length) sides.push({ kind, caps, find });
+  }
+  if (!sides.length) return undefined;
+  // Global ids: side s, capsule i → gid
+  const offset: number[] = [];
+  let total = 0;
+  for (const s of sides) { offset.push(total); total += s.caps.length; }
+  const parent = Array.from({ length: total }, (_, i) => i);
+  const gfind = (i: number): number => (parent[i] === i ? i : (parent[i] = gfind(parent[i]!)));
+  const gunion = (a: number, b: number) => { parent[gfind(a)] = gfind(b); };
+  // Same-layer unions from clearanceScan
+  sides.forEach((s, si) => {
+    const roots = new Map<number, number>();
+    for (let i = 0; i < s.caps.length; i++) {
+      const r = s.find(i);
+      const prev = roots.get(r);
+      if (prev === undefined) roots.set(r, i);
+      else gunion(offset[si]! + i, offset[si]! + prev);
+    }
+  });
+  // Cross-layer unions through holes
+  const holeGids: number[][] = holes.map(() => []);
+  holes.forEach((h, hi) => {
+    sides.forEach((s, si) => {
+      s.caps.forEach((c, ci) => {
+        if (h.x < c.b.minX - 0.25 || h.x > c.b.maxX + 0.25 || h.y < c.b.minY - 0.25 || h.y > c.b.maxY + 0.25) return;
+        const d = c.rect ? ptRectDist(h.x, h.y, c.rect) : ptSegDist(h.x, h.y, c.ax, c.ay, c.bx, c.by) - c.r;
+        if (d <= 0.25) holeGids[hi]!.push(offset[si]! + ci);
+      });
+    });
+    const gs = holeGids[hi]!;
+    for (let i = 1; i < gs.length; i++) gunion(gs[0]!, gs[i]!);
+  });
+  // Group capsules by global root
+  const groups = new Map<number, { s: number; i: number }[]>();
+  sides.forEach((s, si) => {
+    for (let i = 0; i < s.caps.length; i++) {
+      const r = gfind(offset[si]! + i);
+      const g = groups.get(r) ?? [];
+      g.push({ s: si, i });
+      groups.set(r, g);
+    }
+  });
+  const nets: NetSummary[] = [];
+  let n = 0;
+  for (const members of groups.values()) {
+    n++;
+    const primitiveIds: NetSummary["primitiveIds"] = { top_copper: [], bottom_copper: [] };
+    let name: string | undefined;
+    let len = 0;
+    let squares = 0;
+    let minW: number | null = null;
+    let maxW: number | null = null;
+    const box: BBox = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    for (const { s, i } of members) {
+      const c = sides[s]!.caps[i]!;
+      const prim = sides[s]!.kind === "top_copper" ? top!.primitives[c.i]! : bottom!.primitives[c.i]!;
+      primitiveIds[sides[s]!.kind].push(c.i);
+      if (!name && "net" in prim && prim.net) name = prim.net;
+      if (prim.t === "line") {
+        const L = Math.hypot(prim.x2 - prim.x1, prim.y2 - prim.y1);
+        len += L;
+        if (prim.w > 0) squares += L / prim.w;
+        if (prim.w > 0) { minW = minW === null ? prim.w : Math.min(minW, prim.w); maxW = Math.max(maxW ?? 0, prim.w); }
+      } else if (prim.t === "flash") {
+        minW = minW === null ? Math.min(prim.w, prim.h) : Math.min(minW, prim.w, prim.h);
+        maxW = Math.max(maxW ?? 0, prim.w, prim.h);
+      }
+      box.minX = Math.min(box.minX, c.b.minX); box.minY = Math.min(box.minY, c.b.minY);
+      box.maxX = Math.max(box.maxX, c.b.maxX); box.maxY = Math.max(box.maxY, c.b.maxY);
+    }
+    const holeIds: number[] = [];
+    holes.forEach((h, hi) => {
+      if (holeGids[hi]!.some((g) => gfind(g) === gfind(offset[sides.findIndex((s) => s.caps.some((c) => c.i === members[0]!.i))]! + members[0]!.i))) holeIds.push(hi);
+    });
+    nets.push({
+      netId: n,
+      name: name ?? `NET_${String(n).padStart(3, "0")}`,
+      primitiveIds,
+      holeIds,
+      totalLengthMm: +len.toFixed(2),
+      minWidthMm: minW === null ? null : +minW.toFixed(3),
+      maxWidthMm: maxW === null ? null : +maxW.toFixed(3),
+      boundingBox: { minX: +box.minX.toFixed(3), minY: +box.minY.toFixed(3), maxX: +box.maxX.toFixed(3), maxY: +box.maxY.toFixed(3) },
+      estimatedResistanceMilliohm: +(0.48 * squares).toFixed(2),
+    });
+  }
+  return nets;
 }
 
 export function runDrc(layers: Layer[], variant: Variant, settings: Settings = DEFAULT_SETTINGS): DrcReport {
