@@ -287,7 +287,7 @@ function Review() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Evaluare grupe</h1>
-          <p className="text-sm text-muted-foreground">An universitar → serie (sau toate) → grupă (sau toate) → student.</p>
+          <p className="text-sm text-muted-foreground">An universitar → serie (sau toate) → grupă (sau toate) → student. Scurtături: <kbd className="rounded border border-border px-1 font-mono text-xs">J</kbd>/<kbd className="rounded border border-border px-1 font-mono text-xs">K</kbd> studentul următor/anterior, <kbd className="rounded border border-border px-1 font-mono text-xs">A</kbd> aprobă, <kbd className="rounded border border-border px-1 font-mono text-xs">R</kbd> solicită refacere, <kbd className="rounded border border-border px-1 font-mono text-xs">1</kbd>–<kbd className="rounded border border-border px-1 font-mono text-xs">9</kbd> focalizează eroarea #n în vizualizator.</p>
         </div>
         {canManage && <Button variant="secondary" onClick={() => setImportOpen(true)}><FolderInput className="mr-2 h-4 w-4" /> Importă proiecte din ZIP</Button>}
       </div>
@@ -562,6 +562,13 @@ function Review() {
       </Dialog>
 
       {diffFor && <VersionDiffDialog studentName={diffFor.name} versions={diffFor.versions} open onClose={() => setDiffFor(null)} />}
+
+      <Dialog open={!!reqFor} onOpenChange={(o) => !o && setReqFor(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Cereri de reevaluare — {reqFor?.name}</DialogTitle></DialogHeader>
+          {reqFor && <ReviewRequestsList studentId={reqFor.id} onDone={() => qc.invalidateQueries({ queryKey: ["review_requests"] }) } />}
+        </DialogContent>
+      </Dialog>
 
       <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => { qc.invalidateQueries({ queryKey: ["review"] }); qc.invalidateQueries({ queryKey: ["structure"] }); }} />
     </div>
