@@ -108,7 +108,7 @@ export const GOLDEN_SUITE: GoldenCase[] = [
       smt: true,
       top: HDR + AP(10, "R,0.8,0.8") + AP(11, "R,1.5,1.5") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\n" + EOF,
       bottom: HDR + AP(10, "R,0.8,0.8") + "D10*\nX15000000Y15000000D03*\n" + EOF,
-      drill: "M48\nMETRIC,TZ\nT1C0.300\nT2C1.000\n%\nT1\nX15Y15\nT2\nX30Y15\nM30\n",
+      drill: "M48\nMETRIC,TZ\nT1C0.300\nT2C1.000\n%\nT1\nX15000Y15000\nT2\nX30000Y15000\nM30\n",
       mask: HDR + AP(10, "R,1.0,1.0") + AP(11, "R,1.7,1.7") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\n" + EOF,
       paste: HDR + AP(10, "R,0.7,0.7") + AP(11, "R,1.35,1.35") + "D10*\nX15000000Y15000000D03*\nD11*\nX30000000Y15000000D03*\n" + EOF,
     }),
@@ -118,7 +118,7 @@ export const GOLDEN_SUITE: GoldenCase[] = [
   {
     name: "G08 — gaură în afara pad-ului",
     description: "A treia gaură la (45,25) fără pad sub ea.",
-    files: baseFiles({ smt: true, drill: "M48\nMETRIC,TZ\nT1C1.000\n%\nT1\nX15Y15\nX30Y15\nX45Y25\nM30\n" }),
+    files: baseFiles({ smt: true, drill: "M48\nMETRIC,TZ\nT1C1.000\n%\nT1\nX15000Y15000\nX30000Y15000\nX45000Y25000\nM30\n" }),
     expect: [{ rule: "HOLE_OUTSIDE_PAD", passed: false }],
     maxMs: 3000,
   },
