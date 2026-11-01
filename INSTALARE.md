@@ -49,3 +49,10 @@ Pune serverul în spatele unui proxy cu certificat (ex. Caddy: `caddy reverse-pr
 - Aplicația funcționează identic pe Lovable și self-hosted: `src/lib/platform.server.ts` alege automat între serviciile Lovable și API-urile directe (Google, OpenAI-compatibil) după variabilele de mediu.
 - Schema completă a bazei: `selfhost/sql/schema.sql` (generată din `drizzle/migrations`).
 - Rulare locală: `bun install && bun run dev`.
+
+## Mod examen air-gapped (colocviu în rețea locală)
+
+1. În `.env` setați `EXAM_MODE=1` și reporniți stack-ul. Serviciile externe (Google Sheets/Drive, AI cloud) sunt ocolite grațios; sincronizarea se reia la reconectare.
+2. Opțional, pentru AI local în rețeaua UPB: `OPENAI_BASE_URL=http://<server-ollama>:11434/v1`, `OPENAI_API_KEY=ollama`, `AI_MODEL=<modelul local>`.
+3. În aplicație, profesorul deschide **Administrare → Mentenanță & Arhivare → Mod examen**, activează modul pe grupă și generează coduri unice de acces (valabilitate configurabilă). Studentul introduce codul la predarea oficială.
+4. La final de semestru, **Mentenanță & Arhivare → Arhivă de semestru** exportă într-un singur ZIP: catalogul de note (CSV), rapoartele DRC JSON, matricea de integritate, istoricul notelor și termenele.
