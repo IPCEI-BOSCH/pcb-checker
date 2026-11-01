@@ -115,6 +115,54 @@ export type Database = {
           },
         ]
       }
+      deadlines: {
+        Row: {
+          group_id: string | null
+          hard_deadline: string | null
+          id: string
+          late_penalty_per_day: number
+          series_id: string | null
+          soft_deadline: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          group_id?: string | null
+          hard_deadline?: string | null
+          id?: string
+          late_penalty_per_day?: number
+          series_id?: string | null
+          soft_deadline?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          group_id?: string | null
+          hard_deadline?: string | null
+          id?: string
+          late_penalty_per_day?: number
+          series_id?: string | null
+          soft_deadline?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deadlines_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deadlines_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       drc_settings: {
         Row: {
           id: string
@@ -143,6 +191,44 @@ export type Database = {
             columns: ["series_id"]
             isOneToOne: false
             referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grade_audit_logs: {
+        Row: {
+          changed_by: string
+          created_at: string
+          field: string
+          id: string
+          new_value: string | null
+          old_value: string | null
+          student_id: string
+        }
+        Insert: {
+          changed_by: string
+          created_at?: string
+          field: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+          student_id: string
+        }
+        Update: {
+          changed_by?: string
+          created_at?: string
+          field?: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grade_audit_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
             referencedColumns: ["id"]
           },
         ]
@@ -524,6 +610,102 @@ export type Database = {
           },
         ]
       }
+      review_annotations: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          note: string
+          student_id: string
+          submission_id: string | null
+          x: number
+          y: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          note: string
+          student_id: string
+          submission_id?: string | null
+          x: number
+          y: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          note?: string
+          student_id?: string
+          submission_id?: string | null
+          x?: number
+          y?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_annotations_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_annotations_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_requests: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          student_id: string
+          submission_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          student_id: string
+          submission_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          student_id?: string
+          submission_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_requests_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rule_test_runs: {
         Row: {
           activated: boolean
@@ -726,6 +908,7 @@ export type Database = {
       students: {
         Row: {
           created_at: string
+          deadline_extension_until: string | null
           drive_folder_id: string | null
           drive_layout_folder_id: string | null
           drive_project_folder_id: string | null
@@ -734,6 +917,7 @@ export type Database = {
           full_name: string
           grade_doc: number | null
           grade_final: number | null
+          grade_interview: number | null
           grade_schema: number | null
           group_id: string
           id: string
@@ -746,6 +930,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          deadline_extension_until?: string | null
           drive_folder_id?: string | null
           drive_layout_folder_id?: string | null
           drive_project_folder_id?: string | null
@@ -754,6 +939,7 @@ export type Database = {
           full_name: string
           grade_doc?: number | null
           grade_final?: number | null
+          grade_interview?: number | null
           grade_schema?: number | null
           group_id: string
           id?: string
@@ -766,6 +952,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          deadline_extension_until?: string | null
           drive_folder_id?: string | null
           drive_layout_folder_id?: string | null
           drive_project_folder_id?: string | null
@@ -774,6 +961,7 @@ export type Database = {
           full_name?: string
           grade_doc?: number | null
           grade_final?: number | null
+          grade_interview?: number | null
           grade_schema?: number | null
           group_id?: string
           id?: string
@@ -802,7 +990,9 @@ export type Database = {
           file_name: string | null
           id: string
           kind: string
+          late_days: number | null
           report: Json | null
+          report_sha256: string | null
           review_reason: string | null
           review_status: string
           reviewed_at: string | null
@@ -812,6 +1002,7 @@ export type Database = {
           user_id: string
           variant: Database["public"]["Enums"]["project_variant"]
           zip_path: string | null
+          zip_sha256: string | null
         }
         Insert: {
           blocking_count?: number
@@ -820,7 +1011,9 @@ export type Database = {
           file_name?: string | null
           id?: string
           kind?: string
+          late_days?: number | null
           report?: Json | null
+          report_sha256?: string | null
           review_reason?: string | null
           review_status?: string
           reviewed_at?: string | null
@@ -830,6 +1023,7 @@ export type Database = {
           user_id: string
           variant?: Database["public"]["Enums"]["project_variant"]
           zip_path?: string | null
+          zip_sha256?: string | null
         }
         Update: {
           blocking_count?: number
@@ -838,7 +1032,9 @@ export type Database = {
           file_name?: string | null
           id?: string
           kind?: string
+          late_days?: number | null
           report?: Json | null
+          report_sha256?: string | null
           review_reason?: string | null
           review_status?: string
           reviewed_at?: string | null
@@ -848,6 +1044,7 @@ export type Database = {
           user_id?: string
           variant?: Database["public"]["Enums"]["project_variant"]
           zip_path?: string | null
+          zip_sha256?: string | null
         }
         Relationships: [
           {
