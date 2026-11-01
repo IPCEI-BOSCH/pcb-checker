@@ -98,10 +98,11 @@ export const exportSemesterBundle = createServerFn({ method: "POST" })
     if (!groupIds.length) throw new Error("Seria nu are grupe.");
     const groupName = new Map((groups ?? []).map((g: { id: string; name: string }) => [g.id, g.name]));
 
-    const { data: students } = await ctx.supabase.from("students").select("*").in("group_id", groupIds);
-    const studentIds = (students ?? []).map((s: { id: string }) => s.id);
+    const { data: studentsRaw } = await ctx.supabase.from("students").select("*").in("group_id", groupIds);
+    const students: any[] = studentsRaw ?? [];
+    const studentIds = students.map((s) => s.id as string);
     if (!studentIds.length) throw new Error("Seria nu are studenți.");
-    const studentById = new Map((students ?? []).map((s: any) => [s.id, s]));
+    const studentById = new Map<string, any>(students.map((s) => [s.id as string, s]));
 
     const [subsRes, pairsRes, alertsRes, reviewsRes, auditRes, requestsRes, deadlinesRes] = await Promise.all([
       ctx.supabase.from("submissions").select("id, student_id, user_id, revision, kind, file_name, zip_path, variant, drc_score, blocking_count, review_status, review_reason, zip_sha256, report_sha256, late_days, created_at, report").in("student_id", studentIds).eq("kind", "OFFICIAL").order("created_at"),
@@ -117,7 +118,7 @@ export const exportSemesterBundle = createServerFn({ method: "POST" })
     const zip = new JSZip();
     const safe = (s: string) => s.replace(/[^\w.-]+/g, "_");
 
-    const officials = subsRes.data ?? [];
+    const officials: any[] = subsRes.data ?? [];
     zip.file(
       "manifest.json",
       JSON.stringify(
