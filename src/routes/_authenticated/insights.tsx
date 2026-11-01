@@ -20,8 +20,9 @@ import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { IntegrityOverlayViewer } from "@/components/IntegrityOverlayViewer";
+import { IntegrityOverlayViewer, type HistEntry } from "@/components/IntegrityOverlayViewer";
 import { IntegrityClusters } from "@/components/IntegrityClusters";
+import { IntegrityNetwork } from "@/components/IntegrityNetwork";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const Route = createFileRoute("/_authenticated/insights")({
@@ -38,7 +39,7 @@ export const Route = createFileRoute("/_authenticated/insights")({
   component: Insights,
 });
 
-type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; zipPath: string | null; report: DrcReport | null; score: number | null; submittedAt?: string | null };
+type Row = { studentId: string; submissionId: string | null; name: string; theme: string; seriesId: string; group?: string; zipPath: string | null; report: DrcReport | null; score: number | null; submittedAt?: string | null };
 type Review = { student_a: string; student_b: string; status: "false_positive" | "discuss" | "confirmed"; note: string | null };
 type Pair = { a: Row; b: Row; d: SimilarityDetail; adj?: Adjusted };
 type Alert = { id: string; student_id: string; other_student_id: string; similarity: number; adjusted: number; status: string; created_at: string; detail: SimilarityDetail };
@@ -47,8 +48,9 @@ const STATUS_LABEL: Record<Review["status"], string> = { false_positive: "Fals p
 
 async function fetchRows(seriesIds: string[]): Promise<Row[]> {
   if (!seriesIds.length) return [];
-  const g = await supabase.from("groups").select("id, series_id").in("series_id", seriesIds);
+  const g = await supabase.from("groups").select("id, series_id, name").in("series_id", seriesIds);
   const gmap = new Map((g.data ?? []).map((x) => [x.id, x.series_id]));
+  const gname = new Map((g.data ?? []).map((x) => [x.id, x.name]));
   if (!gmap.size) return [];
   const st = await supabase.from("students").select("id, full_name, theme_name, theme_number, group_id").in("group_id", [...gmap.keys()]);
   const ids = (st.data ?? []).map((s) => s.id);
@@ -58,7 +60,7 @@ async function fetchRows(seriesIds: string[]): Promise<Row[]> {
   return (st.data ?? []).map((s) => {
     const sub = latest.get(s.id);
     return {
-      studentId: s.id, submissionId: sub?.id ?? null, name: s.full_name, seriesId: gmap.get(s.group_id)!,
+      studentId: s.id, submissionId: sub?.id ?? null, name: s.full_name, seriesId: gmap.get(s.group_id)!, group: gname.get(s.group_id),
       theme: [s.theme_number, s.theme_name].filter(Boolean).join(" ") || "—",
       zipPath: sub?.zip_path ?? null, report: (sub?.report as DrcReport) ?? null, score: sub?.drc_score ?? null, submittedAt: sub?.created_at ?? null,
     };
