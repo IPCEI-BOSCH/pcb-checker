@@ -2,9 +2,9 @@ import type { Layer } from "@/lib/gerber/types";
 import { outlineBBox } from "@/lib/gerber/parser";
 import { extractTextBlocks } from "@/lib/silk/extract";
 
-export const FP_VERSION = 5;
+export const FP_VERSION = 6;
 /** Bump when similarityDetail changes so cached pair scores are recomputed. */
-export const PAIR_VERSION = 6;
+export const PAIR_VERSION = 7;
 
 type P2 = [number, number];
 /** [midX, midY, angle 0..180°, width, length, layer 0=top 1=bottom] */
@@ -35,6 +35,22 @@ export interface Fingerprint {
   vias?: P2[];
   /** v5: technical metadata (staff only). */
   forensic?: Forensic;
+  /** v7: RMS radius of the pad cloud around the centre — scale-camouflage detection. */
+  rms?: number;
+  /** v7: transform/scale-invariant topological routing signature (rubber-band invariance). */
+  topo?: TopoSig;
+}
+
+/** v7: topological routing descriptor — survives local "rubber-band" dragging of segments. */
+export interface TopoSig {
+  /** 10 quantiles of segment lengths, normalized by total length (scale invariant). */
+  lenQ: number[];
+  /** Length-weighted histogram of segment directions (12 bins over 0..180°). */
+  angH: number[];
+  /** Junction density: segment endpoints touching another segment / endpoint count. */
+  junctions: number;
+  /** Vias per segment (routing style). */
+  viaDensity: number;
 }
 
 export interface Forensic {
@@ -43,9 +59,13 @@ export interface Forensic {
   projectId?: string | undefined;
   zipMin?: number | undefined;
   zipMax?: number | undefined;
+  /** v7: quantized distances (0.2 mm bins) between consecutive D03 flashes, in file order — rotation/translation invariant CAD export sequence. */
+  flashSeq?: number[];
+  /** v7: drill diameters (0.05 mm bins) + hole counts per tool, in first-use order. */
+  drillSeq?: number[];
 }
 
-export interface ForensicFlags { identicalApertureOrder: boolean; sameProjectId: boolean; closeZipTimestamps: boolean; apertureOrderPct?: number }
+export interface ForensicFlags { identicalApertureOrder: boolean; sameProjectId: boolean; closeZipTimestamps: boolean; apertureOrderPct?: number; identicalCadSequence?: boolean }
 
 /** Automatic pre-classification — replaces the generic "undecided" state. */
 export type PairClass = "copiere_trasee" | "obfuscare" | "copie_partiala" | "inspectie" | "independent";
