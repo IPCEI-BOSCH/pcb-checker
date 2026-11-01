@@ -260,7 +260,7 @@ function Review() {
       // Always re-evaluate with the current parser/settings so the viewer and the report agree.
       const report = runDrc(layers, variant, await fetchSettings(sid));
       const seriesName = s?.series.find((x) => x.id === sid)?.name;
-      setView({ name, report, layers, meta: {
+      setView({ name, studentId: sub.student_id, submissionId: sub.id, report, layers, meta: {
         student: name, group: st ? groupName.get(st.group_id) : undefined, series: seriesName,
         theme: st ? `${st.theme_name ?? ""}${st.theme_number != null ? ` (N${st.theme_number})` : ""}`.trim() || undefined : undefined,
         submittedAt: `${new Date(sub.created_at).toLocaleString("ro-RO")} · v${sub.revision} (${variant})`,
@@ -332,6 +332,10 @@ function Review() {
 
       {!visibleGroups.length && s && <p className="text-sm text-muted-foreground">Nu ai încă grupe atribuite.</p>}
 
+      {(seriesId && seriesId !== ALL) || (groupId && groupId !== ALL) ? (
+        <DeadlinesCard seriesId={groupId && groupId !== ALL ? null : seriesId} groupId={groupId && groupId !== ALL ? groupId : null} userId={user.id} canEdit={canManage} />
+      ) : null}
+
       {scopeGroupIds.length > 0 && (
         <>
           <div className="grid gap-3 sm:grid-cols-5">
@@ -392,6 +396,10 @@ function Review() {
                             ? <button type="button" className="text-left font-medium text-foreground underline-offset-2 hover:underline" onClick={() => openReport(st.full_name, official, st.variant, sid, st)}>{st.full_name}</button>
                             : <div className="font-medium text-foreground">{st.full_name}</div>}
                           <div className="font-mono text-[11px] text-muted-foreground">{st.file_prefix ?? st.email}</div>
+                          {!!requests.data?.get(st.id) && (
+                            <Badge variant="outline" className="mt-1 gap-1 border-warning text-[10px] text-warning"><MessageSquareWarning className="h-3 w-3" /> {requests.data.get(st.id)} {requests.data.get(st.id) === 1 ? "cerere" : "cereri"} de reevaluare</Badge>
+                          )}
+                          {st.deadline_extension_until && <Badge variant="outline" className="mt-1 text-[10px]">Derogare până la {new Date(st.deadline_extension_until).toLocaleString("ro-RO", { dateStyle: "short", timeStyle: "short" })}</Badge>}
                           {st.status === "pending" && (
                             <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => approveStudent(st.id)}>Validează înscrierea</Button>
                           )}
