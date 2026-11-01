@@ -3,8 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, Play, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Eye, FileSpreadsheet, FolderInput, GitCompareArrows, Play, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { VersionDiffDialog, type VersionEntry } from "@/components/VersionDiff";
 import { useAuth } from "@/lib/auth";
 import { fetchStructure, logAudit } from "@/lib/data";
 import { loadGerberZip } from "@/lib/gerber/load";
@@ -51,6 +52,7 @@ function Review() {
   const [variantFilter, setVariantFilter] = useState<"ALL" | "SMT" | "THT">("ALL");
   const [batch, setBatch] = useState<{ done: number; total: number; label: string } | null>(null);
   const [view, setView] = useState<{ name: string; report: DrcReport; layers: Layer[] | null; meta?: import("@/lib/drc/evaluationSheet").EvaluationMeta } | null>(null);
+  const [diffFor, setDiffFor] = useState<{ name: string; versions: VersionEntry[] } | null>(null);
   const [reject, setReject] = useState<{ sub: Sub; name: string } | null>(null);
   const [reason, setReason] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -128,6 +130,21 @@ function Review() {
     await logAudit(user.id, "PANEL_APPROVAL", "submission", sub.id, { status, reason: why });
     qc.invalidateQueries({ queryKey: ["review"] });
     toast.success(status === "approved" ? "Aprobat pentru fabricație." : "Proiect respins.");
+  };
+
+  /** Deschide Visual Diff: toate predările/verificările studentului, cronologic. */
+  const openDiff = async (studentId: string, name: string) => {
+    const { data, error } = await supabase.from("submissions").select("id, revision, kind, zip_path, drc_score, report, created_at").eq("student_id", studentId).order("created_at");
+    if (error) return void toast.error(error.message);
+    const versions: VersionEntry[] = (data ?? []).map((s) => ({
+      id: s.id,
+      label: `${s.kind === "OFFICIAL" ? "Predare" : "Self-check"} v${s.revision}`,
+      zipPath: s.zip_path,
+      score: s.drc_score,
+      report: (s.report as DrcReport | null) ?? null,
+      createdAt: s.created_at,
+    }));
+    setDiffFor({ name, versions });
   };
 
   const approveAllClean = async () => {
@@ -339,6 +356,7 @@ function Review() {
                           {official && (
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant="secondary" onClick={() => openReport(st.full_name, official, st.variant, sid, st)}><Eye className="mr-1 h-4 w-4" /> Vizualizează Gerber</Button>
+                              <Button size="sm" variant="outline" aria-label={`Compară versiunile lui ${st.full_name}`} title="Compară vizual 2 versiuni (Visual Diff)" onClick={() => void openDiff(st.id, st.full_name)}><GitCompareArrows className="h-4 w-4" /></Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -410,6 +428,8 @@ function Review() {
           {view && <DrcReportView report={view.report} layers={view.layers} meta={view.meta ?? { student: view.name }} />}
         </DialogContent>
       </Dialog>
+
+      {diffFor && <VersionDiffDialog studentName={diffFor.name} versions={diffFor.versions} open onClose={() => setDiffFor(null)} />}
 
       <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => { qc.invalidateQueries({ queryKey: ["review"] }); qc.invalidateQueries({ queryKey: ["structure"] }); }} />
     </div>

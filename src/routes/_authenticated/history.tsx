@@ -2,8 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Database, HardDriveDownload, Eye, FileSpreadsheet, FolderInput, Play, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Database, GitCompareArrows, HardDriveDownload, Eye, FileSpreadsheet, FolderInput, Play, Trash2 } from "lucide-react";
 import { backupYear } from "@/lib/backup";
+import { VersionDiffDialog, type VersionEntry } from "@/components/VersionDiff";
+import type { DrcReport } from "@/lib/drc/engine";
 import { deleteSeries, deleteStudents, deleteYear, emptySeries, setArchived } from "@/lib/purge";
 import { logAudit } from "@/lib/data";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -54,6 +56,7 @@ function History() {
   const [ask, setAsk] = useState<{ text: string; action: () => void } | null>(null);
   const [typed, setTyped] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
+  const [diffFor, setDiffFor] = useState<{ name: string; versions: VersionEntry[] } | null>(null);
   const canManage = has("admin") || has("series_manager");
   const s = structure.data;
   const years = s?.years ?? [];
@@ -158,6 +161,21 @@ function History() {
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     try { await fn(); toast.success(ok); } catch (e) { toast.error((e as Error).message); }
     finally { setBusy(null); qc.invalidateQueries(); }
+  };
+
+  /** Deschide Visual Diff: toate predările/verificările studentului, cronologic. */
+  const openDiff = async (studentId: string, name: string) => {
+    const { data, error } = await supabase.from("submissions").select("id, revision, kind, zip_path, drc_score, report, created_at").eq("student_id", studentId).order("created_at");
+    if (error) return void toast.error(error.message);
+    const versions: VersionEntry[] = (data ?? []).map((s) => ({
+      id: s.id,
+      label: `${s.kind === "OFFICIAL" ? "Predare" : "Self-check"} v${s.revision}`,
+      zipPath: s.zip_path,
+      score: s.drc_score,
+      report: (s.report as DrcReport | null) ?? null,
+      createdAt: s.created_at,
+    }));
+    setDiffFor({ name, versions });
   };
 
   const yearName = years.find((y) => y.id === yearId)?.name ?? "";
@@ -284,6 +302,7 @@ function History() {
                       <TableCell>{r.grade_final ?? "—"}</TableCell>
                       <TableCell className="whitespace-nowrap text-right">
                         <Button size="sm" variant="secondary" onClick={() => { setAutoCheck(true); setOpen(r.id); }}><Eye className="mr-1 h-4 w-4" /> Gerber</Button>
+                        <Button size="sm" variant="ghost" aria-label={`Compară versiunile lui ${r.full_name}`} title="Compară vizual 2 versiuni (Visual Diff)" onClick={() => void openDiff(r.id, r.full_name)}><GitCompareArrows className="h-4 w-4" /></Button>
                         <Button size="sm" variant="ghost" onClick={() => { setAutoCheck(false); setOpen(open === r.id ? null : r.id); }}>{open === r.id ? "Închide" : "Fișiere"}</Button>
                         {canManage && (r.status === "archived"
                           ? <Button size="sm" variant="ghost" aria-label={`Dezarhivează ${r.full_name}`} onClick={() => archRows([r.id], false)}><ArchiveRestore className="h-4 w-4" /></Button>
@@ -317,6 +336,7 @@ function History() {
         </AlertDialogContent>
       </AlertDialog>
       <ZipImportDialog open={importOpen} onOpenChange={setImportOpen} onDone={() => qc.invalidateQueries()} />
+      {diffFor && <VersionDiffDialog studentName={diffFor.name} versions={diffFor.versions} open onClose={() => setDiffFor(null)} />}
     </div>
   );
 }

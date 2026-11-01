@@ -3,8 +3,9 @@ import { runDrc, type DrcReport } from "@/lib/drc/engine";
 
 type Job = { resolve: (r: DrcReport) => void; reject: (e: Error) => void };
 
-/** Small pool of background workers so batch DRC does not freeze the page; falls back to the main thread. */
-export function createDrcPool(size = Math.min(4, Math.max(1, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1))) {
+/** Small pool of background workers so batch DRC does not freeze the page; falls back to the main thread.
+ *  Concurrency is clamped to [2, 6] so the UI thread keeps 60 FPS even at ~150 simultaneous archives. */
+export function createDrcPool(size = Math.max(2, Math.min(globalThis.navigator?.hardwareConcurrency || 4, 6))) {
   const workers: Worker[] = [];
   const jobs = new Map<number, Job>();
   let next = 0;
