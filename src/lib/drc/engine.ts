@@ -120,6 +120,7 @@ export const TITLES: Record<string, string> = {
   OUTLINE_OPEN_OR_INVALID: "Contur deschis sau invalid (CRITIC)",
   DANGLING_TRACES: "Capete de traseu în aer (antene)",
   DRILL_ON_TRACE_NO_PAD: "Gaură pe traseu fără pad (CRITIC)",
+  MIRRORED_TEXT_ORIENTATION: "Text în oglindă / neoglindit (orientare)",
 };
 
 // code -> [penalty, severity when failing, SMT only]
@@ -141,6 +142,7 @@ export const LEGACY_PENALTY: Record<string, [number, Severity, boolean]> = {
   MISSING_PASTE: [10, "blocking", true],
   STENCIL_RATIO: [5, "warning", true],
   STENCIL_WINDOWPANE: [0, "info", true],
+  MIRRORED_TEXT_ORIENTATION: [5, "warning", false],
 };
 
 /** Axis-aligned rectangle used for SAT-exact distances on rectangular flashes. */
