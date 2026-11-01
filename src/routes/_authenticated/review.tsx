@@ -113,6 +113,55 @@ function Review() {
       return { st, official: all.find((x) => x.kind === "OFFICIAL") ?? null, selfCount: all.filter((x) => x.kind === "SELF_CHECK").length };
     });
   const rows = studentId === ALL ? allRows : allRows.filter((r) => r.st.id === studentId);
+
+  // Open re-evaluation requests per student (badge in the table).
+  const requests = useQuery({
+    queryKey: ["review_requests", scopeGroupIds.join(",")],
+    enabled: !!data.data?.students.length,
+    queryFn: async () => {
+      const ids = data.data!.students.map((x) => x.id);
+      const m = new Map<string, number>();
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data: rr } = await supabase.from("review_requests").select("student_id").eq("status", "open").in("student_id", ids.slice(i, i + 150));
+        for (const r of rr ?? []) m.set(r.student_id, (m.get(r.student_id) ?? 0) + 1);
+      }
+      return m;
+    },
+  });
+
+  // Spatial annotations for the student open in the viewer dialog.
+  const annots = useQuery({
+    queryKey: ["annotations", view?.studentId],
+    enabled: !!view,
+    queryFn: () => fetchAnnotations(view!.studentId),
+  });
+
+  // Speed-grading keyboard: J/K = next/previous student, A = approve, R = request redo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
+      if (view || reject || delStudent || extFor || pinDraft) return;
+      const k = e.key.toLowerCase();
+      if (k === "j" || k === "k") {
+        if (!allRows.length) return;
+        const i = allRows.findIndex((r) => r.st.id === studentId);
+        const n = k === "j" ? (i < 0 ? 0 : Math.min(allRows.length - 1, i + 1)) : (i < 0 ? allRows.length - 1 : Math.max(0, i - 1));
+        setStudentId(allRows[n]!.st.id);
+        e.preventDefault();
+      } else if (k === "a" || k === "r") {
+        const cur = allRows.find((r) => r.st.id === studentId) ?? (allRows.length === 1 ? allRows[0] : null);
+        if (!cur?.official) return;
+        if (k === "a") void setStatus(cur.official, "approved");
+        else { setReason(cur.official.review_reason ?? ""); setReject({ sub: cur.official, name: cur.st.full_name }); }
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows, studentId, view, reject, delStudent, extFor, pinDraft]);
+
   const kpi = {
     total: rows.length,
     smt: rows.filter((r) => r.st.variant === "SMT").length,
