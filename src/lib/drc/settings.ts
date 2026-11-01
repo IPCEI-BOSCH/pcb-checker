@@ -351,6 +351,7 @@ export const DEFAULT_SETTINGS: Settings = {
     MISSING_PASTE: { points: 10, severity: "blocking", enabled: true, smtOnly: true, perIssue: 0, cap: 10 },
     STENCIL_RATIO: { points: 5, severity: "warning", enabled: true, smtOnly: true, perIssue: 1, cap: 15 },
     STENCIL_WINDOWPANE: { points: 0, severity: "info", enabled: true, smtOnly: true, perIssue: 0, cap: 0 },
+    MIRRORED_TEXT_ORIENTATION: { points: 5, severity: "warning", enabled: true, smtOnly: false, perIssue: 1, cap: 10 },
     SILK_TEXT_SIZE: { points: 2, severity: "warning", enabled: false, smtOnly: false, perIssue: 0, cap: 2 },
     MASK_EXPANSION: { points: 3, severity: "warning", enabled: true, smtOnly: false, perIssue: 0.25, cap: 6 },
     PASTE_SIZE: { points: 3, severity: "warning", enabled: true, smtOnly: true, perIssue: 0.25, cap: 6 },
