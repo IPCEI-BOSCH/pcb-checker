@@ -131,12 +131,12 @@ export const GOLDEN_SUITE: GoldenCase[] = [
   },
   {
     name: "G10 — punte de mască prea subțire (ERR_54)",
-    description: "Două deschideri de mască Ø1.5 la 1.6 mm distanță → punte de 0.1 mm sub prag.",
+    description: "Două deschideri de mască de 1.5 mm la 1.55 mm distanță → punte de 0.05 mm sub pragul de 0.08 mm.",
     files: baseFiles({
       smt: true,
-      top: HDR + AP(10, "R,1.3,1.3") + "D10*\nX15000000Y15000000D03*\nX16600000Y15000000D03*\nX30000000Y15000000D03*\n" + EOF,
-      drill: "M48\nMETRIC,TZ\nT1C1.000\n%\nT1\nX15Y15\nX16.6Y15\nX30Y15\nM30\n",
-      mask: HDR + AP(10, "R,1.5,1.5") + "D10*\nX15000000Y15000000D03*\nX16600000Y15000000D03*\nX30000000Y15000000D03*\n" + EOF,
+      top: HDR + AP(10, "R,1.3,1.3") + "D10*\nX15000000Y15000000D03*\nX15500000Y15000000D03*\nX30000000Y15000000D03*\n" + EOF,
+      drill: "M48\nMETRIC,TZ\nT1C1.000\n%\nT1\nX15000Y15000\nX15500Y15000\nX30000Y15000\nM30\n",
+      mask: HDR + AP(10, "R,1.5,1.5") + "D10*\nX15000000Y15000000D03*\nX15500000Y15000000D03*\nX30000000Y15000000D03*\n" + EOF,
     }),
     expect: [{ rule: "SOLDER_MASK_SLIVER", passed: false }],
     maxMs: 3000,
@@ -169,7 +169,7 @@ async function runCase(c: GoldenCase): Promise<GoldenResult> {
   try {
     const blob = await makeZip(c.files);
     const parsed = await loadGerberZip(blob);
-    const report: DrcReport = runDrc(parsed, "smt", DEFAULT_SETTINGS);
+    const report: DrcReport = runDrc(parsed, "SMT", DEFAULT_SETTINGS);
     for (const e of c.expect) {
       const rule = report.rules.find((r) => r.code === e.rule);
       if (!rule) failures.push(`regula ${e.rule} nu apare în raport`);
