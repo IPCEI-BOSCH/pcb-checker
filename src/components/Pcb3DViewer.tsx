@@ -128,9 +128,8 @@ export function Pcb3DViewer({ layers, issues }: Props) {
       path.absarc(h.x - cx, h.y - cy, Math.max(0.05, h.d / 2), 0, Math.PI * 2, true);
       shape.holes.push(path);
     }
-    const g = new THREE.ExtrudeGeometry(shape, { depth: FR4, bevelEnabled: false, curveSegments: 24 });
-    g.rotateX(-Math.PI / 2); // plan XY → XZ, grosime pe Y
-    return g;
+    // Plan XY cu grosimea pe Z — la fel ca toate celelalte straturi (camera are up = Z).
+    return new THREE.ExtrudeGeometry(shape, { depth: FR4, bevelEnabled: false, curveSegments: 24 });
   }, [geo, cx, cy]);
 
   type CuItem = { kind: "line" | "flash" | "region"; p: Primitive };
