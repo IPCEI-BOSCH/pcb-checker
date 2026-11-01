@@ -158,7 +158,19 @@ function sharedCopper(fa: Fingerprint, fb: Fingerprint, t: Tf, extra?: Tf) {
   return { segs: out, vias };
 }
 
-export function IntegrityOverlayViewer({ a, b, detail }: { a: Side; b: Side; detail: SimilarityDetail }) {
+/** One self-check/official run — chronology evidence for the A4 evidence sheet. */
+export type HistEntry = { at: string; score: number | null; kind: string };
+
+/** Simple FNV-1a hash of the fingerprint — submission identification in the evidence sheet. */
+function fpHash(fp: Fingerprint | undefined): string {
+  if (!fp) return "—";
+  const s = JSON.stringify([fp.pads, fp.holes, fp.copperLen, fp.board, fp.forensic?.flashSeq?.length, fp.segs?.length]);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
+
+export function IntegrityOverlayViewer({ a, b, detail, adj, historyA, historyB }: { a: Side; b: Side; detail: SimilarityDetail; adj?: { adjusted: number; z: number; baseline: number }; historyA?: HistEntry[]; historyB?: HistEntry[] }) {
   const [da, setDa] = useState<Loaded | null>(null);
   const [db, setDb] = useState<Loaded | null>(null);
   const [err, setErr] = useState<string | null>(null);
