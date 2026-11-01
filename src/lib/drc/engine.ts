@@ -2,7 +2,7 @@ import { DEFAULT_SETTINGS, ruleApplies, type Settings } from "./settings";
 import { CATALOG } from "./catalog";
 import { extractTextBlocks, type SilkBlock } from "../silk/extract";
 import { layerBBox, outlineBBox, primitiveBBox } from "../gerber/parser";
-import type { BBox, Layer, LayerKind, Primitive } from "../gerber/types";
+import type { BBox, Hole, Layer, LayerKind, Primitive } from "../gerber/types";
 
 export type Severity = "blocking" | "warning" | "info";
 export type Variant = "SMT" | "THT";
