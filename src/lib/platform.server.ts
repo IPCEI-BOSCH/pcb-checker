@@ -19,13 +19,25 @@ const DIRECT: Record<Service, string> = {
 };
 const CONN_KEY: Record<Service, string> = { drive: "GOOGLE_DRIVE_API_KEY", sheets: "GOOGLE_SHEETS_API_KEY" };
 
-const env = (k: string) => (typeof process !== "undefined" ? process.env[k] : undefined) || undefined;
+const env = (k: string) => (typeof process !== "undefined" ? process.env[k]?.trim() : undefined) || undefined;
 
 function lovableGoogle(s: Service) {
   return !!env("LOVABLE_API_KEY") && !!env(CONN_KEY[s]);
 }
+function oauthGoogle() {
+  return !!(env("GOOGLE_REFRESH_TOKEN") && env("GOOGLE_CLIENT_ID") && env("GOOGLE_CLIENT_SECRET"));
+}
+function serviceAccountConfigured() {
+  try {
+    const sa = JSON.parse(env("GOOGLE_SERVICE_ACCOUNT_JSON") ?? "null");
+    return typeof sa?.client_email === "string" && !!sa.client_email.trim()
+      && typeof sa?.private_key === "string" && sa.private_key.includes("-----BEGIN PRIVATE KEY-----");
+  } catch {
+    return false;
+  }
+}
 function directGoogle() {
-  return !!(env("GOOGLE_REFRESH_TOKEN") && env("GOOGLE_CLIENT_ID") && env("GOOGLE_CLIENT_SECRET")) || !!env("GOOGLE_SERVICE_ACCOUNT_JSON");
+  return oauthGoogle() || serviceAccountConfigured();
 }
 export function googleConfigured(s: Service) {
   return lovableGoogle(s) || directGoogle();
@@ -84,7 +96,7 @@ async function refreshToken(): Promise<{ token: string; exp: number }> {
 
 async function googleAccessToken() {
   if (cached && cached.exp - 60_000 > Date.now()) return cached.token;
-  cached = env("GOOGLE_REFRESH_TOKEN") ? await refreshToken() : await serviceAccountToken(env("GOOGLE_SERVICE_ACCOUNT_JSON")!);
+  cached = oauthGoogle() ? await refreshToken() : await serviceAccountToken(env("GOOGLE_SERVICE_ACCOUNT_JSON")!);
   return cached.token;
 }
 
@@ -132,11 +144,43 @@ export function aiConfig(lovableModel: string) {
  * with Postgres + Auth + Storage + Nginx). Detected from VITE_DEPLOYMENT_MODE or
  * VITE_SELF_HOSTED at build time, overridable with DEPLOYMENT_MODE at runtime.
  */
+export function detectDeployment(read: (key: string) => string | undefined) {
+  for (const key of ["DEPLOYMENT_MODE", "VITE_DEPLOYMENT_MODE"]) {
+    const value = read(key)?.trim().toLowerCase();
+    if (value === "selfhost" || value === "local") return { mode: "selfhost" as const, source: key };
+    if (value === "cloud") return { mode: "cloud" as const, source: key };
+  }
+  if (["true", "1"].includes(read("VITE_SELF_HOSTED")?.trim().toLowerCase() ?? "")) {
+    return { mode: "selfhost" as const, source: "VITE_SELF_HOSTED" };
+  }
+  // Require application-specific Docker evidence, not merely NODE_ENV/localhost.
+  try {
+    const host = new URL(read("SUPABASE_URL") ?? "").hostname;
+    if (read("STORAGE_ROOT")?.trim() && ["host.docker.internal", "kong", "supabase-kong"].includes(host)) {
+      return { mode: "selfhost" as const, source: "Docker (backend + volum)" };
+    }
+  } catch {
+    // Missing/invalid optional configuration must never prevent startup.
+  }
+  return { mode: "cloud" as const, source: "implicit (compatibil Lovable)" };
+}
+
 export function deploymentMode(): "cloud" | "selfhost" {
-  const v = (env("DEPLOYMENT_MODE") ?? env("VITE_DEPLOYMENT_MODE") ?? "").toLowerCase();
-  if (v === "selfhost" || v === "local") return "selfhost";
-  if ((env("VITE_SELF_HOSTED") ?? "").toLowerCase() === "true") return "selfhost";
-  return "cloud";
+  return detectDeployment(env).mode;
+}
+
+/** Public diagnostics: fixed text and booleans only, never credential values. */
+export function deploymentDiagnostics() {
+  const detected = detectDeployment(env);
+  return {
+    ...detected,
+    optional: {
+      drive: googleConfigured("drive"),
+      sheets: googleConfigured("sheets"),
+      ai: aiConfigured(),
+    },
+    detail: `${detected.mode === "selfhost" ? "Server local (self-host)" : "Lovable Cloud"} · sursă: ${detected.source}`,
+  };
 }
 
 /**

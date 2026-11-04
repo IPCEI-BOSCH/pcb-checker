@@ -23,6 +23,7 @@ export interface HealthCheck {
   name: string;
   ok: boolean;
   detail: string;
+  optional?: boolean;
 }
 
 /** Maintenance panel healthcheck: database/RLS, storage buckets, Google connectors, AI endpoint, exam mode. */
@@ -52,13 +53,15 @@ export const platformHealth = createServerFn({ method: "GET" })
       const ok = googleConfigured(s);
       checks.push({
         name: s === "drive" ? "Google Drive" : "Google Sheets",
-        ok: ok || svc.examMode,
+        ok: true,
+        optional: true,
         detail: ok ? "configurat" : svc.examMode ? "dezactivat în modul examen — se sincronizează la reconectare" : "neconfigurat (opțional)",
       });
     }
     checks.push({
       name: "Endpoint AI",
-      ok: svc.ai.configured || svc.examMode,
+      ok: true,
+      optional: true,
       detail: svc.ai.configured
         ? `${svc.ai.mode} · ${svc.ai.baseURL}`
         : svc.examMode

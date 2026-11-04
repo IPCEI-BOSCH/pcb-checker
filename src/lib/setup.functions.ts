@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { allowedEmailDomains, deploymentMode, labInviteCode, platformServices, storageLayout } from "./platform.server";
+import { allowedEmailDomains, deploymentDiagnostics, deploymentMode, labInviteCode, storageLayout } from "./platform.server";
 
 type Admin = Awaited<typeof import("@/integrations/supabase/client.server")>["supabaseAdmin"];
 type Ctx = {
@@ -15,9 +15,13 @@ type Ctx = {
 const STAFF_DOMAINS = ["@upb.ro", "@cetti.ro"];
 
 async function countAdmins(admin: Admin): Promise<number> {
-  const { count, error } = await admin.from("user_roles").select("id", { count: "exact", head: true }).eq("role", "admin");
-  if (error) return -1;
-  return count ?? 0;
+  try {
+    const { count, error } = await admin.from("user_roles").select("id", { count: "exact", head: true }).eq("role", "admin");
+    if (error) return -1;
+    return count ?? 0;
+  } catch {
+    return -1;
+  }
 }
 
 /** Public: does this server still need first-run setup? Returns only booleans, never data. */
@@ -27,12 +31,16 @@ export const setupStatus = createServerFn({ method: "GET" }).handler(async () =>
   const admins = await countAdmins(supabaseAdmin);
   return {
     mode,
+    diagnostics: deploymentDiagnostics(),
     needsSetup: mode === "selfhost" && admins === 0,
     dbReachable: admins >= 0,
     labInviteRequired: !!labInviteCode(),
     allowedDomains: allowedEmailDomains(),
   };
 });
+
+/** Available even before auth/database setup; never returns secrets or backend URLs. */
+export const platformOverview = createServerFn({ method: "GET" }).handler(() => deploymentDiagnostics());
 
 /** Public pre-flight check for the setup wizard: table existence, storage, services. Booleans only. */
 export const setupHealth = createServerFn({ method: "GET" }).handler(async () => {
@@ -46,22 +54,34 @@ export const setupHealth = createServerFn({ method: "GET" }).handler(async () =>
     "students",
     "submissions",
     "project_files",
-    "drc_reports",
     "drc_settings",
-    "gradebook_columns",
+    "sheet_links",
+    "cam_panels",
+    "series_managers",
+    "group_instructors",
+    "student_fabrication_slots",
+    "rule_test_runs",
+    "audit_log",
     "layout_fingerprints",
     "layout_similarity_pairs",
+    "integrity_reviews",
+    "integrity_references",
     "integrity_alerts",
     "deadlines",
+    "review_annotations",
+    "grade_audit_logs",
+    "review_requests",
     "exam_tokens",
   ];
   const checks: { name: string; ok: boolean; detail: string }[] = [];
   let dbOk = true;
   for (const t of tables) {
-    const { error } = await (supabaseAdmin.from as (t: string) => any)(t).select("*", { count: "exact", head: true });
-    if (error) {
+    try {
+      const { error } = await (supabaseAdmin.from as (t: string) => any)(t).select("*", { count: "exact", head: true });
+      if (error) throw new Error();
+    } catch {
       dbOk = false;
-      checks.push({ name: `Tabel ${t}`, ok: false, detail: error.message });
+      checks.push({ name: `Tabel ${t}`, ok: false, detail: "indisponibil — verifică schema și conexiunea backend" });
     }
   }
   checks.unshift({
@@ -76,12 +96,12 @@ export const setupHealth = createServerFn({ method: "GET" }).handler(async () =>
       ok: !error,
       detail: error ? error.message : `${data?.length ?? 0} bucket-uri · ${storageLayout().root}`,
     });
-  } catch (e) {
-    checks.push({ name: "Stocare fișiere (volume local)", ok: false, detail: (e as Error).message });
+  } catch {
+    checks.push({ name: "Stocare fișiere (volume local)", ok: false, detail: "indisponibilă — verifică serviciul Storage și configurația backend" });
   }
-  const svc = platformServices();
-  checks.push({ name: "Mod de execuție", ok: true, detail: svc.deployment === "selfhost" ? "server local (self-host)" : "Lovable Cloud" });
-  return { checks, at: new Date().toISOString() };
+  const diagnostics = deploymentDiagnostics();
+  checks.push({ name: "Mod de execuție", ok: true, detail: diagnostics.detail });
+  return { checks, diagnostics, at: new Date().toISOString() };
 });
 
 /** Public: validate the lab invite code without revealing it. */

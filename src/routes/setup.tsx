@@ -116,6 +116,10 @@ function SetupWizard() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Verificăm conexiunea la baza de date, tabelele aplicației, stocarea fișierelor și suportul browserului.
               </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {health?.diagnostics.detail ?? status?.diagnostics.detail}
+                {" "}Google Drive, Sheets și AI sunt opționale; lipsa cheilor nu blochează pornirea sau verificarea geometrică locală.
+              </p>
               <ul className="mt-4 space-y-2 text-sm">
                 {health?.checks.map((c) => (
                   <li key={c.name} className="flex items-start gap-2">

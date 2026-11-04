@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { platformHealth } from "@/lib/maintenance.functions";
+import { platformOverview } from "@/lib/setup.functions";
 
 export const Route = createFileRoute("/selfhost")({
   head: () => ({
@@ -439,11 +440,13 @@ const TROUBLESHOOTING: { p: string; s: string }[] = [
 ];
 
 function Diagnostics() {
+  const [overview, setOverview] = useState<Awaited<ReturnType<typeof platformOverview>> | null>(null);
   const [health, setHealth] = useState<Awaited<ReturnType<typeof platformHealth>> | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [browser, setBrowser] = useState<{ workers: boolean; secure: boolean; webcrypto: boolean } | null>(null);
 
   useEffect(() => {
+    platformOverview().then(setOverview).catch(() => setOverview(null));
     setBrowser({
       workers: typeof Worker !== "undefined",
       secure: window.isSecureContext,
@@ -458,6 +461,15 @@ function Diagnostics() {
     <div className="space-y-6">
       <section>
         <h3 className="text-base font-semibold text-card-foreground">Starea serverului curent</h3>
+        {overview && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            {overview.detail}. Integrări opționale:
+            {" "}Drive {overview.optional.drive ? "configurat" : "dezactivat"},
+            {" "}Sheets {overview.optional.sheets ? "configurat" : "dezactivat"},
+            {" "}AI {overview.optional.ai ? "configurat" : "dezactivat (OCR vectorial local disponibil)"}.
+            {" "}Lipsa acestor chei nu blochează aplicația.
+          </p>
+        )}
         {err && (
           <p className="mt-2 text-sm text-muted-foreground">
             Diagnosticul live necesită autentificare ca membru al personalului. <Link to="/auth" className="underline">Conectează-te</Link> și revino.

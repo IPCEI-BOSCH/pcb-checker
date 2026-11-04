@@ -4,6 +4,7 @@ import { loadGerberZip } from "@/lib/gerber/load";
 import { runDrc } from "@/lib/drc/engine";
 import { fetchSettings } from "@/lib/drc/settings";
 import { parseFolder } from "@/lib/demo";
+import { loadSafeZip } from "@/lib/zipSecurity";
 
 /** The 9 department fabrication files and their slot keys (BOT.art is accepted for BOTTOM). */
 export const SLOT_OF: Record<string, string> = {
@@ -41,7 +42,7 @@ const GROUP_RE = /^4\d{2}[A-Z]{1,2}$/i;
  * Series and group are inferred from parent folder names or from the project folder name.
  */
 export async function scanZip(file: File | Blob): Promise<DetectedProject[]> {
-  const zip = await JSZip.loadAsync(file);
+  const zip = await loadSafeZip(file);
   const map = new Map<string, DetectedProject>();
   for (const e of Object.values(zip.files)) {
     if (e.dir || e.name.startsWith("__MACOSX")) continue;

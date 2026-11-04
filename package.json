@@ -4,6 +4,8 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
+    "schema:selfhost": "bun scripts/selfhost-schema.ts",
+    "schema:selfhost:check": "bun scripts/selfhost-schema.ts --check",
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",

@@ -25,6 +25,8 @@ export function ZipImportDialog({ open, onOpenChange, onDone }: { open: boolean;
   const fileRef = useRef<HTMLInputElement>(null);
   const [projects, setProjects] = useState<DetectedProject[]>([]);
   const [fileName, setFileName] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [yearId, setYearId] = useState<string>("");
   const [newYear, setNewYear] = useState("");
   const [seriesId, setSeriesId] = useState<string>(AUTO);
@@ -38,12 +40,19 @@ export function ZipImportDialog({ open, onOpenChange, onDone }: { open: boolean;
   const seriesInYear = (s?.series ?? []).filter((x) => x.academic_year_id === yearSel);
 
   const scan = async (f: File) => {
+    setScanning(true);
+    setScanError(null);
+    setProjects([]);
     try {
       setFileName(f.name);
       const list = await scanZip(f);
       if (!list.length) toast.error("Nu am găsit proiecte: arhiva trebuie să conțină foldere cu fișierele TOP.art, BOTTOM.art, DRILL.drl…");
       setProjects(list);
-    } catch (e) { toast.error((e as Error).message); }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Arhiva nu a putut fi citită. Încercați un ZIP standard.";
+      setScanError(message);
+      toast.error(message);
+    } finally { setScanning(false); }
   };
   const patch = (key: string, p: Partial<DetectedProject>) => setProjects((l) => l.map((x) => (x.key === key ? { ...x, ...p } : x)));
   const setAll = (p: Partial<DetectedProject>) => setProjects((l) => l.map((x) => ({ ...x, ...p })));
@@ -65,7 +74,7 @@ export function ZipImportDialog({ open, onOpenChange, onDone }: { open: boolean;
   const groups = [...new Set(projects.map((p) => p.group))];
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !progress && onOpenChange(o)}>
+    <Dialog open={open} onOpenChange={(o) => !progress && !scanning && onOpenChange(o)}>
       <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Importă / arhivează proiecte din ZIP</DialogTitle>
@@ -73,9 +82,11 @@ export function ZipImportDialog({ open, onOpenChange, onDone }: { open: boolean;
             Încărcați arhiva cu folderele studenților (ex. Seria B/431B/P1_2025_431B_Nume_Prenume_TEMA_N1_OrCAD/Layout/). Studenții, grupele, tema și N sunt detectate automat din numele folderelor; le puteți corecta înainte de import.
           </DialogDescription>
         </DialogHeader>
+        {scanError && <p role="alert" className="text-sm text-destructive">{scanError}</p>}
+        {scanning && <p role="status" className="text-sm text-muted-foreground">Se verifică siguranța și conținutul arhivei…</p>}
 
         {!projects.length ? (
-          <button type="button" onClick={() => fileRef.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border p-10 text-sm text-muted-foreground hover:bg-accent">
+          <button type="button" disabled={scanning} onClick={() => fileRef.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border p-10 text-sm text-muted-foreground hover:bg-accent">
             <Upload className="h-6 w-6" /> Alegeți arhiva ZIP (.zip). Arhivele .7z trebuie mai întâi salvate ca .zip.
           </button>
         ) : (
@@ -176,8 +187,8 @@ export function ZipImportDialog({ open, onOpenChange, onDone }: { open: boolean;
         )}
         <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) scan(f); e.target.value = ""; }} />
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={!!progress}>Închide</Button>
-          <Button onClick={run} disabled={!included || !!progress || !yearSel}>Importă {included} proiecte și rulează DRC</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={!!progress || scanning}>Închide</Button>
+          <Button onClick={run} disabled={!included || !!progress || scanning || !yearSel}>Importă {included} proiecte și rulează DRC</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
