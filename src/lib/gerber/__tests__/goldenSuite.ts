@@ -2,6 +2,8 @@ import JSZip from "jszip";
 import { loadGerberZip } from "../load";
 import { runDrc, type DrcReport } from "../../drc/engine";
 import { DEFAULT_SETTINGS } from "../../drc/settings";
+import { labCalibrationDraft } from "../../drc/labProfile";
+import type { Settings } from "../../drc/settings";
 
 /**
  * Golden Suite — 12 benchmark-uri sintetice care exercită parserul și motorul DRC.
@@ -33,6 +35,7 @@ async function makeZip(files: Record<string, string>): Promise<Blob> {
 }
 
 export interface GoldenCase {
+  settings?: Settings;
   name: string;
   description: string;
   files: Record<string, string>;
@@ -165,13 +168,24 @@ export const GOLDEN_SUITE: GoldenCase[] = [
   },
 ];
 
+// Integration coverage for opt-in rules uses the same parser/ZIP/engine path as real uploads.
+const lab = labCalibrationDraft(DEFAULT_SETTINGS);
+GOLDEN_SUITE.push(
+  { name: "G13 — Excellon fără scule", description: "ERR_71 : coordonate cu sculă nedefinită.", files: baseFiles({ drill: "M48\nMETRIC\n%\nT1\nX15.0Y15.0\nM30\n" }), settings: lab, expect: [{ rule: "DRILL_NO_TOOLS", passed: false }], maxMs: 3000 },
+  { name: "G14 — contur copiat pe mască", description: "ERR_68 : contur mecanic exportat pe SMTOP.", files: { ...smtFiles(), "SMTOP.art": smtFiles()["BOARD.OUT"] ?? "" }, settings: lab, expect: [{ rule: "OUTLINE_IN_MASK", passed: false }], maxMs: 3000 },
+  { name: "G15 — contur copiat pe serigrafie", description: "ERR_67 : contur mecanic exportat pe SSTOP.", files: { ...smtFiles(), "SSTOP.art": smtFiles()["BOARD.OUT"] ?? "" }, settings: lab, expect: [{ rule: "OUTLINE_IN_SILK", passed: false }], maxMs: 3000 },
+  { name: "G16 — șablon manual cu fiducial corect", description: "ERR_69/70 : TOP/SPTOP 1 mm, mască 2 mm.", files: baseFiles({ smt: true, top: HDR + AP(10, "C,1") + "D10*\nX5000000Y5000000D03*\n" + EOF, paste: HDR + AP(10, "C,1") + "D10*\nX5000000Y5000000D03*\n" + EOF, mask: HDR + AP(10, "C,2") + "D10*\nX5000000Y5000000D03*\n" + EOF }), settings: lab, expect: [{ rule: "FIDUCIAL_PASTE_MATCH", passed: true }, { rule: "FIDUCIAL_KEEPOUT", passed: true }], maxMs: 3000 },
+  { name: "G17 — colț de 90°", description: "ERR_78 : două segmente perpendiculare fără pad la colț.", files: baseFiles({ top: HDR + AP(10, "C,0.4") + "D10*\nX5000000Y5000000D02*\nX10000000Y5000000D01*\nX10000000Y10000000D01*\n" + EOF }), settings: lab, expect: [{ rule: "RIGHT_ANGLE_TRACES", passed: false }], maxMs: 3000 },
+  { name: "G18 — ieșiri SMD oblice și multiple", description: "ERR_76/77 : două trasee distincte din pad.", files: baseFiles({ top: HDR + AP(10, "R,1X1.5") + AP(11, "C,0.2") + "D10*\nX5000000Y5000000D03*\nD11*\nX5000000Y5000000D02*\nX8000000Y8000000D01*\nX5000000Y5000000D02*\nX2000000Y5000000D01*\n" + EOF }), settings: lab, expect: [{ rule: "PAD_EXIT_ANGLE", passed: false }, { rule: "PAD_MULTIPLE_EXITS", passed: false }], maxMs: 3000 },
+);
+
 async function runCase(c: GoldenCase): Promise<GoldenResult> {
   const t0 = performance.now();
   const failures: string[] = [];
   try {
     const blob = await makeZip(c.files);
     const parsed = await loadGerberZip(blob);
-    const report: DrcReport = runDrc(parsed, "SMT", DEFAULT_SETTINGS);
+    const report: DrcReport = runDrc(parsed, "SMT", c.settings ?? DEFAULT_SETTINGS);
     for (const e of c.expect) {
       const rule = report.rules.find((r) => r.code === e.rule);
       if (!rule) failures.push(`regula ${e.rule} nu apare în raport`);

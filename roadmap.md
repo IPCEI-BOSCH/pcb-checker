@@ -1,5 +1,11 @@
 # Roadmap — PCB Checker & CAM
 
+## Pachetul 4 — DRC pe arhiva P1DCE 2019–2020
+- [x] Asociere Excel–proiecte: 43 seturi / 41 hash-uri distincte, baseline/candidat pe fișiere reale.
+- [x] Verificări ERR_64–ERR_79, praguri editabile și explicații, dezactivate implicit; propunere pentru sandbox.
+- [x] 18 teste noi pozitive/negative, 18 benchmark-uri Golden Suite; raport și dovezi în docs, descărcare din Reguli.
+- [x] Flux autentificat testat pe proiectul Oprisa, Gerber vizibil, activare blocată până la confirmare; modificări pregătite pentru Git.
+
 ## Corecții vizualizare și inițializare
 - [x] Vizualizator PCB înaintea explicațiilor, încadrare numai la dimensiuni pozitive și revenire 3D → 2D; geometria invalidă nu mai golește placa.
 - [x] Generator self-host cu inițializare exclusiv în browser, fără diferențe la hidratare.

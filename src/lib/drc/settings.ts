@@ -1,8 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Severity } from "./engine";
+import { LAB_RULE_VALUES, LAB_RULE_FIELDS, LAB_PENALTIES, LAB_RULE_LINKS, type LabRuleValues } from "./labDefinitions";
 
 /** All tunable values — DRC thresholds, scoring and CAM geometry. Stored as JSON per scope (global / series). */
-export interface RuleValues {
+export interface RuleValues extends LabRuleValues {
   boardSize: number;
   boardHeight: number;
   npthMinDiameter: number;
@@ -96,6 +97,7 @@ export interface RuleOverride {
 
 /** Thresholds that drive each built-in rule — shown together in the rule editor. */
 export const RULE_LINKS: Record<string, (keyof RuleValues)[]> = {
+  ...LAB_RULE_LINKS,
   MISSING_LAYER: [],
   DRL_COUNT: [],
   BOARD_OVERSIZE: ["boardSize", "boardHeight", "boardTol"],
@@ -296,6 +298,7 @@ const MIL = 0.0254;
 
 export const DEFAULT_SETTINGS: Settings = {
   rules: {
+    ...LAB_RULE_VALUES,
     boardSize: 40,
     boardHeight: 40,
     npthMinDiameter: 2.5,
@@ -345,6 +348,7 @@ export const DEFAULT_SETTINGS: Settings = {
     outlineGapTol: 0.05,
   },
   penalties: {
+    ...LAB_PENALTIES,
     MISSING_LAYER: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 20 },
     DRL_COUNT: { points: 20, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 20 },
     BOARD_OVERSIZE: { points: 60, severity: "blocking", enabled: true, smtOnly: false, perIssue: 0, cap: 60, critical: true },
@@ -412,6 +416,7 @@ export const DEFAULT_SETTINGS: Settings = {
 type FieldMeta = { label: string; unit: string; group: string; step?: number; help?: string };
 
 export const RULE_FIELDS: Record<keyof RuleValues, FieldMeta> = {
+  ...LAB_RULE_FIELDS,
   boardSize: { label: "Lățime placă (X)", unit: "mm", group: "Geometrie", step: 0.1, help: "Modifică automat panoul și stencilul (dacă e activă sincronizarea)" },
   boardHeight: { label: "Înălțime placă (Y)", unit: "mm", group: "Geometrie", step: 0.1 },
   npthMinDiameter: { label: "Gaură de montaj (fără pad) de la Ø", unit: "mm", group: "Găurire", step: 0.1, help: "Găurile mai mari sunt considerate găuri de prindere și pot sta în afara pad-urilor" },

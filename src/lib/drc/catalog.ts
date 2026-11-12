@@ -1,3 +1,4 @@
+import { LAB_CATALOG } from "./labDefinitions";
 /** Student-facing explanation for every DRC rule: standardized code, category, what went wrong, why it matters, how to fix it. */
 export interface RuleExplanation {
   err: string;
@@ -18,6 +19,7 @@ export const CATEGORY_LABELS: Record<RuleExplanation["category"], string> = {
 };
 
 export const CATALOG: Record<string, RuleExplanation> = {
+  ...LAB_CATALOG,
   MISSING_LAYER: { err: "ERR_10", category: "STRUCT", what: "Lipsește cel puțin un fișier obligatoriu (cupru TOP, contur sau mască TOP).", why: "Fără toate filmele, fabrica nu poate realiza placa — proiectul nu poate fi produs deloc.", fix: "Exportați din nou toate cele 9 fișiere de fabricație (TOP, BOTTOM, SMTOP, SMBOT, SSTOP, SPTOP, BO, FAB, DRILL) și încărcați-le în sloturile dedicate." },
   DRL_COUNT: { err: "ERR_28", category: "STRUCT", what: "Nu există exact un singur fișier de găurire Excellon.", why: "Mașina CNC primește un singur program de găurire; mai multe fișiere duc la găuri uitate sau dublate.", fix: "În NC Drill dezactivați separarea plated/non-plated și generați un singur DRILL.drl." },
   BOARD_OVERSIZE: { err: "ERR_01", category: "MECH", what: "Placa este mai mare decât formatul stabilit.", why: "Eroare CRITICĂ: placa nu încape în locașul ei din panou și din stencil și s-ar suprapune cu plăcile colegilor — nu poate intra în fabricație.", fix: "Redesenați Board Outline exact la dimensiunea cerută (vezi valoarea „cerut” din mesaj) și mutați componentele în interior." },

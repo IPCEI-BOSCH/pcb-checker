@@ -26,6 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { RuleSandbox, settingsDiff } from "@/components/RuleSandbox";
+import { labCalibrationDraft } from "@/lib/drc/labProfile";
+import calibrationReport from "../../../docs/calibrare-p1dce-2019-2020.md?raw";
 
 export const Route = createFileRoute("/_authenticated/rules")({
   head: () => ({
@@ -181,6 +183,12 @@ function RulesPage() {
             </SelectContent>
           </Select>
           <Button variant="ghost" onClick={() => setDraft(structuredClone(DEFAULT_SETTINGS))}><RotateCcw className="mr-2 h-4 w-4" /> Valori Rev. G</Button>
+          <Button variant="outline" onClick={() => { setDraft(labCalibrationDraft(draft)); goTest(); toast.info("Propunerea P1DCE 2019–2020 este în formular, nu este activată. Testați și confirmați proiectele."); }}><Sparkles className="mr-2 h-4 w-4" /> Propune calibrarea 2019–2020</Button>
+          <Button variant="ghost" onClick={() => {
+            const url = URL.createObjectURL(new Blob([calibrationReport], { type: "text/markdown;charset=utf-8" }));
+            const a = document.createElement("a"); a.href = url; a.download = "Raport-DRC-P1DCE-2019-2020.md"; a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}><Download className="mr-2 h-4 w-4" /> Raport calibrare</Button>
           <Button onClick={() => {
             if (current.data && settingsDiff(current.data, draft).length) { goTest(); toast.info("Regulile modificate trebuie testate pe proiecte și confirmate înainte de activare."); return; }
             void save();

@@ -3,7 +3,7 @@ import { CheckCircle2, FlaskConical, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { runGoldenSuite, type GoldenResult } from "@/lib/gerber/__tests__/goldenSuite";
+import { GOLDEN_SUITE, runGoldenSuite, type GoldenResult } from "@/lib/gerber/__tests__/goldenSuite";
 import { cn } from "@/lib/utils";
 
 /** Rulează cele 12 benchmark-uri sintetice ale parserului și motorului DRC, direct în browser. */
@@ -30,7 +30,7 @@ export function GoldenSuitePanel() {
         <div>
           <CardTitle className="flex items-center gap-2 text-base"><FlaskConical className="h-4 w-4" /> Golden Suite — benchmark-uri parser & DRC</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            12 plăci sintetice generate în memorie validează parserul Gerber/Excellon și regulile DRC end-to-end. Rulează local, fără upload.
+            {GOLDEN_SUITE.length} cazuri de referință · Gerber, Excellon și DRC
           </p>
         </div>
         <Button onClick={run} disabled={running} size="sm">

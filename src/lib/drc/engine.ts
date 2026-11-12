@@ -3,6 +3,8 @@ import { CATALOG } from "./catalog";
 import { extractTextBlocks, type SilkBlock } from "../silk/extract";
 import { layerBBox, outlineBBox, primitiveBBox } from "../gerber/parser";
 import type { BBox, Hole, Layer, LayerKind, Primitive } from "../gerber/types";
+import { LAB_TITLES } from "./labDefinitions";
+import { evaluateLabRules } from "./labRules";
 
 export type Severity = "blocking" | "warning" | "info";
 export type Variant = "SMT" | "THT";
@@ -83,6 +85,7 @@ export const RULES = {
 };
 
 export const TITLES: Record<string, string> = {
+  ...LAB_TITLES,
   MISSING_LAYER: "Straturi obligatorii",
   DRL_COUNT: "Fișier DRL unic",
   BOARD_SIZE: "Dimensiune placă",
@@ -544,6 +547,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     let bad = 0;
     for (const h of holes) {
       const outside = board && (h.x < board.minX || h.x > board.maxX || h.y < board.minY || h.y > board.maxY);
+      if (!outside && P["DRILL_NO_TOOLS"]?.enabled && (!Number.isFinite(h.d) || h.d <= 0)) continue;
       if (h.d < R.minHole - 0.001 || h.d > R.maxHole + 0.001 || outside) {
         bad++;
         if (bad <= 6) fail("HOLE_SIZE", outside ? `Gaură în afara plăcii la (${h.x.toFixed(2)}, ${h.y.toFixed(2)}).` : `Gaură Ø${h.d.toFixed(2)} mm în afara domeniului ${R.minHole.toFixed(2)}–${R.maxHole.toFixed(2)} mm.`, { x: h.x, y: h.y, layer: "drill" });
@@ -618,7 +622,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     );
     const fidWithPaste = fids.filter((f) => pasteAps.some((a) => Math.hypot(a.x - f.x, a.y - f.y) < 0.15)).length;
     if (fids.length < R.minFiducials) fail("FIDUCIALS", `Au fost detectați ${fids.length} fiduciali (minim ${R.minFiducials}: pad rotund ${R.fiducialMin}–${R.fiducialMax} mm, fără gaură, deschidere mască mai mare).`, { layer: "top_copper" });
-    else note("FIDUCIALS", `${fids.length} fiduciali la ${fids.map((f) => `(${f.x.toFixed(1)}, ${f.y.toFixed(1)})`).join(", ")}.${fidWithPaste ? ` Atenție: ${fidWithPaste} au și deschidere de pastă (recomandat fără).` : ""}`);
+    else note("FIDUCIALS", `${fids.length} fiduciali la ${fids.map((f) => `(${f.x.toFixed(1)}, ${f.y.toFixed(1)})`).join(", ")}.${fidWithPaste ? ` ${fidWithPaste} au pastă; conformitatea depinde de procesul ales în ERR_69.` : ""}`);
   }
 
   // Holes outside any copper pad (critical) — usually a drill format/origin mismatch
@@ -856,7 +860,7 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
       else note("VIA_DIAMETER", vias.length ? `${vias.length} via-uri de Ø ${R.viaDiameter} mm.` : "Nu există via-uri.");
     }
     const fab = one("fabrication");
-    const fabLines = fab ? fab.primitives.filter((p) => p.t === "line" && !p.clear).length : 0;
+    const fabLines = fab ? fab.primitives.filter((p) => p.t === "line" && !p.clear && Number.isFinite(p.w) && p.w > 0).length : 0;
     if (!fab) fail("FAB_CONTENT", "Lipsește stratul FAB (desen și tabel de găurire, secțiune transversală).");
     else if (fabLines < R.fabMinLines) fail("FAB_CONTENT", `FAB conține doar ${fabLines} linii${fabLines === 0 ? " (doar aperturi, fără informații)" : ""} — lipsesc tabelul de găurire / secțiunea transversală / notele.`, { layer: "fabrication" });
     else note("FAB_CONTENT", `FAB cu ${fabLines} linii desenate (verificați manual tabelul și secțiunea).`);
@@ -1109,6 +1113,21 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
     else note("DRILL_ON_TRACE_NO_PAD", "Nicio gaură nu taie trasee fără pad.");
   }
 
+  const nets = buildNets(top, bottom, holes);
+  const labIssues = evaluateLabRules(layers, variant, settings, silkBlocks, nets ?? [], {
+    gap: (a, b) => { const A = toCapsule(a, 0), B = toCapsule(b, 1); return A && B ? gapBetween(A, B) : Infinity; },
+    pointInPoly, pointInFlash, ptSegDist,
+  });
+  for (const issue of labIssues) fail(issue.code, issue.message, { ...(issue.layer === undefined ? {} : { layer: issue.layer }), ...(issue.x === undefined ? {} : { x: issue.x }), ...(issue.y === undefined ? {} : { y: issue.y }) });
+  for (const code of Object.keys(LAB_TITLES)) {
+    if (settings.penalties[code]?.enabled && !failed.has(code)) note(code, code === "ARCHIVE_CONVENTION" && !layers.some((l) => l.meta?.archiveEntries) ? "Neevaluată: lipsesc metadatele ZIP." : "Nicio anomalie detectată în geometria recunoscută; consultați limitările regulii.");
+  }
+  // Do not charge the same undefined/zero drill diameter twice.
+  if (failed.has("DRILL_NO_TOOLS")) {
+    for (let i = issues.length - 1; i >= 0; i--) if (issues[i]?.code === "HOLE_SIZE" && /Ø0\.00/.test(issues[i]?.message ?? "")) issues.splice(i, 1);
+    if (!issues.some((i) => i.code === "HOLE_SIZE")) { failed.delete("HOLE_SIZE"); note("HOLE_SIZE", "Diametre invalide semnalate separat prin ERR_71."); }
+  }
+
   // Teacher-defined rules: generic geometric checks, scored like built-in rules.
   for (const cr of settings.customRules ?? []) {
     if (!cr.enabled || !cr.code) continue;
@@ -1144,8 +1163,6 @@ export function runDrc(layers: Layer[], variant: Variant, settings: Settings = D
   if (criticalCount) score = Math.min(score, R.criticalScoreCap);
   const blockingCount = rules.filter((r) => !r.passed && r.severity === "blocking").length;
   const verdict: DrcReport["verdict"] = blockingCount || criticalCount || score < R.reserveScore ? "respins" : score >= R.passScore ? "admis" : "rezerve";
-
-  const nets = buildNets(top, bottom, holes);
 
   return {
     version: 1,

@@ -381,6 +381,7 @@ function parseExcellonWith(fileName: string, content: string, fmtIn: { int: numb
   const warnings: string[] = [];
   const tools = new Map<number, number>();
   const toolOrder: number[] = [];
+  const undefinedTools = new Set<number>();
   let metric = fmtIn.inch === undefined ? !/^(INCH|M72)/m.test(content) : !fmtIn.inch;
   const dec = fmtIn.dec;
   const int = fmtIn.int;
@@ -474,7 +475,7 @@ function parseExcellonWith(fileName: string, content: string, fmtIn: { int: numb
       const x2 = ex ? conv(ex[1]!) : x;
       const y2 = ey ? conv(ey[1]!) : y;
       const d = tools.get(tool);
-      if (d === undefined) warnings.push(`Sculă T${tool} nedefinită`);
+      if (d === undefined) { undefinedTools.add(tool); warnings.push(`Sculă T${tool} nedefinită`); }
       holes.push({ x, y, d: d ?? 0, slot: { x2, y2 } });
       x = x2;
       y = y2;
@@ -483,7 +484,7 @@ function parseExcellonWith(fileName: string, content: string, fmtIn: { int: numb
     if (xm) x = conv(xm[1]!);
     if (ym) y = conv(ym[1]!);
     const d = tools.get(tool);
-    if (d === undefined) warnings.push(`Sculă T${tool} nedefinită`);
+    if (d === undefined) { undefinedTools.add(tool); warnings.push(`Sculă T${tool} nedefinită`); }
     if (slotMode && slotStart) {
       holes.push({ x: slotStart.x, y: slotStart.y, d: d ?? 0, slot: { x2: x, y2: y } });
       slotStart = { x, y };
@@ -492,7 +493,7 @@ function parseExcellonWith(fileName: string, content: string, fmtIn: { int: numb
     }
   }
   if (!holes.length) warnings.push("Fișier de găurire fără găuri");
-  return { fileName, kind: "drill", primitives: [], holes, warnings, fmt: { int, dec, inch: !metric }, meta: { toolOrder } };
+  return { fileName, kind: "drill", primitives: [], holes, warnings, fmt: { int, dec, inch: !metric }, meta: { toolOrder, undefinedTools: [...undefinedTools] } };
 }
 
 export function primitiveBBox(p: Primitive): BBox {

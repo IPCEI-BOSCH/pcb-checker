@@ -38,6 +38,8 @@ export async function loadGerberZip(data: Blob | ArrayBuffer, opts: { drillForma
     }
     catch (e) { layers.push({ fileName: d.base, kind: "drill", primitives: [], holes: [], warnings: [`Eroare parsare: ${(e as Error).message}`] }); }
   }
+  const first = layers[0];
+  if (first) first.meta = { ...first.meta, archiveEntries: Object.values(zip.files).filter((f) => !f.dir).map((f) => f.unsafeOriginalName ?? f.name) };
   return layers;
 }
 

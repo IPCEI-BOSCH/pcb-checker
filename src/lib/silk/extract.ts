@@ -16,6 +16,8 @@ export interface SilkBlock {
   /** Median stroke width in mm. */
   stroke: number;
   vertical: boolean;
+  /** Unsigned geometric reading axis; opposite reading directions remain indistinguishable. */
+  axisAngleDeg?: number;
   chars: number;
   segs: number;
   /** Local vector pre-OCR result (no AI): decoded text, mean glyph confidence and mirror verdict. */
@@ -119,12 +121,18 @@ export function extractTextBlocks(layer: Layer | undefined): SilkBlock[] {
     const vertical = gs.length > 1 ? h > w : false;
     const textHeight = gs.length > 1 ? Math.min(w, h) : Math.max(w, h);
     const stroke = median(all.map((s) => s.w));
+    const centers = gs.map((g) => [(g.minX + g.maxX) / 2, (g.minY + g.maxY) / 2]);
+    const mx = centers.reduce((s, p) => s + (p[0] ?? 0), 0) / centers.length;
+    const my = centers.reduce((s, p) => s + (p[1] ?? 0), 0) / centers.length;
+    let xx = 0, yy = 0, xy = 0;
+    for (const c of centers) { const dx = (c[0] ?? 0) - mx, dy = (c[1] ?? 0) - my; xx += dx * dx; yy += dy * dy; xy += dx * dy; }
+    const axisAngleDeg = (0.5 * Math.atan2(2 * xy, xx - yy) * 180 / Math.PI + 180) % 180;
     // Local vector pre-OCR: decode glyphs and vote the mirror verdict (asymmetric glyphs only).
     const dec = gs.length <= 60 ? decodeBlock(gs.map((g) => g.segs)) : null;
     out.push({
       idx: 0, layer: layer.kind as TextLayerKind, x: +((minX + maxX) / 2).toFixed(3), y: +((minY + maxY) / 2).toFixed(3),
       w: +w.toFixed(3), h: +h.toFixed(3), textHeight: +(textHeight + stroke).toFixed(3), stroke: +stroke.toFixed(3),
-      vertical, chars: gs.length, segs: all.length,
+      vertical, ...(gs.length > 1 ? { axisAngleDeg } : {}), chars: gs.length, segs: all.length,
       ...(dec && dec.matched ? { decoded: dec.text, decodeConfidence: dec.confidence, mirrored: dec.mirrored } : {}),
     });
   }
