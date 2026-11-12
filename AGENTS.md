@@ -16,7 +16,7 @@ Subdirectories `src/lib/drc`, `src/lib/integrity` and `src/lib/silk` have their 
 - Gerber/Excellon parsing and DRC run in the browser (`src/lib/gerber`, `src/lib/drc`); only the report JSON and the ZIP are stored — keeps the server stateless and lets batch DRC reuse the same engine.
 - Laboratory calibration is an opt-in draft in the existing rule sandbox, never an automatic database update — preserves prior grading until confirmed.
 - All data access goes through the browser client with RLS; permissions live in SQL helpers (`has_role`, `can_view_group`, `can_manage_group`, `manages_series`) — one source of truth for the role hierarchy.
-- Role changes only via the `set_role` RPC and profile/first-admin bootstrap via `ensure_profile` (also enforces the UPB domain allowlist) — prevents client-side privilege escalation.
+- Role changes use `set_role`; `ensure_profile` accepts verified emails with Student default, never first-admin — prevents privilege escalation.
 - Signed-in pages live under `src/routes/_authenticated/` (client-only gate) — auth session is client-held.
 - CAM uses browser primitives; multi-series scope is shared by submissions/Drive, each series links the shared ZIP — no server CAD or schema fork.
 - CAM pages never overwrite: overflowing boards go to a new panel/stencil page, each with its own ZIP + `date_in_*.txt` (GerbTool "FOLDER X Y" syntax, no header); board/pitch derive from the DRC board size via `deriveCam` when `cam.autoFromBoard` is on; stencil has independent X/Y pitch and top-row origin.

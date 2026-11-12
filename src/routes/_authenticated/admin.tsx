@@ -262,6 +262,7 @@ function Structure() {
 
 function Students() {
   const { user, has } = useAuth();
+  const profiles = useProfiles();
   const qc = useQueryClient();
   const structure = useQuery({ queryKey: ["structure"], queryFn: fetchStructure });
   const [groupId, setGroupId] = useState("");
@@ -316,6 +317,13 @@ function Students() {
                     <TableCell>
                       <InlineEdit value={st.full_name} onSave={(v) => upd(st.id, { full_name: v })} />
                       <div className="text-xs text-muted-foreground">{st.email ?? "fără cont legat"}</div>
+                      {!st.user_id && <Select onValueChange={async account => {
+                        const profile = profiles.data?.find(p => p.id === account);
+                        if (!profile || !confirm(`Asociezi contul ${profile.email} cu ${st.full_name}?`)) return;
+                        const { error } = await supabase.rpc("link_student_account", { _student: st.id, _account: account });
+                        if (error) return void toast.error("Contul nu a putut fi asociat; verifică dacă este deja legat unui student.");
+                        toast.success("Cont asociat studentului existent."); qc.invalidateQueries({ queryKey: ["admin-students", groupId] });
+                      }}><SelectTrigger className="mt-1 h-8 w-60"><SelectValue placeholder="Asociază cont Student" /></SelectTrigger><SelectContent>{profiles.data?.filter(p => p.roles.includes("student")).map(p => <SelectItem key={p.id} value={p.id}>{p.full_name || p.email} · {p.email}</SelectItem>)}</SelectContent></Select>}
                     </TableCell>
                     <TableCell><InlineEdit value={st.theme_name ?? "—"} onSave={(v) => upd(st.id, { theme_name: v })} /></TableCell>
                     <TableCell><InlineEdit value={st.theme_number?.toString() ?? "—"} onSave={(v) => upd(st.id, { theme_number: parseInt(v, 10) || null })} /></TableCell>

@@ -76,6 +76,12 @@ sudo firewall-cmd --permanent --add-service=http --add-service=https && sudo fir
 
 ## 4. Dezvoltare locală fără Docker (Scenariul C)
 
+### Conturi personale și Google
+
+Pagina de conectare acceptă orice adresă email verificată; conturile UPB/CETTI rămân preferate. Conturile noi primesc numai rolul Student. Primul administrator se creează exclusiv din asistentul securizat `/setup`, nu automat la prima autentificare.
+
+Pe server propriu, Google necesită activarea furnizorului în serviciul de autentificare și propriile credențiale Google OAuth. Înregistrați callback-ul serviciului de autentificare și permiteți revenirile la `/auth` și `/reset-password` pe domeniul instalării. Confirmarea emailului și resetarea parolei necesită SMTP funcțional. Codul de laborator rămâne obligatoriu dacă a fost configurat; nu trimiteți secrete în browser sau în Git.
+
 ```bash
 createdb pcb_checker
 psql pcb_checker < selfhost/sql/schema.sql

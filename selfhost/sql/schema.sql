@@ -219,6 +219,7 @@ create policy "gerbers read" on storage.objects for select to authenticated usin
     select 1 from public.students s where s.user_id::text = (storage.foldername(name))[1] and public.can_view_group(auth.uid(), s.group_id))));
 
 insert into public.academic_years(name) values ('2026-2027');
+
 -- ==== drizzle/migrations/0001_gradebook_and_cam.sql
 -- Manual (teacher-owned) grade columns on students. Never overwritten by sheet sync.
 ALTER TABLE public.students
@@ -280,6 +281,7 @@ CREATE POLICY "cam panels update" ON public.cam_panels FOR UPDATE TO authenticat
   USING (public.manages_series(auth.uid(), series_id) OR public.has_role(auth.uid(), 'cam_tech'::app_role));
 CREATE POLICY "cam panels delete" ON public.cam_panels FOR DELETE TO authenticated
   USING (public.manages_series(auth.uid(), series_id) OR public.has_role(auth.uid(), 'admin'::app_role));
+
 -- ==== drizzle/migrations/0002_rules_settings_and_project_files.sql
 CREATE TABLE public.drc_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -342,6 +344,7 @@ CREATE TRIGGER pf_guard_points BEFORE UPDATE ON public.project_files FOR EACH RO
 
 CREATE POLICY "gerbers delete own" ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'gerbers' AND (storage.foldername(name))[1] = auth.uid()::text);
+
 -- ==== drizzle/migrations/0003_fabrication_slots_and_drive.sql
 ALTER TABLE public.students ADD COLUMN IF NOT EXISTS drive_folder_id text, ADD COLUMN IF NOT EXISTS drive_layout_folder_id text, ADD COLUMN IF NOT EXISTS drive_project_folder_id text;
 ALTER TABLE public.project_files ADD COLUMN IF NOT EXISTS drive_file_id text;
@@ -370,12 +373,14 @@ CREATE POLICY "slots own update" ON public.student_fabrication_slots FOR UPDATE 
   WITH CHECK (uploaded_by = auth.uid());
 CREATE POLICY "slots own delete" ON public.student_fabrication_slots FOR DELETE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.students s WHERE s.id = student_id AND s.user_id = auth.uid()));
+
 -- ==== drizzle/migrations/0004_history_and_demo.sql
 ALTER TABLE public.academic_years ADD COLUMN IF NOT EXISTS is_demo boolean NOT NULL DEFAULT false;
 CREATE POLICY "slots admin write" ON public.student_fabrication_slots FOR ALL TO authenticated USING (public.has_role(auth.uid(),'admin')) WITH CHECK (public.has_role(auth.uid(),'admin'));
 CREATE POLICY "subs admin insert" ON public.submissions FOR INSERT TO authenticated WITH CHECK (public.has_role(auth.uid(),'admin'));
 CREATE POLICY "subs admin delete" ON public.submissions FOR DELETE TO authenticated USING (public.has_role(auth.uid(),'admin'));
 CREATE POLICY "pf admin delete" ON public.project_files FOR DELETE TO authenticated USING (public.has_role(auth.uid(),'admin'));
+
 -- ==== drizzle/migrations/0005_tighten_read_policies.sql
 create or replace function public.is_member(_uid uuid)
 returns boolean language sql stable security definer set search_path = public as $$
@@ -399,6 +404,7 @@ create policy "sm read" on public.series_managers for select to authenticated us
 
 drop policy if exists "gi read" on public.group_instructors;
 create policy "gi read" on public.group_instructors for select to authenticated using (user_id = auth.uid() or public.is_staff(auth.uid()));
+
 -- ==== drizzle/migrations/0006_staff_import_policies.sql
 CREATE POLICY "subs manager insert" ON public.submissions FOR INSERT TO authenticated
   WITH CHECK (user_id = auth.uid() AND EXISTS (SELECT 1 FROM public.students s WHERE s.id = submissions.student_id AND public.can_manage_group(auth.uid(), s.group_id)));
@@ -407,6 +413,7 @@ CREATE POLICY "slots manager insert" ON public.student_fabrication_slots FOR INS
 CREATE POLICY "slots manager update" ON public.student_fabrication_slots FOR UPDATE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.students s WHERE s.id = student_fabrication_slots.student_id AND public.can_manage_group(auth.uid(), s.group_id)))
   WITH CHECK (uploaded_by = auth.uid());
+
 -- ==== drizzle/migrations/0007_rule_test_runs.sql
 CREATE TABLE public.rule_test_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -429,10 +436,12 @@ CREATE POLICY "managers read test runs" ON public.rule_test_runs FOR SELECT TO a
   USING (CASE WHEN series_id IS NULL THEN public.has_role(auth.uid(),'admin') ELSE public.manages_series(auth.uid(), series_id) END);
 CREATE POLICY "managers insert test runs" ON public.rule_test_runs FOR INSERT TO authenticated
   WITH CHECK (tested_by = auth.uid() AND CASE WHEN series_id IS NULL THEN public.has_role(auth.uid(),'admin') ELSE public.manages_series(auth.uid(), series_id) END);
+
 -- ==== drizzle/migrations/0008_manager_delete_policies.sql
 create policy "subs manage delete" on public.submissions for delete to authenticated using (exists (select 1 from public.students s where s.id = submissions.student_id and public.can_manage_group(auth.uid(), s.group_id)));
 create policy "slots manage delete" on public.student_fabrication_slots for delete to authenticated using (exists (select 1 from public.students s where s.id = student_fabrication_slots.student_id and public.can_manage_group(auth.uid(), s.group_id)));
 create policy "pf manage delete" on public.project_files for delete to authenticated using (exists (select 1 from public.students s where s.id = project_files.student_id and public.can_manage_group(auth.uid(), s.group_id)));
+
 -- ==== drizzle/migrations/0009_migration.sql
 -- Staff who manage the group can add files to a student's folders
 create policy "pf manage insert" on public.project_files for insert to authenticated
@@ -457,6 +466,7 @@ for each row execute function public.guard_project_file_points();
 -- Staff can store files in the folder of a student they manage
 create policy "gerbers manager upload" on storage.objects for insert to authenticated
 with check (bucket_id = 'gerbers' and exists (select 1 from public.students s where s.user_id::text = (storage.foldername(name))[1] and public.can_manage_group(auth.uid(), s.group_id)));
+
 -- ==== drizzle/migrations/0010_integrity_fingerprints.sql
 CREATE TABLE public.layout_fingerprints (
   submission_id uuid PRIMARY KEY REFERENCES public.submissions(id) ON DELETE CASCADE,
@@ -501,6 +511,7 @@ CREATE POLICY "staff update reviews" ON public.integrity_reviews FOR UPDATE TO a
   WITH CHECK (reviewed_by = auth.uid());
 CREATE POLICY "staff delete reviews" ON public.integrity_reviews FOR DELETE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.students s WHERE s.id = student_a AND public.can_view_group(auth.uid(), s.group_id)));
+
 -- ==== drizzle/migrations/0011_integrity_v3.sql
 CREATE TABLE public.layout_similarity_pairs (
   submission_a uuid NOT NULL REFERENCES public.submissions(id) ON DELETE CASCADE,
@@ -560,6 +571,7 @@ CREATE POLICY "staff view alerts" ON public.integrity_alerts FOR SELECT TO authe
   USING (EXISTS (SELECT 1 FROM public.students s WHERE s.id = student_id AND public.can_view_group(auth.uid(), s.group_id)));
 CREATE POLICY "staff update alerts" ON public.integrity_alerts FOR UPDATE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.students s WHERE s.id = student_id AND public.can_view_group(auth.uid(), s.group_id)));
+
 -- ==== drizzle/migrations/0012_phase5_deadlines_receipts_annotations_audit.sql
 -- Termene-limită per serie sau grupă
 CREATE TABLE public.deadlines (
@@ -665,6 +677,7 @@ CREATE POLICY rr_update ON public.review_requests FOR UPDATE TO authenticated US
 ) WITH CHECK (
   EXISTS (SELECT 1 FROM public.students s WHERE s.id = student_id AND public.can_manage_group(auth.uid(), s.group_id))
 );
+
 -- ==== drizzle/migrations/0013_phase6_exam_mode.sql
 ALTER TABLE public.groups ADD COLUMN exam_mode boolean NOT NULL DEFAULT false;
 
@@ -718,3 +731,77 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.redeem_exam_token(text, uuid) TO authenticated;
+
+-- ==== drizzle/migrations/0014_deadlines_scope_and_enforce.sql
+DROP POLICY IF EXISTS deadlines_select ON public.deadlines;
+CREATE POLICY deadlines_select ON public.deadlines FOR SELECT TO authenticated USING (
+  public.is_staff(auth.uid())
+  OR (group_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.students s WHERE s.group_id = deadlines.group_id AND s.user_id = auth.uid()))
+  OR (series_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.students s JOIN public.groups g ON g.id = s.group_id WHERE g.series_id = deadlines.series_id AND s.user_id = auth.uid()))
+);
+
+CREATE OR REPLACE FUNCTION public.enforce_submission_deadline()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _group uuid; _series uuid; _ext timestamptz; _hard timestamptz;
+BEGIN
+  IF NEW.kind <> 'OFFICIAL' OR public.is_staff(auth.uid()) OR auth.uid() IS NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT s.group_id, g.series_id, s.deadline_extension_until INTO _group, _series, _ext
+    FROM public.students s JOIN public.groups g ON g.id = s.group_id WHERE s.id = NEW.student_id;
+  SELECT hard_deadline INTO _hard FROM public.deadlines WHERE group_id = _group AND hard_deadline IS NOT NULL LIMIT 1;
+  IF _hard IS NULL THEN
+    SELECT hard_deadline INTO _hard FROM public.deadlines WHERE series_id = _series AND group_id IS NULL AND hard_deadline IS NOT NULL LIMIT 1;
+  END IF;
+  IF _ext IS NOT NULL AND (_hard IS NULL OR _ext > _hard) AND _hard IS NOT NULL THEN
+    _hard := _ext;
+  END IF;
+  IF _hard IS NOT NULL AND now() > _hard THEN
+    RAISE EXCEPTION 'Termenul limită pentru predarea oficială a expirat.';
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_enforce_submission_deadline ON public.submissions;
+CREATE TRIGGER trg_enforce_submission_deadline BEFORE INSERT ON public.submissions
+FOR EACH ROW EXECUTE FUNCTION public.enforce_submission_deadline();
+
+-- ==== drizzle/migrations/0015_external_accounts_student_profiles.sql
+CREATE OR REPLACE FUNCTION public.ensure_profile()
+RETURNS SETOF public.app_role LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _uid uuid := auth.uid();
+  _email text;
+  _name text;
+BEGIN
+  IF _uid IS NULL THEN RAISE EXCEPTION 'not authenticated'; END IF;
+  SELECT lower(email), coalesce(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name') INTO _email, _name FROM auth.users WHERE id = _uid AND (email_confirmed_at IS NOT NULL OR confirmed_at IS NOT NULL);
+  IF _email IS NULL OR position('@' in _email) < 2 THEN RAISE EXCEPTION 'verified_email_required'; END IF;
+  INSERT INTO public.profiles(id,email,full_name) VALUES (_uid,_email,_name)
+    ON CONFLICT (id) DO UPDATE SET email=excluded.email, full_name=coalesce(public.profiles.full_name,excluded.full_name);
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id=_uid) THEN
+    INSERT INTO public.user_roles(user_id,role) VALUES (_uid,'student') ON CONFLICT DO NOTHING;
+  END IF;
+  RETURN QUERY SELECT role FROM public.user_roles WHERE user_id=_uid;
+END $$;
+REVOKE EXECUTE ON FUNCTION public.ensure_profile() FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.ensure_profile() TO authenticated;
+COMMENT ON FUNCTION public.ensure_profile() IS 'Verified accounts from any email domain get a profile and student role only. Existing roles are preserved; first admin is provisioned separately by the secured setup flow.';
+
+-- ==== drizzle/migrations/0016_staff_link_student_account.sql
+CREATE OR REPLACE FUNCTION public.link_student_account(_student uuid, _account uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE _group uuid; _current uuid; _email text;
+BEGIN
+ SELECT group_id,user_id INTO _group,_current FROM public.students WHERE id=_student FOR UPDATE;
+ IF _group IS NULL OR NOT public.can_manage_group(auth.uid(),_group) THEN RAISE EXCEPTION 'forbidden'; END IF;
+ IF _current IS NOT NULL AND _current <> _account THEN RAISE EXCEPTION 'student_already_linked'; END IF;
+ IF EXISTS(SELECT 1 FROM public.students WHERE user_id=_account AND id<>_student) THEN RAISE EXCEPTION 'account_already_linked'; END IF;
+ SELECT email INTO _email FROM public.profiles WHERE id=_account;
+ IF _email IS NULL OR NOT EXISTS(SELECT 1 FROM public.user_roles WHERE user_id=_account AND role='student') THEN RAISE EXCEPTION 'student_account_required'; END IF;
+ UPDATE public.students SET user_id=_account,email=_email WHERE id=_student;
+ INSERT INTO public.audit_log(actor_id,action,target_entity,target_id,details) VALUES(auth.uid(),'STUDENT_ACCOUNT_LINK','student',_student,jsonb_build_object('account_id',_account));
+END $$;
+REVOKE EXECUTE ON FUNCTION public.link_student_account(uuid,uuid) FROM public,anon;
+GRANT EXECUTE ON FUNCTION public.link_student_account(uuid,uuid) TO authenticated;

@@ -1,5 +1,11 @@
 # Roadmap — PCB Checker & CAM
 
+## Pachetul 1 — Conturi alternative
+- [x] Google/Lovable activate și email/parolă; conturi universitare preferate, profiluri păstrate.
+- [x] Orice email verificat cu rol Student implicit; roluri existente păstrate; asociere la student existent numai prin RPC staff cu audit și protecție duplicate.
+- [x] Confirmare email și pagină recuperare parolă; schema self-host actualizată; 54 teste trecute, acces cont existent și erori login verificate fără erori runtime.
+- [ ] Verificare cap-la-cap Google și confirmare/resetare email: necesită autentificarea personală la Google și accesul la mesajul primit; nu au fost simulate. Serverele proprii necesită Google OAuth/SMTP configurate de administrator.
+
 ## Pachetul 2 — Selecție multiplă CAM
 - [x] Listă de serii cu bife, căutare, toate/niciuna și selecție explicită.
 - [x] Aceeași selecție pentru predări și Google Drive; stencil doar SMT; confirmare înainte de golirea ambelor tipuri la schimbarea selecției.

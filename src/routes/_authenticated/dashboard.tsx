@@ -41,6 +41,8 @@ function Dashboard() {
         <p className="text-sm text-muted-foreground">{user.email}</p>
       </div>
 
+      {!isStaff && !student.isLoading && !student.data && <p className="text-sm text-muted-foreground">Contul nu este încă asociat unei grupe. Dacă proiectul tău există deja în catalog, cere îndrumătorului asocierea contului; altfel trimite o înscriere nouă.</p>}
+
       {!isStaff && !has("student") && (
         <Card className="border-warning/50">
           <CardContent className="pt-6 text-sm text-muted-foreground">

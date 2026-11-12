@@ -1147,6 +1147,10 @@ export type Database = {
       }
       is_member: { Args: { _uid: string }; Returns: boolean }
       is_staff: { Args: { _uid: string }; Returns: boolean }
+      link_student_account: {
+        Args: { _account: string; _student: string }
+        Returns: undefined
+      }
       manages_series: {
         Args: { _series: string; _uid: string }
         Returns: boolean
