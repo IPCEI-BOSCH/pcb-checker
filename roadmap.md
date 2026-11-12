@@ -1,5 +1,10 @@
 # Roadmap — PCB Checker & CAM
 
+## Pachetul 3 — Căutare dosare
+- [x] Căutare fără diacritice după nume, email, grupă, temă și folder; filtre serie/grupă/variantă/fișiere.
+- [x] Indicatori proiect/fabricație, anterior/următor în rezultate; selecție eliminată când nu mai corespunde și formulare resetate per student.
+- [x] 3 teste noi (57 total trecute); verificare autentificată pe 238 studenți: căutare, schimbare dosar, zero rezultate, filtru fișiere; fără erori runtime sau depășire orizontală pe telefon.
+
 ## Pachetul 1 — Conturi alternative
 - [x] Google/Lovable activate și email/parolă; conturi universitare preferate, profiluri păstrate.
 - [x] Orice email verificat cu rol Student implicit; roluri existente păstrate; asociere la student existent numai prin RPC staff cu audit și protecție duplicate.

@@ -51,10 +51,10 @@ export function GoogleWorkspaceCard({ studentIds, onFoldersCreated }: { studentI
         <Dot on={d?.sheets} label="Sheets" />
         {d?.account && <span className="text-xs text-muted-foreground">cont: {d.account}</span>}
         {d?.error && !d.drive && <span className="text-xs text-destructive">{d.error}</span>}
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex max-w-full flex-wrap gap-2">
           <Button size="sm" variant="ghost" onClick={() => q.refetch()} disabled={q.isFetching}><RefreshCw className="mr-1 h-3.5 w-3.5" /> Verifică conexiunea</Button>
           {studentIds && (
-            <Button size="sm" variant="outline" onClick={init} disabled={!!busy || !d?.drive || !studentIds.length}>
+            <Button size="sm" variant="outline" className="max-w-full h-auto whitespace-normal py-2" onClick={init} disabled={!!busy || !d?.drive || !studentIds.length}>
               <FolderTree className="mr-1 h-3.5 w-3.5" /> {busy ?? `Creează foldere Drive (${studentIds.length})`}
             </Button>
           )}
