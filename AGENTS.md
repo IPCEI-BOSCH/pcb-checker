@@ -18,7 +18,7 @@ Subdirectories `src/lib/drc`, `src/lib/integrity` and `src/lib/silk` have their 
 - All data access goes through the browser client with RLS; permissions live in SQL helpers (`has_role`, `can_view_group`, `can_manage_group`, `manages_series`) — one source of truth for the role hierarchy.
 - Role changes only via the `set_role` RPC and profile/first-admin bootstrap via `ensure_profile` (also enforces the UPB domain allowlist) — prevents client-side privilege escalation.
 - Signed-in pages live under `src/routes/_authenticated/` (client-only gate) — auth session is client-held.
-- CAM output uses browser-parsed primitives — shares the DRC parser, no server CAD toolchain.
+- CAM uses browser primitives; multi-series scope is shared by submissions/Drive, each series links the shared ZIP — no server CAD or schema fork.
 - CAM pages never overwrite: overflowing boards go to a new panel/stencil page, each with its own ZIP + `date_in_*.txt` (GerbTool "FOLDER X Y" syntax, no header); board/pitch derive from the DRC board size via `deriveCam` when `cam.autoFromBoard` is on; stencil has independent X/Y pitch and top-row origin.
 - Gradebook columns split into platform auto vs teacher manual (`src/lib/gradebook.ts`); sync never writes manual columns, imports use a diff preview, Sheets `LINK_COLUMNS` go after manual columns so existing sheets keep their layout.
 - Google Sheets access runs only through server functions (`src/lib/sheets.functions.ts`) over the Lovable connector gateway — connector credentials never reach the browser.

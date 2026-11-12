@@ -16,12 +16,14 @@ import {
   type PanelBoard, type PanelConfig, type PanelSlot, type PositionRow, type StencilConfig,
 } from "@/lib/cam/panelize";
 import { GerberViewer } from "@/components/GerberViewer";
+import { CamSeriesPicker } from "@/components/CamSeriesPicker";
+import { eligibleForCam, resolveSeries, selectedGroups, seriesExportTag } from "@/lib/cam/selection";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -39,7 +41,7 @@ export const Route = createFileRoute("/_authenticated/cam")({
   component: Cam,
 });
 
-interface Candidate { submissionId: string; label: string; zipPath: string | null; variant: "SMT" | "THT" }
+interface Candidate { submissionId: string; studentId: string; label: string; zipPath: string | null; variant: "SMT" | "THT" }
 type Mode = "panel" | "stencil";
 type Page = (string | null)[];
 
@@ -47,7 +49,8 @@ function Cam() {
   const { user, has } = useAuth();
   const uploadRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<Mode>("panel");
-  const [seriesId, setSeriesId] = useState("");
+  const [seriesSelection, setSeriesSelection] = useState<string[] | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<{ ids: string[] | null } | null>(null);
   const [cfg, setCfg] = useState<PanelConfig>({ cols: 7, rows: 6, pitch: 40.508, board: 40, rail: 8, name: "PANOU-CEF2", coupons: true, fiducials: true });
   const [scfg, setScfg] = useState<StencilConfig>({ name: "STENCIL-CEF2", cols: 7, rows: 6, pitch: 40, pitchY: 50, originX: 20, originY: 310, board: 40, frameW: 300, frameH: 400, margin: 10 });
   const [boards, setBoards] = useState<Record<string, PanelBoard>>({});
@@ -63,7 +66,25 @@ function Cam() {
 
   const allowed = has("admin", "series_manager", "cam_tech", "instructor");
   const structure = useQuery({ queryKey: ["structure"], queryFn: fetchStructure });
-  const settings = useQuery({ queryKey: ["drc-settings", seriesId || null], queryFn: () => fetchSettings(seriesId || null) });
+  const availableSeries = sortSeriesByYear(structure.data?.series ?? [], structure.data?.years);
+  const seriesIds = resolveSeries(seriesSelection, availableSeries.map(s => s.id));
+  const selectedSeries = availableSeries.filter(s => seriesIds.includes(s.id));
+  const groupSelection = selectedGroups(structure.data?.groups ?? [], seriesIds);
+  const settingsSeriesId = seriesIds.length === 1 ? seriesIds[0] ?? null : null;
+  const selectionTag = seriesExportTag(selectedSeries.map(s => `${s.name}-${structure.data?.years.find(y => y.id === s.academic_year_id)?.name ?? ""}`));
+  const settings = useQuery({ queryKey: ["drc-settings", settingsSeriesId], queryFn: () => fetchSettings(settingsSeriesId) });
+
+  const applySelection = (ids: string[] | null) => {
+    setSeriesSelection(ids);
+    setPages({ panel: [[]], stencil: [[]] }); setActive({ panel: 0, stencil: 0 }); setSelected(null);
+    setBoards({}); driveData.current = {}; driveReport.current = "";
+  };
+  const changeSelection = (ids: string[] | null) => {
+    const next = resolveSeries(ids, availableSeries.map(s => s.id));
+    if (next.join("|") === seriesIds.join("|")) return;
+    if (Object.values(pages).some(ps => ps.some(p => p.some(Boolean)))) setPendingSelection({ ids });
+    else applySelection(ids);
+  };
 
   useEffect(() => {
     const c = settings.data?.cam;
@@ -73,12 +94,13 @@ function Cam() {
   }, [settings.data]);
 
   const approved = useQuery({
-    queryKey: ["cam-approved", seriesId, structure.data?.groups.length, onlyApproved],
+    queryKey: ["cam-approved", seriesIds, groupSelection.map(g => g.id), onlyApproved],
     enabled: allowed && !!structure.data,
     queryFn: async (): Promise<Candidate[]> => {
+      if (!groupSelection.length) return [];
       const { data: students, error: se } = await supabase.from("students").select("id, full_name, group_id, theme_number, variant, file_prefix");
       if (se) throw se;
-      const inSeries = new Set((structure.data?.groups ?? []).filter((g) => !seriesId || g.series_id === seriesId).map((g) => g.id));
+      const inSeries = new Set(groupSelection.map(g => g.id));
       const ids = students.filter((s) => inSeries.has(s.group_id)).map((s) => s.id);
       if (!ids.length) return [];
       let q = supabase.from("submissions").select("id, student_id, zip_path, created_at").eq("kind", "OFFICIAL").in("student_id", ids);
@@ -86,9 +108,10 @@ function Cam() {
       const { data: subs, error } = await q.order("created_at", { ascending: false });
       if (error) throw error;
       const seen = new Set<string>();
-      return subs.filter((s) => !seen.has(s.student_id) && seen.add(s.student_id)).map((s) => {
-        const st = students.find((x) => x.id === s.student_id)!;
-        return { submissionId: s.id, label: st.file_prefix || `${st.full_name.replace(/\s+/g, "_")}_N${st.theme_number ?? "x"}`, zipPath: s.zip_path, variant: st.variant };
+      return subs.filter((s) => !seen.has(s.student_id) && seen.add(s.student_id)).flatMap((s) => {
+        const st = students.find((x) => x.id === s.student_id);
+        if (!st) return [];
+        return [{ submissionId: s.id, studentId: st.id, label: st.file_prefix || `${st.full_name.replace(/\s+/g, "_")}_N${st.theme_number ?? "x"}`, zipPath: s.zip_path, variant: st.variant }];
       });
     },
   });
@@ -122,13 +145,14 @@ function Cam() {
   if (!allowed) return <p className="text-sm text-muted-foreground">Acces restricționat.</p>;
 
   const loadCandidate = async (cand: Candidate) => {
-    if (boards[cand.submissionId]) return cand.submissionId;
+    const key = `student:${cand.studentId}`;
+    if (boards[key]) return key;
     if (!cand.zipPath) throw new Error(`${cand.label}: arhiva lipsește.`);
     const dl = await supabase.storage.from("gerbers").download(cand.zipPath);
     if (dl.error) throw new Error(`${cand.label}: arhiva nu poate fi descărcată.`);
     const layers = await loadGerberZip(dl.data);
-    setBoards((b) => ({ ...b, [cand.submissionId]: { label: cand.label, layers } }));
-    return cand.submissionId;
+    setBoards((b) => ({ ...b, [key]: { label: cand.label, layers } }));
+    return key;
   };
 
   /** Place keys after existing ones; full pages are never overwritten — new pages are created. */
@@ -139,7 +163,10 @@ function Cam() {
       for (const k of keys) {
         let target = list.find((p) => { const idx = Array.from({ length: c }, (_, i) => i).find((i) => !p[i]); return idx !== undefined; });
         if (!target) { target = []; list.push(target); }
-        const free = Array.from({ length: c }, (_, i) => i).find((i) => !target![i])!;
+        if (!target) continue;
+        const page = target;
+        const free = Array.from({ length: c }, (_, i) => i).find((i) => !page[i]);
+        if (free === undefined) continue;
         target[free] = k;
       }
       return { ...prev, [m]: list };
@@ -148,8 +175,8 @@ function Cam() {
 
   const autoFill = async () => {
     const placed = new Set(modePages.flat().filter(Boolean));
-    const list = (approved.data ?? []).filter((c) => (mode === "stencil" ? c.variant === "SMT" : true) && !placed.has(c.submissionId));
-    if (!list.length) return void toast.info("Nu există proiecte aprobate noi pentru această serie.");
+    const list = (approved.data ?? []).filter((c) => eligibleForCam(c.variant, mode) && !placed.has(`student:${c.studentId}`));
+    if (!list.length) return void toast.info("Nu există proiecte noi eligibile în seriile selectate.");
     const keys: string[] = [];
     try {
       for (const cand of list) { setBusy(`Se încarcă ${cand.label}…`); keys.push(await loadCandidate(cand)); }
@@ -176,22 +203,26 @@ function Cam() {
     appendKeys(keys);
   };
 
-  /** Pulls Layout/ folders straight from each student's Google Drive folder for the selected series (or all). */
+  /** Both sources use the same explicit series scope and student keys. */
   const pullDrive = async () => {
-    const groupIds = (structure.data?.groups ?? []).filter((g) => !g.is_archived && (!seriesId || g.series_id === seriesId)).map((g) => g.id);
+    const groupIds = groupSelection.map(g => g.id);
     if (!groupIds.length) return void toast.info("Nu există grupe în selecție.");
     setBusy("Se citesc folderele din Google Drive…");
     try {
+      const { data: scopedStudents, error: scopeError } = await supabase.from("students").select("id, group_id").in("group_id", groupIds);
+      if (scopeError) throw scopeError;
       const list = await listLayouts({ data: { groupIds } });
       const placed = new Set(modePages.flat().filter(Boolean));
-      const report: string[] = [`Preluare Drive ${new Date().toLocaleString("ro-RO")} — ${mode === "panel" ? "PANOU" : "STENCIL"}`, ""];
+      const report: string[] = [`Preluare Drive ${new Date().toLocaleString("ro-RO")} — ${mode === "panel" ? "PANOU" : "STENCIL"}`, `Serii: ${selectedSeries.map(s => seriesLabel(s, structure.data?.years)).join(", ")}`, ""];
       const keys: string[] = [];
       for (const s of list) {
-        const key = `drive:${s.studentId}`;
+        const key = `student:${s.studentId}`;
+        const student = scopedStudents.find(st => st.id === s.studentId);
+        if (!student) continue;
         const why = !s.folderName ? "fără folder în Drive"
           : s.missing.length ? `lipsesc: ${s.missing.join(", ")}`
           : onlyApproved && s.review !== "approved" ? `neaprobat (${s.review ?? "nepredat"})`
-          : mode === "stencil" && s.variant !== "SMT" ? "THT — nu intră pe stencil"
+          : !eligibleForCam(s.variant, mode) ? "THT — nu intră pe stencil"
           : placed.has(key) ? "deja plasat" : null;
         if (why) { report.push(`EXCLUS  ${s.group}  ${s.name}: ${why}`); continue; }
         setBusy(`Se descarcă ${s.folderName}…`);
@@ -199,10 +230,13 @@ function Cam() {
         const zip = new JSZip();
         files.forEach((f) => zip.file(f.name, f.b64, { base64: true }));
         const layers = await loadGerberZip(await zip.generateAsync({ type: "blob" }));
-        const g = structure.data?.groups.find((x) => x.name === s.group);
+        const g = groupSelection.find((x) => x.id === student.group_id);
         const ser = structure.data?.series.find((x) => x.id === g?.series_id)?.name ?? "Serie";
-        driveData.current[key] = { series: ser.replace(/\s+/g, "_"), group: s.group, folder: s.folderName!, files };
-        setBoards((b) => ({ ...b, [key]: { label: s.folderName!, layers } }));
+        const folderName = s.folderName;
+        if (!folderName) continue;
+        const year = structure.data?.years.find(y => y.id === selectedSeries.find(x => x.id === g?.series_id)?.academic_year_id)?.name ?? "";
+        driveData.current[key] = { series: seriesExportTag([`${ser}-${year}`]), group: s.group, folder: folderName, files };
+        setBoards((b) => ({ ...b, [key]: { label: folderName, layers } }));
         keys.push(key);
         report.push(`INCLUS  ${s.group}  ${s.folderName}`);
       }
@@ -215,9 +249,10 @@ function Cam() {
 
   const removeAt = (i: number) => setPages((p) => ({ ...p, [mode]: p[mode].map((pg, j) => (j === pageIdx ? pg.map((k, x) => (x === i ? null : k)) : pg)) }));
 
-  const pageName = (m: Mode, i: number) => `${m === "panel" ? cfg.name : scfg.name}-${i + 1}`;
+  const pageName = (m: Mode, i: number) => `${m === "panel" ? cfg.name : scfg.name}-${selectionTag}-${i + 1}`;
 
   const generateAll = async () => {
+    if (!seriesIds.length) return void toast.error("Alegeți cel puțin o serie pentru generare.");
     const list = modePages.map((p, i) => ({ i, slots: toSlots(p, dims.cols, dims.rows) })).filter((x) => x.slots.some((s) => s.board));
     if (!list.length) return void toast.error("Nu există plăcuțe plasate.");
     const master = new JSZip();
@@ -229,12 +264,16 @@ function Cam() {
         master.file(`${name}.zip`, res.blob);
         const path = `${user.id}/cam/${Date.now()}-${name}.zip`;
         const up = await supabase.storage.from("gerbers").upload(path, res.blob, { contentType: "application/zip" });
-        await supabase.from("cam_panels").insert({
-          series_id: seriesId || (structure.data?.series[0]?.id ?? ""),
-          name, cols: dims.cols, rows: dims.rows, pitch_mm: mode === "panel" ? cfg.pitch : scfg.pitch,
-          slots: { type: mode, positions: positionTable(ss, dims.cols, origin) } as never,
-          zip_path: up.error ? null : path, created_by: user.id,
-        });
+        if (up.error) toast.warning(`${name}: copia online nu a fost salvată; exportul local rămâne disponibil.`);
+        // Existing single-series FK: link the shared ZIP to each selected series, never an arbitrary first series.
+        for (const series_id of seriesIds) {
+          const saved = await supabase.from("cam_panels").insert({
+            series_id, name, cols: dims.cols, rows: dims.rows, pitch_mm: mode === "panel" ? cfg.pitch : scfg.pitch,
+            slots: { type: mode, series_ids: seriesIds, positions: positionTable(ss, dims.cols, origin) } as never,
+            zip_path: up.error ? null : path, created_by: user.id,
+          });
+          if (saved.error) toast.warning(`${name}: înregistrarea pentru ${selectedSeries.find(s => s.id === series_id)?.name ?? "serie"} nu a putut fi salvată.`);
+        }
         res.warnings.forEach((w) => toast.warning(w));
       }
       // Original student folders, CETTI structure: PROIECTE/<Serie>/<Grupa>/<Folder>/Layout/*
@@ -249,9 +288,10 @@ function Cam() {
       }
       if (folders.length) master.file("PROIECTE/lista_foldere.txt", folders.sort().join("\r\n"));
       if (driveReport.current) master.file("RAPORT_PRELUARE_DRIVE.txt", driveReport.current);
+      master.file("SERII_SELECTATE.json", JSON.stringify({ series: selectedSeries.map(s => ({ id: s.id, label: seriesLabel(s, structure.data?.years) })), mode, onlyApproved, settingsScope: settingsSeriesId ?? "global", generatedAt: new Date().toISOString() }, null, 2));
       const blob = await master.generateAsync({ type: "blob" });
-      download(blob, `${mode === "panel" ? "PANOURI" : "STENCILE"}-${new Date().toISOString().slice(0, 10)}.zip`);
-      await logAudit(user.id, mode === "panel" ? "CAM_PANEL" : "CAM_STENCIL", "series", seriesId || null, { pages: list.length });
+      download(blob, `${mode === "panel" ? "PANOURI" : "STENCILE"}-${selectionTag}-${new Date().toISOString().slice(0, 10)}.zip`);
+      await logAudit(user.id, mode === "panel" ? "CAM_PANEL" : "CAM_STENCIL", "series", settingsSeriesId, { pages: list.length, series_ids: seriesIds });
       toast.success(`${list.length} ${mode === "panel" ? "panouri" : "stencile"} generate.`);
     } catch (e) { toast.error((e as Error).message); }
     finally { setBusy(null); }
@@ -284,9 +324,9 @@ function Cam() {
           <h1 className="text-2xl font-semibold text-foreground">Generator CAM</h1>
           <p className="text-sm text-muted-foreground">Panou PCB și stencil A3. Când o pagină se umple se creează automat alta — nimic nu se suprascrie. Parametrii implicți vin din „Reguli & Setări”.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={printPositions} disabled={!total}><Printer className="mr-2 h-4 w-4" /> Tipărește pozițiile</Button>
-          <Button onClick={generateAll} disabled={!!busy || !total}><Download className="mr-2 h-4 w-4" /> Generează toate ({modePages.filter((p) => p.some(Boolean)).length})</Button>
+          <Button onClick={generateAll} disabled={!!busy || !total || !seriesIds.length || settings.isFetching}><Download className="mr-2 h-4 w-4" /> Generează toate ({modePages.filter((p) => p.some(Boolean)).length})</Button>
         </div>
       </div>
 
@@ -328,25 +368,29 @@ function Cam() {
       </Tabs>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={seriesId || "ALL"} onValueChange={(v) => setSeriesId(v === "ALL" ? "" : v)}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Serie" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Toate seriile</SelectItem>
-            {sortSeriesByYear(structure.data?.series ?? [], structure.data?.years).map((s) => <SelectItem key={s.id} value={s.id}>{seriesLabel(s, structure.data?.years)}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button onClick={pullDrive} disabled={!!busy}><Cloud className="mr-2 h-4 w-4" /> Preia din Google Drive</Button>
+        <CamSeriesPicker options={availableSeries.map(s => ({ id: s.id, label: seriesLabel(s, structure.data?.years) }))} selected={seriesIds} onChange={changeSelection} disabled={!!busy || structure.isLoading} />
+        <Button onClick={pullDrive} disabled={!!busy || !seriesIds.length || settings.isFetching}><Cloud className="mr-2 h-4 w-4" /> Preia din Google Drive</Button>
         <div className="flex items-center gap-2"><Switch checked={onlyApproved} aria-label="Include doar proiectele aprobate" onCheckedChange={setOnlyApproved} /><span className="text-sm">Doar aprobate</span></div>
-        <Button variant="secondary" onClick={autoFill} disabled={!!busy}><Layers className="mr-2 h-4 w-4" /> {onlyApproved ? "Adaugă proiectele aprobate" : "Adaugă toate predările"} ({(approved.data ?? []).filter((c) => mode === "panel" || c.variant === "SMT").length})</Button>
-        <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={!!busy}><Upload className="mr-2 h-4 w-4" /> Arhive manuale</Button>
+        <Button variant="secondary" onClick={autoFill} disabled={!!busy || !seriesIds.length || approved.isFetching || settings.isFetching}><Layers className="mr-2 h-4 w-4" /> {onlyApproved ? "Adaugă proiectele aprobate" : "Adaugă toate predările"} ({(approved.data ?? []).filter((c) => eligibleForCam(c.variant, mode)).length})</Button>
+        <Button variant="secondary" onClick={() => uploadRef.current?.click()} disabled={!!busy || !seriesIds.length || settings.isFetching}><Upload className="mr-2 h-4 w-4" /> Arhive manuale</Button>
         <input ref={uploadRef} type="file" accept=".zip" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) uploadBoards(e.target.files); e.target.value = ""; }} />
         {total > 0 && <Button variant="ghost" onClick={() => { setPages((p) => ({ ...p, [mode]: [[]] })); setActive((a) => ({ ...a, [mode]: 0 })); }}><Trash2 className="mr-2 h-4 w-4" /> Golește</Button>}
         {busy && <span className="text-sm text-muted-foreground">{busy}</span>}
       </div>
 
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">{selectedSeries.map(s => <Badge key={s.id} variant="secondary">{seriesLabel(s, structure.data?.years)}</Badge>)}</div>
+        <p className="text-xs text-muted-foreground">Configurație: {settingsSeriesId && selectedSeries[0] ? seriesLabel(selectedSeries[0], structure.data?.years) : "Generală (selecție multi-serie)"}</p>
+        {!seriesIds.length && <p className="text-sm text-muted-foreground">Nicio serie selectată.</p>}
+        {approved.isError && <p className="text-sm text-destructive">Predările nu au putut fi încărcate. <Button size="sm" variant="ghost" onClick={() => approved.refetch()}>Reîncearcă</Button></p>}
+      </div>
+      <AlertDialog open={pendingSelection !== null} onOpenChange={open => { if (!open) setPendingSelection(null); }}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Schimbați seriile?</AlertDialogTitle><AlertDialogDescription>Panourile și stencilurile curente vor fi golite. Fișierele deja exportate rămân neschimbate.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Anulează</AlertDialogCancel><AlertDialogAction onClick={() => { if (pendingSelection) applySelection(pendingSelection.ids); setPendingSelection(null); }}>Golește și schimbă seriile</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex flex-wrap items-center gap-2">
         {modePages.map((p, i) => (
-          <Button key={i} size="sm" variant={i === pageIdx ? "default" : "outline"} onClick={() => setActive((a) => ({ ...a, [mode]: i }))}>
+          <Button key={i} size="sm" className="max-w-full whitespace-normal h-auto py-2 break-all" variant={i === pageIdx ? "default" : "outline"} onClick={() => setActive((a) => ({ ...a, [mode]: i }))}>
             {pageName(mode, i)} <span className="ml-1 opacity-70">({p.filter(Boolean).length}/{cap})</span>
           </Button>
         ))}
@@ -355,7 +399,7 @@ function Cam() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
         <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base">Hartă {pageName(mode, pageIdx)} — {filled} / {cap}</CardTitle></CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-base break-all">Hartă {pageName(mode, pageIdx)} — {filled} / {cap}</CardTitle></CardHeader>
           <CardContent>
             <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${dims.cols}, minmax(0, 1fr))` }}>
               {[...slots].sort((a, b) => b.row - a.row || a.col - b.col).map((s) => {
@@ -388,7 +432,7 @@ function Cam() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle className="text-base">Poziții proiecte — {pageName(mode, pageIdx)}</CardTitle>
+          <CardTitle className="text-base break-all">Poziții proiecte — {pageName(mode, pageIdx)}</CardTitle>
           {positions.length > 0 && <Button size="sm" variant="outline" onClick={exportBorderou}><Download className="mr-1 h-4 w-4" /> Borderou CETTI (CSV)</Button>}
         </CardHeader>
         <CardContent><PositionsTable rows={positions} /></CardContent>

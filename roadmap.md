@@ -1,5 +1,10 @@
 # Roadmap — PCB Checker & CAM
 
+## Pachetul 2 — Selecție multiplă CAM
+- [x] Listă de serii cu bife, căutare, toate/niciuna și selecție explicită.
+- [x] Aceeași selecție pentru predări și Google Drive; stencil doar SMT; confirmare înainte de golirea ambelor tipuri la schimbarea selecției.
+- [x] Nume/manifest multi-serie și legături CAM per serie; 5 teste; export autentificat pe 2 serii: 3 panouri și 2 stencile; telefon fără depășire orizontală. Preluarea efectivă din Drive nu a fost testată.
+
 ## Pachetul 4 — DRC pe arhiva P1DCE 2019–2020
 - [x] Asociere Excel–proiecte: 43 seturi / 41 hash-uri distincte, baseline/candidat pe fișiere reale.
 - [x] Verificări ERR_64–ERR_79, praguri editabile și explicații, dezactivate implicit; propunere pentru sandbox.
